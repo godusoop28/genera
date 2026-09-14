@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Century 21 · Gestión documental",
-  description: "Prototipo de gestión documental inmobiliaria Century 21",
+  title: "Century 21 · Jorge Jurado",
+  description: "Gestión documental inmobiliaria — Century 21 Jorge Jurado",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

@@ -7,7 +7,7 @@ interface HeaderProps {
   onMenuClick: () => void;
 }
 
-const userName = "Ana Rodríguez";
+const userName = "Jorge Jurado";
 
 export function Header({ onMenuClick }: HeaderProps) {
   return (
@@ -24,7 +24,7 @@ export function Header({ onMenuClick }: HeaderProps) {
       <div className="flex items-center gap-3">
         <div className="text-right leading-tight">
           <p className="text-sm font-medium text-navy">{userName}</p>
-          <p className="text-xs text-muted">Century 21</p>
+          <p className="text-xs text-muted">Asesor · Century 21</p>
         </div>
         <div className="flex h-9 w-9 items-center justify-center rounded-full bg-navy text-xs font-semibold text-white">
           {initials(userName)}

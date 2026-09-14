@@ -38,7 +38,7 @@ export default function LoginPage() {
             <Input
               type="email"
               label="Correo electrónico"
-              defaultValue="asesor@century21.com"
+              defaultValue="jorge.jurado@century21.com"
               autoComplete="email"
             />
             <div>

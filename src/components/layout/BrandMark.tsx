@@ -23,7 +23,7 @@ export function BrandMark({ className, showText = true }: BrandMarkProps) {
       {showText ? (
         <div className="leading-tight">
           <p className="text-sm font-semibold text-navy">Century 21</p>
-          <p className="text-[11px] text-muted">Gestión documental</p>
+          <p className="text-[11px] text-muted">Jorge Jurado</p>
         </div>
       ) : null}
     </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { PageContainer } from "@/components/layout/PageContainer";
+import { AIAnalysisPanel } from "@/components/expediente/AIAnalysisPanel";
 import { CalculatedData } from "@/components/expediente/CalculatedData";
 import { ContractFields } from "@/components/expediente/ContractFields";
 import { ContractPreview } from "@/components/expediente/ContractPreview";
@@ -8,15 +9,17 @@ import { DocumentsTable } from "@/components/expediente/DocumentsTable";
 import { ProcessingStatus } from "@/components/expediente/ProcessingStatus";
 import { PdfViewerModal } from "@/components/documents/PdfViewerModal";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { receivedDocuments } from "@/data/mock-expediente";
-import { CheckCircle2, Download, FileCheck2, Save } from "lucide-react";
+import { BrainCircuit, CheckCircle2, Download, FileCheck2, Save } from "lucide-react";
 import { useState } from "react";
 
 export default function RevisionExpedientePage() {
   const [contractModalOpen, setContractModalOpen] = useState(false);
   const [pdfViewerOpen, setPdfViewerOpen] = useState(false);
+  const [analysisDone, setAnalysisDone] = useState(false);
   const { showToast } = useToast();
 
   return (
@@ -27,12 +30,28 @@ export default function RevisionExpedientePage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.6fr_1fr]">
         <div className="flex flex-col gap-6">
           <DocumentsTable documents={receivedDocuments} />
-          <ContractFields />
-          <CalculatedData />
+          {analysisDone ? (
+            <>
+              <ContractFields />
+              <CalculatedData />
+            </>
+          ) : (
+            <AIAnalysisPanel onComplete={() => setAnalysisDone(true)} />
+          )}
         </div>
 
         <div className="flex flex-col gap-6 lg:sticky lg:top-6 lg:self-start">
-          <ProcessingStatus />
+          {analysisDone ? (
+            <ProcessingStatus />
+          ) : (
+            <Card className="flex items-center gap-3 border-border bg-app-bg/60">
+              <BrainCircuit className="h-5 w-5 shrink-0 animate-pulse text-teal-dark" aria-hidden />
+              <p className="text-sm text-muted">
+                La vista previa del contrato estará disponible cuando la IA termine de
+                analizar los documentos.
+              </p>
+            </Card>
+          )}
           <ContractPreview onOpen={() => setPdfViewerOpen(true)} />
         </div>
       </div>
@@ -42,7 +61,7 @@ export default function RevisionExpedientePage() {
           <Save className="h-4 w-4" aria-hidden />
           Guardar borrador
         </Button>
-        <Button onClick={() => setContractModalOpen(true)}>
+        <Button onClick={() => setContractModalOpen(true)} disabled={!analysisDone}>
           <FileCheck2 className="h-4 w-4" aria-hidden />
           Generar contrato
         </Button>
