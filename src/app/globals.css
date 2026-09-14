@@ -1,8 +1,26 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f5f8fa;
+  --foreground: #0d1f3c;
+
+  --color-navy: #0d1f3c;
+  --color-navy-light: #1a3155;
+  --color-teal: #0b9488;
+  --color-teal-dark: #08766e;
+  --color-teal-light: #e7f6f2;
+  --color-app-bg: #f5f8fa;
+  --color-card: #ffffff;
+  --color-border: #dfe8ec;
+  --color-muted: #66788a;
+  --color-success-bg: #e7f6f2;
+  --color-success-text: #0b7a5b;
+  --color-warning-bg: #fef3e2;
+  --color-warning-text: #b45309;
+  --color-danger-bg: #fdecec;
+  --color-danger-text: #c0362c;
+  --color-manual-bg: #eaf3ff;
+  --color-manual-text: #1d5fb8;
 }
 
 @theme inline {
@@ -10,17 +28,48 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-navy: var(--color-navy);
+  --color-navy-light: var(--color-navy-light);
+  --color-teal: var(--color-teal);
+  --color-teal-dark: var(--color-teal-dark);
+  --color-teal-light: var(--color-teal-light);
+  --color-app-bg: var(--color-app-bg);
+  --color-card: var(--color-card);
+  --color-border: var(--color-border);
+  --color-muted: var(--color-muted);
+  --color-success-bg: var(--color-success-bg);
+  --color-success-text: var(--color-success-text);
+  --color-warning-bg: var(--color-warning-bg);
+  --color-warning-text: var(--color-warning-text);
+  --color-danger-bg: var(--color-danger-bg);
+  --color-danger-text: var(--color-danger-text);
+  --color-manual-bg: var(--color-manual-bg);
+  --color-manual-text: var(--color-manual-text);
 }
 
 body {
-  background: var(--background);
+  background: var(--color-app-bg);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-toast-in {
+  animation: toast-in 0.2s ease-out;
 }
