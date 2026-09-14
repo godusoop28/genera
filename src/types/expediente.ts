@@ -33,7 +33,6 @@ export interface DocumentRequirement {
   required: boolean;
   conditional?: boolean;
   status?: DocumentStatus;
-  multiPage?: boolean;
 }
 
 export type ExpedienteStatus =

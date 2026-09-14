@@ -20,7 +20,7 @@ export function PdfViewerModal({ open, onClose }: PdfViewerModalProps) {
 
   return (
     <Modal open={open} onClose={onClose} size="xl">
-      <div className="-mx-6 -mt-4 mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-app-bg/60 px-6 py-3">
+      <div className="-mx-4 -mt-4 mb-4 flex flex-wrap items-center justify-center gap-3 border-b border-border bg-app-bg/60 px-4 py-3 sm:-mx-6 sm:justify-between sm:px-6">
         <div className="flex items-center gap-2 text-sm text-navy">
           <button
             type="button"
@@ -83,9 +83,9 @@ export function PdfViewerModal({ open, onClose }: PdfViewerModalProps) {
         </div>
       </div>
 
-      <div className="flex justify-center overflow-auto bg-app-bg/40 p-6">
+      <div className="-mx-4 flex justify-center overflow-auto bg-app-bg/40 p-3 sm:-mx-6 sm:p-6">
         <div
-          className="w-full max-w-2xl rounded-sm bg-white p-10 shadow-md"
+          className="w-full max-w-2xl rounded-sm bg-white p-5 shadow-md sm:p-10"
           style={{ fontSize: `${zoom}%` }}
         >
           <h2 className="mb-6 text-center text-base font-bold tracking-wide text-navy">

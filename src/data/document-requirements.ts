@@ -18,7 +18,6 @@ export const baseRequiredDocuments: DocumentRequirement[] = [
     name: "Escritura completa",
     description: "Sube todas las páginas de la escritura del inmueble.",
     required: true,
-    multiPage: true,
   },
   {
     id: "domicilio",

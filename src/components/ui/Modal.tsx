@@ -37,7 +37,7 @@ export function Modal({ open, onClose, title, children, size = "md", footer }: M
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4">
       <button
         aria-label="Cerrar"
         className="absolute inset-0 bg-navy/40 backdrop-blur-[2px]"
@@ -47,7 +47,7 @@ export function Modal({ open, onClose, title, children, size = "md", footer }: M
         role="dialog"
         aria-modal="true"
         className={cn(
-          "relative w-full rounded-2xl border border-border bg-white p-6 shadow-lg max-h-[90vh] overflow-y-auto",
+          "relative w-full rounded-2xl border border-border bg-white p-4 shadow-lg max-h-[92vh] overflow-y-auto sm:p-6",
           sizeClasses[size],
         )}
       >
