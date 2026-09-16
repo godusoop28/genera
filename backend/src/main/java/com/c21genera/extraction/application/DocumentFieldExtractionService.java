@@ -8,6 +8,7 @@ import com.c21genera.extraction.domain.FieldOrigin;
 import com.c21genera.extraction.domain.StructuredExtractionProvider;
 import com.c21genera.extraction.domain.StructuredExtractionProvider.ExtractionResult;
 import com.c21genera.extraction.domain.StructuredExtractionProvider.FieldResult;
+import com.c21genera.extraction.ExtractionApi;
 import com.c21genera.extraction.infrastructure.DataConflictRepository;
 import com.c21genera.extraction.infrastructure.ExtractedFieldObservationRepository;
 import com.c21genera.shared.storage.FileStorage;
@@ -24,7 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
  * conflictos entre documentos del mismo expediente (ver AGENTS §38-41).
  */
 @Service
-public class DocumentFieldExtractionService {
+public class DocumentFieldExtractionService implements ExtractionApi {
 
   private final ExtractedFieldObservationRepository observationRepository;
   private final DataConflictRepository conflictRepository;
@@ -92,6 +93,12 @@ public class DocumentFieldExtractionService {
   @Transactional(readOnly = true)
   public List<DataConflict> conflictsOfExpediente(UUID expedienteId) {
     return conflictRepository.findByExpedienteIdOrderByDetectedAtDesc(expedienteId);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public boolean hasUnresolvedConflicts(UUID expedienteId) {
+    return conflictRepository.existsByExpedienteIdAndResolvedFalse(expedienteId);
   }
 
   public DataConflict resolveConflict(UUID conflictId, UUID resolvedByUserId, String note) {

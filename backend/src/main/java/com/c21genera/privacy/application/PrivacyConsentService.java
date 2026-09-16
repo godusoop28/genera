@@ -119,6 +119,18 @@ public class PrivacyConsentService implements PrivacyApi {
         .map(c -> new ConsentView(c.isMainPurposesAccepted(), c.isSecondaryPurposesAccepted(), c.getAcceptedAt()));
   }
 
+  @Override
+  @Transactional(readOnly = true)
+  public boolean activePrivacyNoticeTemplateExists() {
+    return legalTemplateRepository.findByTypeAndActiveTrue(LegalTemplateType.PRIVACY_NOTICE_RECEPTION).isPresent();
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public boolean activeContractTemplateExists() {
+    return legalTemplateRepository.findByTypeAndActiveTrue(LegalTemplateType.INTERMEDIATION_CONTRACT).isPresent();
+  }
+
   private static byte[] decodeSignature(String base64) {
     String cleaned = base64.contains(",") ? base64.substring(base64.indexOf(',') + 1) : base64;
     return Base64.getDecoder().decode(cleaned);
