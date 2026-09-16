@@ -1,9 +1,10 @@
 package com.c21genera.documents;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
-/** API pública del módulo documents, usada por documentprocessing/extraction/contracts. */
+/** API pública del módulo documents, usada por documentprocessing/extraction/contracts/notifications. */
 public interface DocumentsApi {
 
   List<PageView> pagesOf(UUID documentVersionId);
@@ -20,6 +21,15 @@ public interface DocumentsApi {
   boolean allRequiredUploaded(UUID expedienteId);
 
   boolean allRequiredAccepted(UUID expedienteId);
+
+  /**
+   * PDF de la versión ACTUAL de un documento, solo si el documento ya está
+   * ACCEPTED (ver AGENTS §46-47: notifications nunca adjunta versiones
+   * rechazadas ni no autorizadas sin acción explícita). Vacío si no aplica.
+   */
+  Optional<String> currentAcceptedPdfStorageKey(UUID documentId);
+
+  List<UUID> documentIdsOf(UUID expedienteId);
 
   record PageView(int pageNumber, String storageKeyOriginal, String mimeType) {}
 }

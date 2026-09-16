@@ -241,4 +241,20 @@ public class DocumentService implements DocumentsApi {
   private DocumentVersion findVersion(UUID documentVersionId) {
     return versionRepository.findById(documentVersionId).orElseThrow(() -> new NotFoundException("Versión de documento", documentVersionId));
   }
+
+  @Override
+  @Transactional(readOnly = true)
+  public java.util.Optional<String> currentAcceptedPdfStorageKey(UUID documentId) {
+    Document document = get(documentId);
+    if (document.getStatus() != DocumentStatus.ACCEPTED) {
+      return java.util.Optional.empty();
+    }
+    return java.util.Optional.ofNullable(latestVersionOf(documentId).getStorageKeyPdf());
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<UUID> documentIdsOf(UUID expedienteId) {
+    return documentRepository.findByExpedienteId(expedienteId).stream().map(Document::getId).toList();
+  }
 }
