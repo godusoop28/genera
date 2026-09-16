@@ -26,6 +26,7 @@ import com.c21genera.expedientes.infrastructure.ManualClientDataRepository;
 import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsApproved;
 import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsUploaded;
 import com.c21genera.shared.events.DocumentEvents.DocumentReviewed;
+import com.c21genera.shared.events.DocumentEvents.ReceptionSigned;
 import com.c21genera.shared.domain.ReviewDecision;
 import com.c21genera.shared.events.PrivacyEvents.PrivacyAccepted;
 import com.c21genera.shared.domain.NotFoundException;
@@ -220,6 +221,11 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
   @ApplicationModuleListener
   void on(AllRequiredDocumentsUploaded event) {
     get(event.expedienteId()).markAllRequiredDocumentsUploaded();
+  }
+
+  @ApplicationModuleListener
+  void on(ReceptionSigned event) {
+    recordReceptionSigned(event.expedienteId());
   }
 
   @Override

@@ -10,6 +10,7 @@ import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsUploaded;
 import com.c21genera.shared.events.DocumentEvents.DocumentReviewed;
 import com.c21genera.shared.events.DocumentEvents.DocumentVersionProcessed;
 import com.c21genera.shared.events.DocumentEvents.DocumentVersionUploaded;
+import com.c21genera.shared.events.DocumentEvents.ReceptionSigned;
 import com.c21genera.shared.events.ExpedienteEvents.ExpedienteCreated;
 import com.c21genera.shared.events.ExpedienteEvents.ExpedienteRequirementsChanged;
 import com.c21genera.shared.events.ExpedienteEvents.PropertyAccepted;
@@ -109,6 +110,12 @@ class AuditEventRecorder {
   void on(AllRequiredDocumentsApproved event) {
     record("AllRequiredDocumentsApproved", "Expediente", event.expedienteId(), null, "Todos los documentos obligatorios fueron aceptados");
     activity(event.expedienteId(), ActivityCategory.DOCUMENT, "Todos los documentos obligatorios fueron aceptados");
+  }
+
+  @ApplicationModuleListener
+  void on(ReceptionSigned event) {
+    record("ReceptionSigned", "Expediente", event.expedienteId(), event.signedByUserId(), "Recepción de documentos firmada por staff");
+    activity(event.expedienteId(), ActivityCategory.DOCUMENT, "La recepción de documentos fue firmada");
   }
 
   private void record(String eventType, String aggregateType, UUID aggregateId, UUID actorUserId, String summary) {

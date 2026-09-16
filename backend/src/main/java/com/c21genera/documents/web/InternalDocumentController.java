@@ -101,6 +101,12 @@ public class InternalDocumentController {
             documentId, ReviewDecision.REJECTED, request.reasonCode(), request.comment(), CurrentUser.from(jwt).id()));
   }
 
+  @PostMapping("/api/v1/internal/expedientes/{expedienteId}/reception/sign")
+  @PreAuthorize("hasAuthority('RECEPTION_SIGN')")
+  public void signReception(@PathVariable UUID expedienteId, @AuthenticationPrincipal Jwt jwt) {
+    documentService.signReception(expedienteId, CurrentUser.from(jwt).id());
+  }
+
   @GetMapping("/api/v1/internal/document-versions/{versionId}/processing")
   public DocumentVersionResponse processingStatus(@PathVariable UUID versionId) {
     return DocumentVersionResponse.from(documentService.getVersion(versionId));

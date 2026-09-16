@@ -5,6 +5,7 @@ import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsUploaded;
 import com.c21genera.shared.events.DocumentEvents.DocumentReviewed;
 import com.c21genera.shared.events.DocumentEvents.DocumentVersionUploaded;
 import com.c21genera.shared.events.DocumentEvents.PageRef;
+import com.c21genera.shared.events.DocumentEvents.ReceptionSigned;
 import com.c21genera.documents.DocumentStatus;
 import com.c21genera.documents.DocumentsApi;
 import com.c21genera.documents.domain.Document;
@@ -12,6 +13,7 @@ import com.c21genera.documents.domain.DocumentNotReviewableException;
 import com.c21genera.documents.domain.DocumentPage;
 import com.c21genera.documents.domain.DocumentReview;
 import com.c21genera.documents.domain.DocumentVersion;
+import com.c21genera.documents.domain.ReceptionNotReadyException;
 import com.c21genera.documents.domain.ReturnReasonCode;
 import com.c21genera.shared.domain.ReviewDecision;
 import com.c21genera.documents.domain.UploadedVia;
@@ -240,6 +242,14 @@ public class DocumentService implements DocumentsApi {
 
   private DocumentVersion findVersion(UUID documentVersionId) {
     return versionRepository.findById(documentVersionId).orElseThrow(() -> new NotFoundException("Versión de documento", documentVersionId));
+  }
+
+  /** Confirmación explícita de staff, distinta de "todos aceptados" (ver AGENTS §87). */
+  public void signReception(UUID expedienteId, UUID signedByUserId) {
+    if (!allRequiredAccepted(expedienteId)) {
+      throw new ReceptionNotReadyException(expedienteId);
+    }
+    events.publishEvent(new ReceptionSigned(expedienteId, signedByUserId));
   }
 
   @Override

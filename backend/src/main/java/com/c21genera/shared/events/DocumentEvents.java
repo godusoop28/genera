@@ -33,4 +33,7 @@ public final class DocumentEvents {
   /** documentprocessing publica esto al terminar normalización/calidad/PDF; extraction escucha para OCR. */
   public record DocumentVersionProcessed(
       UUID expedienteId, UUID documentId, UUID documentVersionId, DocumentTypeCode type, String pdfStorageKey) {}
+
+  /** Confirmación explícita de staff (ver AGENTS §87); expedientes escucha para transicionar a RECEPTION_SIGNED. */
+  public record ReceptionSigned(UUID expedienteId, UUID signedByUserId) {}
 }
