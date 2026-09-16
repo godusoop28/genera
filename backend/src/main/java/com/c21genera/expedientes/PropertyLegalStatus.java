@@ -1,4 +1,4 @@
-package com.c21genera.expedientes.domain;
+package com.c21genera.expedientes;
 
 /** Situación jurídica declarada preliminarmente; se actualiza con el certificado de gravamen recibido. */
 public enum PropertyLegalStatus {

@@ -2,6 +2,10 @@ package com.c21genera.expedientes.domain;
 
 import com.c21genera.shared.domain.RequiredDocumentSpec;
 import com.c21genera.shared.domain.DocumentTypeCode;
+import com.c21genera.expedientes.AccreditationType;
+import com.c21genera.expedientes.PersonType;
+import com.c21genera.expedientes.PropertyCaseType;
+import com.c21genera.expedientes.SignerCharacter;
 import java.util.ArrayList;
 import java.util.List;
 

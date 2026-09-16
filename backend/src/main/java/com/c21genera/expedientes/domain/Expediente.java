@@ -1,6 +1,11 @@
 package com.c21genera.expedientes.domain;
 
+import com.c21genera.expedientes.AccreditationType;
 import com.c21genera.expedientes.ExpedienteStatus;
+import com.c21genera.expedientes.PersonType;
+import com.c21genera.expedientes.PropertyCaseType;
+import com.c21genera.expedientes.PropertyLegalStatus;
+import com.c21genera.expedientes.SignerCharacter;
 import com.c21genera.shared.jpa.AuditableEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

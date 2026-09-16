@@ -106,6 +106,11 @@ app:
     upload:
       capacity: 60
       refill-period: PT1M
+  contracts:
+    # Requiere LibreOffice instalado (ver backend/Dockerfile). Deshabilitado
+    # por defecto: el DOCX del contrato siempre se genera: el PDF es adicional.
+    pdf-conversion-enabled: ${PDF_CONVERSION_ENABLED:false}
+    soffice-path: ${SOFFICE_PATH:soffice}
 
 ---
 spring:

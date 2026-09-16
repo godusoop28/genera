@@ -1,5 +1,7 @@
 package com.c21genera.expedientes;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.UUID;
 
 /**
@@ -10,6 +12,10 @@ import java.util.UUID;
 public interface ExpedienteLifecycleApi {
 
   ExpedienteSummary getSummary(UUID expedienteId);
+
+  ManualClientDataView getManualData(UUID expedienteId);
+
+  record ManualClientDataView(BigDecimal authorizedPrice, LocalDate contractSignatureDate) {}
 
   /** WAITING_PRIVACY -> WAITING_DOCUMENTS. Idempotente. */
   void recordPrivacyAccepted(UUID expedienteId);

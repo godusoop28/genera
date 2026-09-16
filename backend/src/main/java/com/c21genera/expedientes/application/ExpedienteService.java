@@ -9,17 +9,17 @@ import com.c21genera.expedientes.ExpedienteStatus;
 import com.c21genera.expedientes.ExpedienteSummary;
 import com.c21genera.expedientes.ExpedienteSummary.ParticipantView;
 import com.c21genera.shared.domain.RequiredDocumentSpec;
-import com.c21genera.expedientes.domain.AccreditationType;
+import com.c21genera.expedientes.AccreditationType;
+import com.c21genera.expedientes.PersonType;
+import com.c21genera.expedientes.PropertyCaseType;
+import com.c21genera.expedientes.PropertyLegalStatus;
+import com.c21genera.expedientes.SignerCharacter;
 import com.c21genera.expedientes.domain.DocumentRequirementPolicy;
 import com.c21genera.expedientes.domain.Expediente;
 import com.c21genera.expedientes.domain.ExpedienteParticipant;
 import com.c21genera.expedientes.domain.ManualClientData;
 import com.c21genera.expedientes.domain.ManualClientData.ManualClientDataUpdate;
 import com.c21genera.expedientes.domain.ParticipantRole;
-import com.c21genera.expedientes.domain.PersonType;
-import com.c21genera.expedientes.domain.PropertyCaseType;
-import com.c21genera.expedientes.domain.PropertyLegalStatus;
-import com.c21genera.expedientes.domain.SignerCharacter;
 import com.c21genera.expedientes.infrastructure.ExpedienteParticipantRepository;
 import com.c21genera.expedientes.infrastructure.ExpedienteRepository;
 import com.c21genera.expedientes.infrastructure.ManualClientDataRepository;
@@ -162,6 +162,13 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
     ManualClientData data = manualDataOf(expedienteId);
     data.update(update);
     return data;
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public ExpedienteLifecycleApi.ManualClientDataView getManualData(UUID expedienteId) {
+    ManualClientData data = manualDataOf(expedienteId);
+    return new ExpedienteLifecycleApi.ManualClientDataView(data.getAuthorizedPrice(), data.getContractSignatureDate());
   }
 
   @Override

@@ -1,4 +1,4 @@
-package com.c21genera.expedientes.domain;
+package com.c21genera.expedientes;
 
 public enum PersonType {
   FISICA,

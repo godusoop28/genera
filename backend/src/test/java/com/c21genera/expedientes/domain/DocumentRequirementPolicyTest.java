@@ -4,6 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.c21genera.shared.domain.RequiredDocumentSpec;
 import com.c21genera.shared.domain.DocumentTypeCode;
+import com.c21genera.expedientes.AccreditationType;
+import com.c21genera.expedientes.PersonType;
+import com.c21genera.expedientes.PropertyCaseType;
+import com.c21genera.expedientes.SignerCharacter;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;

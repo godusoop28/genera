@@ -1,10 +1,5 @@
 package com.c21genera.expedientes;
 
-import com.c21genera.expedientes.domain.AccreditationType;
-import com.c21genera.expedientes.domain.PersonType;
-import com.c21genera.expedientes.domain.PropertyCaseType;
-import com.c21genera.expedientes.domain.PropertyLegalStatus;
-import com.c21genera.expedientes.domain.SignerCharacter;
 import java.util.List;
 import java.util.UUID;
 
