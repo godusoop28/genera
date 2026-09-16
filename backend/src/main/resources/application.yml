@@ -1,0 +1,175 @@
+spring:
+  application:
+    name: c21genera-backend
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+      write-date-timestamps-as-nanoseconds: false
+    default-property-inclusion: non_null
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        format_sql: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+  mail:
+    properties:
+      mail:
+        smtp:
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+server:
+  port: 8080
+  error:
+    include-message: never
+    include-binding-errors: never
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%X{correlationId}] %-5level %logger{36} - %msg%n"
+
+# Configuración propia de la aplicación (ver shared.config.AppProperties).
+# Ningún secreto tiene valor por defecto: deben suministrarse por variable de
+# entorno (ver backend/.env.example).
+app:
+  organization:
+    legal-name: "Grupo WILGEN y Asociados S. de R.L. de C.V."
+    commercial-name: "CENTURY 21 Genera"
+    profeco-registration: "7/002193-2026"
+  security:
+    jwt:
+      issuer: "c21genera-backend"
+      access-ttl: PT15M
+      refresh-ttl: P30D
+      secret: ${JWT_SECRET:}
+    public-link:
+      base-url: ${PUBLIC_LINK_BASE_URL:https://documentos.c21genera.com/e}
+    cors:
+      allowed-origins: ${FRONTEND_URL:http://localhost:3000}
+  storage:
+    endpoint: ${S3_ENDPOINT:http://localhost:9000}
+    region: ${S3_REGION:us-east-1}
+    bucket: ${S3_BUCKET:c21genera-expedientes}
+    access-key: ${S3_ACCESS_KEY:}
+    secret-key: ${S3_SECRET_KEY:}
+    path-style-access: true
+    presigned-url-ttl: PT10M
+  upload:
+    max-file-size-bytes: 15728640 # 15 MB
+    max-files-per-request: 20
+    allowed-public-mime-types: image/jpeg,image/png
+    allowed-internal-mime-types: image/jpeg,image/png,application/pdf
+  mail:
+    from: ${MAIL_FROM:no-reply@c21genera.com}
+  ai:
+    enabled: ${AI_ENABLED:false}
+    provider: ${AI_PROVIDER:openai}
+    api-key: ${AI_API_KEY:}
+    model: ${AI_MODEL:}
+    base-url: ${AI_BASE_URL:https://api.openai.com/v1}
+    timeout: PT30S
+    max-retries: 2
+  rate-limit:
+    login:
+      capacity: 10
+      refill-period: PT1M
+    public-submit:
+      capacity: 20
+      refill-period: PT1M
+    upload:
+      capacity: 60
+      refill-period: PT1M
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/c21genera}
+    username: ${DATABASE_USERNAME:c21genera}
+    password: ${DATABASE_PASSWORD:c21genera}
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:1025}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+
+app:
+  security:
+    jwt:
+      # Solo para desarrollo local: en producción JWT_SECRET es obligatorio
+      # (ver JwtKeyConfig, que falla al iniciar si está vacío fuera de local/test).
+      secret: ${JWT_SECRET:local-dev-only-secret-key-0123456789abcdef}
+  dev-seed:
+    enabled: true
+    admin-name: "Jorge Ricardo Jurado Espinal"
+    admin-email: ${DEV_ADMIN_EMAIL:admin@demo.local}
+    admin-password: ${DEV_ADMIN_PASSWORD:}
+    seed-demo-expediente: true
+
+---
+spring:
+  config:
+    activate:
+      on-profile: test
+  flyway:
+    enabled: true
+
+app:
+  security:
+    jwt:
+      secret: "test-only-secret-key-not-for-production-use-0123456789"
+  ai:
+    enabled: false
+  dev-seed:
+    enabled: false
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  datasource:
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
+  mail:
+    host: ${SMTP_HOST}
+    port: ${SMTP_PORT}
+    username: ${SMTP_USERNAME}
+    password: ${SMTP_PASSWORD}
+
+app:
+  dev-seed:
+    enabled: false
