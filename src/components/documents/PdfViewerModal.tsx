@@ -2,48 +2,26 @@
 
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
-import { contractMockText } from "@/data/mock-expediente";
 import { Download, Minus, Plus, Printer } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 interface PdfViewerModalProps {
   open: boolean;
   onClose: () => void;
+  title?: string;
+  children: ReactNode;
 }
 
-const TOTAL_PAGES = 12;
-
-export function PdfViewerModal({ open, onClose }: PdfViewerModalProps) {
-  const [page, setPage] = useState(1);
+// Visor simulado de PDF. La barra de herramientas (zoom, paginación,
+// descarga, imprimir) es decorativa: no hay generación real de PDF.
+export function PdfViewerModal({ open, onClose, title, children }: PdfViewerModalProps) {
   const [zoom, setZoom] = useState(100);
   const { showToast } = useToast();
 
   return (
-    <Modal open={open} onClose={onClose} size="xl">
+    <Modal open={open} onClose={onClose} size="xl" title={title}>
       <div className="-mx-4 -mt-4 mb-4 flex flex-wrap items-center justify-center gap-3 border-b border-border bg-app-bg/60 px-4 py-3 sm:-mx-6 sm:justify-between sm:px-6">
-        <div className="flex items-center gap-2 text-sm text-navy">
-          <button
-            type="button"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            className="rounded-lg px-2 py-1 hover:bg-white"
-            aria-label="Página anterior"
-          >
-            <Minus className="h-3.5 w-3.5" aria-hidden />
-          </button>
-          <span className="font-medium tabular-nums">
-            {page} / {TOTAL_PAGES}
-          </span>
-          <button
-            type="button"
-            onClick={() => setPage((p) => Math.min(TOTAL_PAGES, p + 1))}
-            className="rounded-lg px-2 py-1 hover:bg-white"
-            aria-label="Página siguiente"
-          >
-            <Plus className="h-3.5 w-3.5" aria-hidden />
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2 text-sm text-navy">
+        <div className="flex items-center gap-2 text-sm text-obsessed">
           <button
             type="button"
             onClick={() => setZoom((z) => Math.max(50, z - 10))}
@@ -67,7 +45,7 @@ export function PdfViewerModal({ open, onClose }: PdfViewerModalProps) {
           <button
             type="button"
             onClick={() => showToast("Descarga simulada")}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-navy hover:text-teal-dark"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-obsessed hover:text-dark-gold"
           >
             <Download className="h-4 w-4" aria-hidden />
             Descargar
@@ -75,7 +53,7 @@ export function PdfViewerModal({ open, onClose }: PdfViewerModalProps) {
           <button
             type="button"
             onClick={() => showToast("Impresión simulada")}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-navy hover:text-teal-dark"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-obsessed hover:text-dark-gold"
           >
             <Printer className="h-4 w-4" aria-hidden />
             Imprimir
@@ -88,12 +66,7 @@ export function PdfViewerModal({ open, onClose }: PdfViewerModalProps) {
           className="w-full max-w-2xl rounded-sm bg-white p-5 shadow-md sm:p-10"
           style={{ fontSize: `${zoom}%` }}
         >
-          <h2 className="mb-6 text-center text-base font-bold tracking-wide text-navy">
-            CONTRATO DE COMPRAVENTA
-          </h2>
-          <div className="whitespace-pre-line text-justify text-[13px] leading-relaxed text-navy/90">
-            {contractMockText}
-          </div>
+          {children}
         </div>
       </div>
     </Modal>

@@ -23,7 +23,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
   return (
     <div className={cn("flex flex-col gap-1.5", containerClassName)}>
       {label ? (
-        <label htmlFor={selectId} className="text-sm font-medium text-navy">
+        <label htmlFor={selectId} className="text-sm font-medium text-obsessed">
           {label}
         </label>
       ) : null}
@@ -32,7 +32,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
           ref={ref}
           id={selectId}
           className={cn(
-            "w-full appearance-none rounded-xl border border-border bg-white px-3.5 py-2.5 pr-10 text-sm text-navy transition-colors focus:border-teal focus:outline-none focus:ring-4 focus:ring-teal/15",
+            "w-full appearance-none rounded-xl border border-border bg-white px-3.5 py-2.5 pr-10 text-sm text-obsessed transition-colors focus:border-gold focus:outline-none focus:ring-4 focus:ring-gold/20",
             className,
           )}
           {...props}

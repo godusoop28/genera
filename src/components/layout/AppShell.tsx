@@ -20,20 +20,22 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="fixed inset-0 z-40 lg:hidden">
           <button
             aria-label="Cerrar menú"
-            className="absolute inset-0 bg-navy/40"
+            className="absolute inset-0 bg-obsessed/40"
             onClick={() => setMobileOpen(false)}
           />
-          <div className="absolute inset-y-0 left-0 w-72 max-w-[80vw] shadow-xl">
-            <div className="flex justify-end bg-white px-3 pt-3">
+          <div className="absolute inset-y-0 left-0 flex w-72 max-w-[80vw] flex-col shadow-xl">
+            <div className="flex justify-end bg-obsessed px-3 pt-3">
               <button
                 aria-label="Cerrar menú"
                 onClick={() => setMobileOpen(false)}
-                className="rounded-lg p-2 text-navy hover:bg-app-bg"
+                className="rounded-lg p-2 text-white/70 hover:bg-white/5 hover:text-white"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <Sidebar onNavigate={() => setMobileOpen(false)} />
+            <div className="flex-1">
+              <Sidebar onNavigate={() => setMobileOpen(false)} />
+            </div>
           </div>
         </div>
       ) : null}

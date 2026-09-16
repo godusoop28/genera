@@ -10,11 +10,12 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantClasses: Record<Variant, string> = {
+  // Oro con texto Obsessed Grey: mejor contraste que oro + blanco (ver AGENTS/§80).
   primary:
-    "bg-teal text-white hover:bg-teal-dark focus-visible:ring-teal/40 shadow-sm disabled:bg-teal/50",
+    "bg-gold text-obsessed hover:bg-dark-gold focus-visible:ring-gold/40 shadow-sm disabled:opacity-50",
   secondary:
-    "bg-white text-navy border border-border hover:bg-app-bg focus-visible:ring-navy/20 disabled:opacity-50",
-  ghost: "bg-transparent text-navy hover:bg-app-bg focus-visible:ring-navy/20",
+    "bg-white text-obsessed border border-border hover:bg-app-bg focus-visible:ring-obsessed/15 disabled:opacity-50",
+  ghost: "bg-transparent text-obsessed hover:bg-app-bg focus-visible:ring-obsessed/15",
   danger:
     "bg-white text-danger-text border border-danger-text/30 hover:bg-danger-bg focus-visible:ring-red-200",
 };

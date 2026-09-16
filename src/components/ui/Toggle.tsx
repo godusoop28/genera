@@ -14,7 +14,7 @@ export function Toggle({ checked, onChange, label, description, id }: ToggleProp
   return (
     <div className="flex items-center justify-between gap-4 py-1">
       <div className="flex-1">
-        <label htmlFor={id} className="cursor-pointer text-sm font-medium text-navy">
+        <label htmlFor={id} className="cursor-pointer text-sm font-medium text-obsessed">
           {label}
         </label>
         {description ? <p className="mt-0.5 text-xs text-muted">{description}</p> : null}
@@ -27,8 +27,8 @@ export function Toggle({ checked, onChange, label, description, id }: ToggleProp
         aria-label={label}
         onClick={() => onChange(!checked)}
         className={cn(
-          "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-teal/20",
-          checked ? "bg-teal" : "bg-border",
+          "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/25",
+          checked ? "bg-dark-gold" : "bg-border",
         )}
       >
         <span

@@ -40,7 +40,7 @@ export function Modal({ open, onClose, title, children, size = "md", footer }: M
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4">
       <button
         aria-label="Cerrar"
-        className="absolute inset-0 bg-navy/40 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-obsessed/40 backdrop-blur-[2px]"
         onClick={onClose}
       />
       <div
@@ -52,11 +52,11 @@ export function Modal({ open, onClose, title, children, size = "md", footer }: M
         )}
       >
         <div className="mb-4 flex items-start justify-between gap-4">
-          {title ? <h3 className="text-lg font-semibold text-navy">{title}</h3> : <span />}
+          {title ? <h3 className="text-lg font-semibold text-obsessed">{title}</h3> : <span />}
           <button
             aria-label="Cerrar"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-muted transition-colors hover:bg-app-bg hover:text-navy focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-teal/15"
+            className="rounded-lg p-1.5 text-muted transition-colors hover:bg-app-bg hover:text-obsessed focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/20"
           >
             <X className="h-5 w-5" />
           </button>

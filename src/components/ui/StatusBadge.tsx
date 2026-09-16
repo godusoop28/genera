@@ -1,14 +1,23 @@
 import { Badge } from "@/components/ui/Badge";
-import type { ExpedienteStatus } from "@/types/expediente";
+import { expedienteStatusLabels, type ExpedienteStatus } from "@/types/expediente";
 
-const statusTone: Record<ExpedienteStatus, "neutral" | "warning" | "teal" | "navy" | "success"> = {
-  Borrador: "neutral",
-  "Esperando documentos": "warning",
-  "Documentos recibidos": "teal",
-  "En revisión": "navy",
-  "Listo para contrato": "success",
+type Tone = "neutral" | "warning" | "gold" | "obsessed" | "success" | "danger" | "info";
+
+const statusTone: Record<ExpedienteStatus, Tone> = {
+  draft: "neutral",
+  waiting_privacy: "warning",
+  waiting_documents: "warning",
+  documents_received: "info",
+  under_review: "gold",
+  corrections_requested: "warning",
+  documents_approved: "success",
+  contract_preparation: "info",
+  ready_for_signature: "gold",
+  property_accepted: "success",
+  property_rejected: "danger",
+  closed: "obsessed",
 };
 
 export function StatusBadge({ status }: { status: ExpedienteStatus }) {
-  return <Badge tone={statusTone[status]}>{status}</Badge>;
+  return <Badge tone={statusTone[status]}>{expedienteStatusLabels[status]}</Badge>;
 }

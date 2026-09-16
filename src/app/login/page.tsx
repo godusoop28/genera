@@ -1,36 +1,42 @@
 "use client";
 
-import { BrandMark } from "@/components/layout/BrandMark";
+import { BrandLogo } from "@/components/brand/BrandLogo";
+import { BrandFooter } from "@/components/brand/BrandFooter";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { FileLock2, Eye, EyeOff } from "lucide-react";
+import { useDemoApp } from "@/context/DemoAppProvider";
+import { PROTOTYPE_BADGE_TEXT } from "@/data/organization";
+import { FileLock2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [showPassword, setShowPassword] = useState(false);
+  const { login } = useDemoApp();
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
+    login();
     router.push("/expedientes");
   };
 
   return (
     <div className="flex min-h-screen flex-1 items-center justify-center bg-app-bg px-4 py-10">
       <div className="w-full max-w-md">
-        <div className="mb-8 flex justify-center">
-          <BrandMark />
+        <div className="mb-8 flex flex-col items-center gap-3">
+          <BrandLogo tone="light" size="lg" />
+          <Badge tone="neutral">{PROTOTYPE_BADGE_TEXT}</Badge>
         </div>
 
         <div className="rounded-2xl border border-border bg-white p-8 shadow-sm">
           <div className="mb-6 flex flex-col items-center text-center">
-            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-light">
-              <FileLock2 className="h-7 w-7 text-teal-dark" aria-hidden />
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gold/15">
+              <FileLock2 className="h-7 w-7 text-dark-gold" aria-hidden />
             </div>
-            <h1 className="text-xl font-semibold text-navy">Iniciar sesión</h1>
+            <h1 className="text-xl font-semibold text-obsessed">Acceso de personal interno</h1>
             <p className="mt-1.5 text-sm text-muted">
-              Acceso exclusivo para personal autorizado
+              Este acceso es exclusivo para personal autorizado de CENTURY 21 Genera. Los
+              propietarios no requieren cuenta: reciben una liga directa a su expediente.
             </p>
           </div>
 
@@ -38,45 +44,24 @@ export default function LoginPage() {
             <Input
               type="email"
               label="Correo electrónico"
-              defaultValue="jorge.jurado@century21.com"
+              placeholder="admin@demo.local"
               autoComplete="email"
             />
-            <div>
-              <div className="relative">
-                <Input
-                  type={showPassword ? "text" : "password"}
-                  label="Contraseña"
-                  defaultValue="********"
-                  autoComplete="current-password"
-                  className="pr-11"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-                  className="absolute right-3.5 top-[38px] text-muted hover:text-navy"
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4" aria-hidden />
-                  ) : (
-                    <Eye className="h-4 w-4" aria-hidden />
-                  )}
-                </button>
-              </div>
-              <div className="mt-2 text-right">
-                <button
-                  type="button"
-                  className="text-sm font-medium text-teal-dark hover:underline"
-                >
-                  ¿Olvidaste tu contraseña?
-                </button>
-              </div>
-            </div>
+            <Input
+              type="password"
+              label="Contraseña"
+              placeholder="••••••••"
+              autoComplete="current-password"
+            />
 
             <Button type="submit" size="lg" className="mt-2 w-full">
               Entrar
             </Button>
           </form>
+        </div>
+
+        <div className="mt-6 text-center">
+          <BrandFooter />
         </div>
       </div>
     </div>

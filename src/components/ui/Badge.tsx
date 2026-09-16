@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
-type BadgeTone = "teal" | "navy" | "success" | "warning" | "danger" | "manual" | "neutral";
+type BadgeTone = "gold" | "obsessed" | "success" | "warning" | "danger" | "info" | "manual" | "neutral";
 
 interface BadgeProps {
   children: ReactNode;
@@ -10,11 +10,12 @@ interface BadgeProps {
 }
 
 const toneClasses: Record<BadgeTone, string> = {
-  teal: "bg-teal-light text-teal-dark",
-  navy: "bg-navy/5 text-navy",
+  gold: "bg-gold/15 text-dark-gold",
+  obsessed: "bg-obsessed/5 text-obsessed",
   success: "bg-success-bg text-success-text",
   warning: "bg-warning-bg text-warning-text",
   danger: "bg-danger-bg text-danger-text",
+  info: "bg-info-bg text-info-text",
   manual: "bg-manual-bg text-manual-text",
   neutral: "bg-app-bg text-muted border border-border",
 };

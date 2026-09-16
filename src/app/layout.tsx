@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ToastProvider } from "@/components/ui/Toast";
+import { DemoAppProvider } from "@/context/DemoAppProvider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,8 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Century 21 · Jorge Jurado",
-  description: "Gestión documental inmobiliaria — Century 21 Jorge Jurado",
+  title: "CENTURY 21 Genera · Gestión documental",
+  description:
+    "Prototipo visual de gestión documental y contratos — CENTURY 21 Genera (Módulo 1).",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -24,8 +26,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="es"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-app-bg text-navy">
-        <ToastProvider>{children}</ToastProvider>
+      <body className="min-h-full flex flex-col bg-app-bg text-obsessed">
+        <DemoAppProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </DemoAppProvider>
       </body>
     </html>
   );

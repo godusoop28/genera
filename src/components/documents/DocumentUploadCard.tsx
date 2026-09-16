@@ -4,8 +4,9 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { DocumentIcon } from "@/components/documents/DocumentIcon";
 import { DocumentPreviewModal } from "@/components/documents/DocumentPreviewModal";
+import { useDemoApp } from "@/context/DemoAppProvider";
 import { cn } from "@/lib/utils";
-import type { DocumentRequirement } from "@/types/expediente";
+import type { DocumentRequirement, DocumentPage } from "@/types/expediente";
 import {
   AlertTriangle,
   BadgeCheck,
@@ -22,60 +23,47 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 
-interface UploadedFile {
-  id: string;
-  name: string;
-  url: string | null;
-}
-
-type CardStatus = "idle" | "reviewing" | "converting" | "converted" | "error";
+type LocalPipelineStatus = "idle" | "verifying" | "converting" | "done" | "error";
 
 interface DocumentUploadCardProps {
-  doc: DocumentRequirement;
+  expedienteId: string;
+  requirement: DocumentRequirement;
   allowErrorDemo?: boolean;
 }
 
 const verificationSteps = [
-  "Detectando el documento en la imagen",
-  "Verificando nitidez, orientación e iluminación",
-  "Confirmando que el contenido es legible y correcto",
+  "Analizando imagen...",
+  "Verificando orientación...",
+  "Verificando legibilidad...",
+  "Identificando documento...",
 ];
 
 function randomDelay(min: number, max: number) {
   return min + Math.random() * (max - min);
 }
 
-function slugify(name: string) {
-  return name
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-}
-
-function StatusPill({ status }: { status: CardStatus }) {
-  if (status === "reviewing") {
+function StatusPill({ status }: { status: LocalPipelineStatus }) {
+  if (status === "verifying") {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-teal-dark">
+      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-dark-gold">
         <ScanEye className="h-3.5 w-3.5 animate-pulse" aria-hidden />
-        IA verificando...
+        Validación automática...
       </span>
     );
   }
   if (status === "converting") {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-teal-dark">
+      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-dark-gold">
         <Sparkles className="h-3.5 w-3.5 animate-pulse" aria-hidden />
-        Convirtiendo a PDF...
+        Preparando PDF...
       </span>
     );
   }
-  if (status === "converted") {
+  if (status === "done") {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs font-medium text-success-text">
         <Check className="h-3.5 w-3.5" aria-hidden />
-        Convertido a PDF
+        Documento listo
       </span>
     );
   }
@@ -90,26 +78,73 @@ function StatusPill({ status }: { status: CardStatus }) {
   return null;
 }
 
-export function DocumentUploadCard({ doc, allowErrorDemo = false }: DocumentUploadCardProps) {
-  const [files, setFiles] = useState<UploadedFile[]>([]);
-  const [status, setStatus] = useState<CardStatus>("idle");
+export function DocumentUploadCard({
+  expedienteId,
+  requirement,
+  allowErrorDemo = false,
+}: DocumentUploadCardProps) {
+  const { getExpediente, updateExpediente } = useDemoApp();
+  const exp = getExpediente(expedienteId);
+  const uploaded = exp?.documents[requirement.id];
+  const pages = uploaded?.pages ?? [];
+
+  const [status, setStatus] = useState<LocalPipelineStatus>(
+    uploaded && uploaded.status !== "pending" ? "done" : "idle",
+  );
   const [previewOpen, setPreviewOpen] = useState(false);
   const [runKey, setRunKey] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const runId = useRef(0);
 
+  const setDocStatus = (docStatus: "uploaded" | "processing" | "ready_for_review") => {
+    updateExpediente(expedienteId, (current) => ({
+      ...current,
+      documents: {
+        ...current.documents,
+        [requirement.id]: {
+          requirementId: requirement.id,
+          pages: current.documents[requirement.id]?.pages ?? [],
+          status: docStatus,
+          uploadedAt: new Date().toISOString(),
+        },
+      },
+    }));
+  };
+
+  const setPages = (updater: (prev: DocumentPage[]) => DocumentPage[]) => {
+    updateExpediente(expedienteId, (current) => {
+      const existing = current.documents[requirement.id];
+      const nextPages = updater(existing?.pages ?? []);
+      return {
+        ...current,
+        documents: {
+          ...current.documents,
+          [requirement.id]: {
+            requirementId: requirement.id,
+            status: existing?.status ?? "uploaded",
+            pages: nextPages,
+            uploadedAt: existing?.uploadedAt ?? new Date().toISOString(),
+          },
+        },
+      };
+    });
+  };
+
   const runPipeline = () => {
     const currentRun = ++runId.current;
     setRunKey(currentRun);
-    setStatus("reviewing");
+    setStatus("verifying");
+    setDocStatus("uploaded");
     window.setTimeout(
       () => {
         if (runId.current !== currentRun) return;
         setStatus("converting");
+        setDocStatus("processing");
         window.setTimeout(
           () => {
             if (runId.current !== currentRun) return;
-            setStatus("converted");
+            setStatus("done");
+            setDocStatus("ready_for_review");
           },
           randomDelay(650, 950),
         );
@@ -121,22 +156,29 @@ export function DocumentUploadCard({ doc, allowErrorDemo = false }: DocumentUplo
   const handleAddFiles = (event: ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(event.target.files ?? []);
     if (selected.length === 0) return;
-    const newFiles: UploadedFile[] = selected.map((file) => ({
-      id: `${file.name}-${Date.now()}-${Math.random()}`,
-      name: file.name,
-      url: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
-    }));
-    setFiles((prev) => [...prev, ...newFiles]);
-    runPipeline();
+    const readers = selected.map(
+      (file) =>
+        new Promise<DocumentPage>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () =>
+            resolve({ id: `${file.name}-${Date.now()}-${Math.random()}`, name: file.name, dataUrl: String(reader.result) });
+          reader.readAsDataURL(file);
+        }),
+    );
+    Promise.all(readers).then((newPages) => {
+      setPages((prev) => [...prev, ...newPages]);
+      runPipeline();
+    });
     event.target.value = "";
   };
 
   const handleRemoveFile = (id: string) => {
-    setFiles((prev) => {
-      const next = prev.filter((file) => file.id !== id);
+    setPages((prev) => {
+      const next = prev.filter((p) => p.id !== id);
       if (next.length === 0) {
         runId.current++;
         setStatus("idle");
+        setDocStatus("uploaded");
       }
       return next;
     });
@@ -148,16 +190,16 @@ export function DocumentUploadCard({ doc, allowErrorDemo = false }: DocumentUplo
   };
 
   const handleReplace = () => {
-    setFiles([]);
+    setPages(() => []);
     setStatus("idle");
     inputRef.current?.click();
   };
 
   const isError = status === "error";
-  const isConverted = status === "converted";
-  const isBusy = status === "reviewing" || status === "converting";
-  const hasFiles = files.length > 0;
-  const pdfName = `${slugify(doc.name)}.pdf`;
+  const isDone = status === "done";
+  const isBusy = status === "verifying" || status === "converting";
+  const hasFiles = pages.length > 0;
+  const reviewDecision = uploaded?.review?.decision;
 
   return (
     <div
@@ -165,7 +207,7 @@ export function DocumentUploadCard({ doc, allowErrorDemo = false }: DocumentUplo
         "rounded-2xl border bg-white p-5 shadow-sm transition-all duration-200",
         isError
           ? "border-danger-text/50 ring-1 ring-danger-text/20"
-          : isConverted
+          : isDone
             ? "border-success-text/25"
             : "border-border hover:shadow-md",
       )}
@@ -175,30 +217,41 @@ export function DocumentUploadCard({ doc, allowErrorDemo = false }: DocumentUplo
           <div
             className={cn(
               "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
-              isConverted ? "bg-success-bg text-success-text" : "bg-teal-light text-teal-dark",
+              isDone ? "bg-success-bg text-success-text" : "bg-gold/15 text-dark-gold",
             )}
           >
-            <DocumentIcon docId={doc.id} className="h-5 w-5" />
+            <DocumentIcon docId={requirement.id} category={requirement.category} className="h-5 w-5" />
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <h3 className="text-sm font-semibold text-navy">{doc.name}</h3>
-              {doc.required ? <Badge tone="teal">Obligatorio</Badge> : <Badge>Opcional</Badge>}
+              <h3 className="text-sm font-semibold text-obsessed">{requirement.name}</h3>
+              {requirement.required ? <Badge tone="gold">Obligatorio</Badge> : <Badge>Opcional</Badge>}
+              {reviewDecision === "returned" ? <Badge tone="warning">Devuelto</Badge> : null}
             </div>
-            {doc.description ? (
-              <p className="mt-1 text-sm text-muted">{doc.description}</p>
+            {requirement.description ? (
+              <p className="mt-1 text-sm text-muted">{requirement.description}</p>
             ) : null}
           </div>
         </div>
         {hasFiles ? <StatusPill status={status} /> : null}
       </div>
 
+      {uploaded?.review?.decision === "returned" ? (
+        <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-warning-bg px-4 py-3">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-text" aria-hidden />
+          <div className="text-sm text-warning-text">
+            <p className="font-medium">Devuelto para corrección</p>
+            {uploaded.review.comment ? <p className="mt-0.5">{uploaded.review.comment}</p> : null}
+          </div>
+        </div>
+      ) : null}
+
       {isError ? (
         <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-danger-bg px-4 py-3">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger-text" aria-hidden />
           <p className="text-sm text-danger-text">
-            La fotografía parece estar inclinada. Toma nuevamente la fotografía en posición
-            vertical.
+            La fotografía parece estar inclinada o borrosa. Toma nuevamente la fotografía en
+            posición vertical y con buena iluminación.
           </p>
         </div>
       ) : null}
@@ -206,15 +259,11 @@ export function DocumentUploadCard({ doc, allowErrorDemo = false }: DocumentUplo
       <div className="mt-4">
         {!hasFiles ? (
           <EmptyDropzone inputRef={inputRef} onSelect={handleAddFiles} />
-        ) : isConverted ? (
-          <PdfResultCard
-            fileName={pdfName}
-            pageCount={files.length > 1 ? files.length : undefined}
-            onView={() => setPreviewOpen(true)}
-          />
+        ) : isDone ? (
+          <PdfResultCard pageCount={pages.length} onView={() => setPreviewOpen(true)} />
         ) : (
           <div className="flex flex-col gap-4">
-            <PhotoGrid files={files} isError={isError} onRemove={handleRemoveFile} />
+            <PhotoGrid pages={pages} isError={isError} onRemove={handleRemoveFile} />
             {isBusy ? <AIVerificationSteps key={runKey} status={status} /> : null}
           </div>
         )}
@@ -229,9 +278,9 @@ export function DocumentUploadCard({ doc, allowErrorDemo = false }: DocumentUplo
         ) : null}
 
         {hasFiles && !isError ? (
-          <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-medium text-teal-dark hover:underline">
+          <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-medium text-dark-gold hover:underline">
             <ImagePlus className="h-3.5 w-3.5" aria-hidden />
-            {isConverted ? "Agregar más fotografías" : "Agregar otra fotografía"}
+            {isDone ? "Agregar más fotografías" : "Agregar otra fotografía"}
             <input
               ref={inputRef}
               type="file"
@@ -243,22 +292,22 @@ export function DocumentUploadCard({ doc, allowErrorDemo = false }: DocumentUplo
           </label>
         ) : null}
 
-        {allowErrorDemo && isConverted ? (
+        {allowErrorDemo && isDone ? (
           <button
             type="button"
             onClick={handleSimulateError}
             className="text-xs font-medium text-muted underline decoration-dotted hover:text-danger-text"
           >
-            Simular imagen incorrecta (demo)
+            Simular error de validación (demo)
           </button>
         ) : null}
       </div>
 
       <DocumentPreviewModal
         open={previewOpen}
-        title={doc.name}
+        title={requirement.name}
         onClose={() => setPreviewOpen(false)}
-        pageCount={files.length > 1 ? files.length : 1}
+        pageCount={pages.length || 1}
       />
     </div>
   );
@@ -272,10 +321,12 @@ function EmptyDropzone({
   onSelect: (event: ChangeEvent<HTMLInputElement>) => void;
 }) {
   return (
-    <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border px-4 py-6 text-center transition-colors hover:border-teal/40 hover:bg-app-bg/60">
+    <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border px-4 py-6 text-center transition-colors hover:border-gold/50 hover:bg-app-bg/60">
       <Upload className="h-5 w-5 text-muted" aria-hidden />
-      <span className="text-sm font-medium text-navy">Toca para subir una o varias fotografías</span>
-      <span className="text-xs text-muted">Formatos aceptados: JPG y PNG · puedes seleccionar varias a la vez</span>
+      <span className="text-sm font-medium text-obsessed">Tomar o seleccionar fotografía</span>
+      <span className="text-xs text-muted">
+        Formatos aceptados: JPG y PNG · puedes seleccionar varias a la vez
+      </span>
       <input
         ref={inputRef}
         type="file"
@@ -289,42 +340,40 @@ function EmptyDropzone({
 }
 
 function PhotoGrid({
-  files,
+  pages,
   isError,
   onRemove,
 }: {
-  files: UploadedFile[];
+  pages: DocumentPage[];
   isError: boolean;
   onRemove: (id: string) => void;
 }) {
   return (
     <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
-      {files.map((file, index) => (
+      {pages.map((page, index) => (
         <div
-          key={file.id}
+          key={page.id}
           className={cn(
             "group/thumb relative flex aspect-[3/4] flex-col overflow-hidden rounded-xl border bg-white",
             isError ? "border-danger-text/40" : "border-border",
           )}
         >
           <div className="flex-1 overflow-hidden bg-app-bg/50">
-            {file.url ? (
+            {page.dataUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={file.url} alt="" className="h-full w-full object-cover" />
+              <img src={page.dataUrl} alt="" className="h-full w-full object-cover" />
             ) : (
               <div className="flex h-full items-center justify-center">
                 <FileImage className="h-5 w-5 text-muted" aria-hidden />
               </div>
             )}
           </div>
-          <span className="px-1.5 py-1 text-center text-[11px] text-muted">
-            Foto {index + 1}
-          </span>
+          <span className="px-1.5 py-1 text-center text-[11px] text-muted">Foto {index + 1}</span>
           <button
             type="button"
-            onClick={() => onRemove(file.id)}
+            onClick={() => onRemove(page.id)}
             aria-label="Quitar fotografía"
-            className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-navy/70 text-white opacity-0 transition-opacity group-hover/thumb:opacity-100"
+            className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-obsessed/70 text-white opacity-0 transition-opacity group-hover/thumb:opacity-100"
           >
             <X className="h-3 w-3" aria-hidden />
           </button>
@@ -334,11 +383,11 @@ function PhotoGrid({
   );
 }
 
-function AIVerificationSteps({ status }: { status: CardStatus }) {
+function AIVerificationSteps({ status }: { status: LocalPipelineStatus }) {
   const [activeStep, setActiveStep] = useState(0);
 
   useEffect(() => {
-    if (status !== "reviewing") return;
+    if (status !== "verifying") return;
     const timers = verificationSteps.map((_, index) =>
       window.setTimeout(() => setActiveStep(index + 1), (index + 1) * 480),
     );
@@ -347,44 +396,42 @@ function AIVerificationSteps({ status }: { status: CardStatus }) {
 
   if (status === "converting") {
     return (
-      <div className="flex items-center gap-2.5 rounded-xl bg-teal-light/50 px-4 py-3">
-        <BadgeCheck className="h-4 w-4 shrink-0 text-teal-dark" aria-hidden />
-        <p className="text-sm text-navy">
-          Documento verificado. Generando el PDF automáticamente...
-        </p>
+      <div className="flex items-center gap-2.5 rounded-xl bg-gold/10 px-4 py-3">
+        <BadgeCheck className="h-4 w-4 shrink-0 text-dark-gold" aria-hidden />
+        <p className="text-sm text-obsessed">Documento verificado. Preparando PDF...</p>
       </div>
     );
   }
 
   return (
     <div className="rounded-xl bg-app-bg/60 px-4 py-3.5">
-      <p className="mb-2.5 flex items-center gap-1.5 text-xs font-medium text-teal-dark">
+      <p className="mb-2.5 flex items-center gap-1.5 text-xs font-medium text-dark-gold">
         <ScanEye className="h-3.5 w-3.5" aria-hidden />
-        Verificando con inteligencia artificial
+        Validación automática
       </p>
       <ul className="space-y-2">
         {verificationSteps.map((step, index) => {
-          const isDone = index < activeStep;
+          const isStepDone = index < activeStep;
           const isActive = index === activeStep;
           return (
             <li key={step} className="flex items-center gap-2.5 text-xs">
               <span
                 className={cn(
                   "flex h-4 w-4 shrink-0 items-center justify-center rounded-full",
-                  isDone
-                    ? "bg-teal text-white"
+                  isStepDone
+                    ? "bg-dark-gold text-white"
                     : isActive
-                      ? "border-2 border-teal text-teal"
+                      ? "border-2 border-dark-gold text-dark-gold"
                       : "border-2 border-border text-transparent",
                 )}
               >
-                {isDone ? (
+                {isStepDone ? (
                   <Check className="h-2.5 w-2.5" aria-hidden />
                 ) : isActive ? (
                   <Loader2 className="h-2.5 w-2.5 animate-spin" aria-hidden />
                 ) : null}
               </span>
-              <span className={isDone || isActive ? "text-navy" : "text-muted"}>{step}</span>
+              <span className={isStepDone || isActive ? "text-obsessed" : "text-muted"}>{step}</span>
             </li>
           );
         })}
@@ -393,34 +440,25 @@ function AIVerificationSteps({ status }: { status: CardStatus }) {
   );
 }
 
-function PdfResultCard({
-  fileName,
-  pageCount,
-  onView,
-}: {
-  fileName: string;
-  pageCount?: number;
-  onView: () => void;
-}) {
+function PdfResultCard({ pageCount, onView }: { pageCount: number; onView: () => void }) {
   return (
     <div className="flex items-center gap-3.5 rounded-xl border border-success-text/20 bg-success-bg/60 px-4 py-3.5">
       <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-white text-danger-text shadow-sm">
         <FileText className="h-6 w-6" aria-hidden />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-navy">{fileName}</p>
+        <p className="truncate text-sm font-semibold text-obsessed">Documento listo</p>
         <p className="text-xs text-success-text">
-          {pageCount ? `${pageCount} páginas combinadas · ` : ""}Verificado y generado
-          automáticamente
+          {pageCount > 1 ? `${pageCount} páginas combinadas · ` : ""}Validación automática superada
         </p>
       </div>
       <button
         type="button"
         onClick={onView}
-        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-navy transition-colors hover:bg-app-bg"
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-obsessed transition-colors hover:bg-app-bg"
       >
         <Eye className="h-3.5 w-3.5" aria-hidden />
-        Ver PDF
+        Ver
       </button>
     </div>
   );

@@ -1,26 +1,34 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f5f8fa;
-  --foreground: #0d1f3c;
+  --background: #f4f4f4;
+  --foreground: #252526;
 
-  --color-navy: #0d1f3c;
-  --color-navy-light: #1a3155;
-  --color-teal: #0b9488;
-  --color-teal-dark: #08766e;
-  --color-teal-light: #e7f6f2;
-  --color-app-bg: #f5f8fa;
+  /* Paleta oficial CENTURY 21 Genera */
+  --color-c21-gold: #beaf87;
+  --color-c21-dark-gold: #a19276;
+  --color-c21-obsessed-grey: #252526;
+  --color-c21-medium-grey: #808285;
+  --color-c21-light-grey: #e6e7e8;
+  --color-c21-white: #ffffff;
+  --color-c21-black: #000000;
+
+  --color-app-bg: #f4f4f4;
   --color-card: #ffffff;
-  --color-border: #dfe8ec;
-  --color-muted: #66788a;
-  --color-success-bg: #e7f6f2;
-  --color-success-text: #0b7a5b;
-  --color-warning-bg: #fef3e2;
-  --color-warning-text: #b45309;
-  --color-danger-bg: #fdecec;
-  --color-danger-text: #c0362c;
-  --color-manual-bg: #eaf3ff;
-  --color-manual-text: #1d5fb8;
+  --color-border: #dcdcdc;
+  --color-muted: #6b6b6c;
+
+  /* Colores semánticos discretos: no reemplazan la identidad principal */
+  --color-success-bg: #eaf5ec;
+  --color-success-text: #1f7a3d;
+  --color-warning-bg: #fdf2e3;
+  --color-warning-text: #96591a;
+  --color-danger-bg: #fbe9e8;
+  --color-danger-text: #a3352c;
+  --color-info-bg: #eef2f5;
+  --color-info-text: #3d5a70;
+  --color-manual-bg: #f1efe9;
+  --color-manual-text: #6b5a34;
 }
 
 @theme inline {
@@ -29,11 +37,12 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 
-  --color-navy: var(--color-navy);
-  --color-navy-light: var(--color-navy-light);
-  --color-teal: var(--color-teal);
-  --color-teal-dark: var(--color-teal-dark);
-  --color-teal-light: var(--color-teal-light);
+  --color-gold: var(--color-c21-gold);
+  --color-dark-gold: var(--color-c21-dark-gold);
+  --color-obsessed: var(--color-c21-obsessed-grey);
+  --color-medium-grey: var(--color-c21-medium-grey);
+  --color-light-grey: var(--color-c21-light-grey);
+
   --color-app-bg: var(--color-app-bg);
   --color-card: var(--color-card);
   --color-border: var(--color-border);
@@ -44,6 +53,8 @@
   --color-warning-text: var(--color-warning-text);
   --color-danger-bg: var(--color-danger-bg);
   --color-danger-text: var(--color-danger-text);
+  --color-info-bg: var(--color-info-bg);
+  --color-info-text: var(--color-info-text);
   --color-manual-bg: var(--color-manual-bg);
   --color-manual-text: var(--color-manual-text);
 }
