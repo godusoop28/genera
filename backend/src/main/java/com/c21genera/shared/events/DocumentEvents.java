@@ -29,4 +29,8 @@ public final class DocumentEvents {
 
   /** Se publica cuando TODOS los documentos obligatorios tienen al menos una versión cargada. */
   public record AllRequiredDocumentsUploaded(UUID expedienteId) {}
+
+  /** documentprocessing publica esto al terminar normalización/calidad/PDF; extraction escucha para OCR. */
+  public record DocumentVersionProcessed(
+      UUID expedienteId, UUID documentId, UUID documentVersionId, DocumentTypeCode type, String pdfStorageKey) {}
 }
