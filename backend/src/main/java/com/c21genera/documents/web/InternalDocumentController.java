@@ -3,7 +3,7 @@ package com.c21genera.documents.web;
 import com.c21genera.documents.application.DocumentService;
 import com.c21genera.documents.application.DocumentService.UploadedFileContent;
 import com.c21genera.documents.domain.DocumentVersion;
-import com.c21genera.documents.domain.ReviewDecision;
+import com.c21genera.shared.domain.ReviewDecision;
 import com.c21genera.documents.domain.UploadedVia;
 import com.c21genera.documents.web.DocumentDtos.DocumentResponse;
 import com.c21genera.documents.web.DocumentDtos.DocumentVersionResponse;

@@ -1,14 +1,14 @@
 package com.c21genera.expedientes.application;
 
-import com.c21genera.expedientes.ExpedienteEvents.ExpedienteCreated;
-import com.c21genera.expedientes.ExpedienteEvents.ExpedienteRequirementsChanged;
-import com.c21genera.expedientes.ExpedienteEvents.PropertyAccepted;
-import com.c21genera.expedientes.ExpedienteEvents.PropertyRejected;
+import com.c21genera.shared.events.ExpedienteEvents.ExpedienteCreated;
+import com.c21genera.shared.events.ExpedienteEvents.ExpedienteRequirementsChanged;
+import com.c21genera.shared.events.ExpedienteEvents.PropertyAccepted;
+import com.c21genera.shared.events.ExpedienteEvents.PropertyRejected;
 import com.c21genera.expedientes.ExpedienteLifecycleApi;
 import com.c21genera.expedientes.ExpedienteStatus;
 import com.c21genera.expedientes.ExpedienteSummary;
 import com.c21genera.expedientes.ExpedienteSummary.ParticipantView;
-import com.c21genera.expedientes.RequiredDocumentSpec;
+import com.c21genera.shared.domain.RequiredDocumentSpec;
 import com.c21genera.expedientes.domain.AccreditationType;
 import com.c21genera.expedientes.domain.DocumentRequirementPolicy;
 import com.c21genera.expedientes.domain.Expediente;
@@ -23,6 +23,11 @@ import com.c21genera.expedientes.domain.SignerCharacter;
 import com.c21genera.expedientes.infrastructure.ExpedienteParticipantRepository;
 import com.c21genera.expedientes.infrastructure.ExpedienteRepository;
 import com.c21genera.expedientes.infrastructure.ManualClientDataRepository;
+import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsApproved;
+import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsUploaded;
+import com.c21genera.shared.events.DocumentEvents.DocumentReviewed;
+import com.c21genera.shared.domain.ReviewDecision;
+import com.c21genera.shared.events.PrivacyEvents.PrivacyAccepted;
 import com.c21genera.shared.domain.NotFoundException;
 import java.time.Clock;
 import java.time.Year;
@@ -31,6 +36,7 @@ import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -180,6 +186,33 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
         e.getPropertyAddress(),
         e.getCreatedByUserId(),
         participants);
+  }
+
+  /** privacy publica este evento; expedientes decide su propia transición (ver AGENTS §7). */
+  @ApplicationModuleListener
+  void on(PrivacyAccepted event) {
+    if (event.mainPurposesAccepted()) {
+      recordPrivacyAccepted(event.expedienteId());
+    }
+  }
+
+  /** documents publica esto en cada decisión de revisión; expedientes decide su propia transición. */
+  @ApplicationModuleListener
+  void on(DocumentReviewed event) {
+    recordUnderReview(event.expedienteId());
+    if (event.decision() == ReviewDecision.RETURNED) {
+      recordCorrectionsRequested(event.expedienteId());
+    }
+  }
+
+  @ApplicationModuleListener
+  void on(AllRequiredDocumentsApproved event) {
+    recordDocumentsApproved(event.expedienteId());
+  }
+
+  @ApplicationModuleListener
+  void on(AllRequiredDocumentsUploaded event) {
+    get(event.expedienteId()).markAllRequiredDocumentsUploaded();
   }
 
   @Override

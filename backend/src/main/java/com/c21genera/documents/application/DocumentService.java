@@ -1,9 +1,10 @@
 package com.c21genera.documents.application;
 
-import com.c21genera.documents.DocumentEvents.AllRequiredDocumentsApproved;
-import com.c21genera.documents.DocumentEvents.DocumentReviewed;
-import com.c21genera.documents.DocumentEvents.DocumentVersionUploaded;
-import com.c21genera.documents.DocumentEvents.PageRef;
+import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsApproved;
+import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsUploaded;
+import com.c21genera.shared.events.DocumentEvents.DocumentReviewed;
+import com.c21genera.shared.events.DocumentEvents.DocumentVersionUploaded;
+import com.c21genera.shared.events.DocumentEvents.PageRef;
 import com.c21genera.documents.DocumentStatus;
 import com.c21genera.documents.DocumentsApi;
 import com.c21genera.documents.domain.Document;
@@ -12,7 +13,7 @@ import com.c21genera.documents.domain.DocumentPage;
 import com.c21genera.documents.domain.DocumentReview;
 import com.c21genera.documents.domain.DocumentVersion;
 import com.c21genera.documents.domain.ReturnReasonCode;
-import com.c21genera.documents.domain.ReviewDecision;
+import com.c21genera.shared.domain.ReviewDecision;
 import com.c21genera.documents.domain.UploadedVia;
 import com.c21genera.documents.infrastructure.DocumentPageRepository;
 import com.c21genera.documents.infrastructure.DocumentRepository;
@@ -21,9 +22,8 @@ import com.c21genera.documents.infrastructure.DocumentVersionRepository;
 import com.c21genera.documents.infrastructure.FileValidator;
 import com.c21genera.documents.infrastructure.FileValidator.ValidatedFile;
 import com.c21genera.documents.infrastructure.StorageKeys;
-import com.c21genera.expedientes.ExpedienteEvents.ExpedienteRequirementsChanged;
-import com.c21genera.expedientes.ExpedienteLifecycleApi;
-import com.c21genera.expedientes.RequiredDocumentSpec;
+import com.c21genera.shared.events.ExpedienteEvents.ExpedienteRequirementsChanged;
+import com.c21genera.shared.domain.RequiredDocumentSpec;
 import com.c21genera.shared.domain.NotFoundException;
 import com.c21genera.shared.storage.FileStorage;
 import java.io.ByteArrayInputStream;
@@ -46,7 +46,6 @@ public class DocumentService implements DocumentsApi {
   private final DocumentReviewRepository reviewRepository;
   private final FileStorage fileStorage;
   private final FileValidator fileValidator;
-  private final ExpedienteLifecycleApi expedienteApi;
   private final ApplicationEventPublisher events;
   private final Clock clock;
 
@@ -57,7 +56,6 @@ public class DocumentService implements DocumentsApi {
       DocumentReviewRepository reviewRepository,
       FileStorage fileStorage,
       FileValidator fileValidator,
-      ExpedienteLifecycleApi expedienteApi,
       ApplicationEventPublisher events,
       Clock clock) {
     this.documentRepository = documentRepository;
@@ -66,7 +64,6 @@ public class DocumentService implements DocumentsApi {
     this.reviewRepository = reviewRepository;
     this.fileStorage = fileStorage;
     this.fileValidator = fileValidator;
-    this.expedienteApi = expedienteApi;
     this.events = events;
     this.clock = clock;
   }
@@ -154,6 +151,10 @@ public class DocumentService implements DocumentsApi {
     events.publishEvent(
         new DocumentVersionUploaded(document.getExpedienteId(), documentId, version.getId(), document.getType(), pageRefs));
 
+    if (allRequiredUploaded(document.getExpedienteId())) {
+      events.publishEvent(new AllRequiredDocumentsUploaded(document.getExpedienteId()));
+    }
+
     return version;
   }
 
@@ -174,13 +175,12 @@ public class DocumentService implements DocumentsApi {
     reviewRepository.save(new DocumentReview(latest.getId(), decision, reasonCode, comment, reviewerId, clock.instant()));
     document.applyReview(decision);
 
-    expedienteApi.recordUnderReview(document.getExpedienteId());
+    // expedientes escucha este evento para decidir su propia transición de
+    // estado (UNDER_REVIEW / CORRECTIONS_REQUESTED); documents no lo comanda
+    // directamente, para evitar una dependencia cíclica entre módulos.
     events.publishEvent(new DocumentReviewed(document.getExpedienteId(), documentId, decision));
 
-    if (decision == ReviewDecision.RETURNED) {
-      expedienteApi.recordCorrectionsRequested(document.getExpedienteId());
-    } else if (decision == ReviewDecision.ACCEPTED && allRequiredAccepted(document.getExpedienteId())) {
-      expedienteApi.recordDocumentsApproved(document.getExpedienteId());
+    if (decision == ReviewDecision.ACCEPTED && allRequiredAccepted(document.getExpedienteId())) {
       events.publishEvent(new AllRequiredDocumentsApproved(document.getExpedienteId()));
     }
 

@@ -1,9 +1,17 @@
-package com.c21genera.expedientes;
+package com.c21genera.shared.events;
 
+import com.c21genera.shared.domain.RequiredDocumentSpec;
 import java.util.List;
 import java.util.UUID;
 
-/** Eventos de dominio publicados por expedientes (ver AGENTS §84). */
+/**
+ * Eventos de integración publicados por expedientes (ver AGENTS §84). Viven
+ * en shared (módulo abierto) y no en expedientes: varios módulos
+ * (documents, privacy más adelante audit/notifications) necesitan
+ * escucharlos, y expedientes a su vez escucha eventos de esos módulos;
+ * mantenerlos dentro de expedientes crearía una dependencia cíclica entre
+ * módulos (ver AGENTS §7).
+ */
 public final class ExpedienteEvents {
 
   private ExpedienteEvents() {}

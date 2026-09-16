@@ -1,10 +1,16 @@
-package com.c21genera.documents;
+package com.c21genera.shared.events;
 
-import com.c21genera.documents.domain.ReviewDecision;
 import com.c21genera.shared.domain.DocumentTypeCode;
+import com.c21genera.shared.domain.ReviewDecision;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Eventos de integración publicados por documents (ver AGENTS §84). Viven
+ * en shared por la misma razón que {@link ExpedienteEvents}: expedientes
+ * escucha varios de estos y documents escucha eventos de expedientes,
+ * evitando así una dependencia cíclica entre módulos (ver AGENTS §7).
+ */
 public final class DocumentEvents {
 
   private DocumentEvents() {}
@@ -21,5 +27,6 @@ public final class DocumentEvents {
   /** Se publica cuando TODOS los documentos obligatorios de un expediente quedan ACCEPTED. */
   public record AllRequiredDocumentsApproved(UUID expedienteId) {}
 
-  public record DocumentsSubmitted(UUID expedienteId) {}
+  /** Se publica cuando TODOS los documentos obligatorios tienen al menos una versión cargada. */
+  public record AllRequiredDocumentsUploaded(UUID expedienteId) {}
 }

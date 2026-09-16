@@ -1,6 +1,6 @@
 package com.c21genera.expedientes.domain;
 
-import com.c21genera.expedientes.RequiredDocumentSpec;
+import com.c21genera.shared.domain.RequiredDocumentSpec;
 import com.c21genera.shared.domain.DocumentTypeCode;
 import java.util.ArrayList;
 import java.util.List;

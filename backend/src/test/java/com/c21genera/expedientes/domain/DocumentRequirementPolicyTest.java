@@ -2,7 +2,7 @@ package com.c21genera.expedientes.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.c21genera.expedientes.RequiredDocumentSpec;
+import com.c21genera.shared.domain.RequiredDocumentSpec;
 import com.c21genera.shared.domain.DocumentTypeCode;
 import java.util.List;
 import java.util.UUID;

@@ -14,6 +14,7 @@ CREATE TABLE expediente (
     property_case_type    VARCHAR(24) NOT NULL,
     declared_legal_status VARCHAR(24) NOT NULL,
     property_address      TEXT,
+    all_required_documents_uploaded BOOLEAN NOT NULL DEFAULT FALSE,
     decision_reason       TEXT,
     decided_by_user_id    UUID,
     decided_at            TIMESTAMPTZ,

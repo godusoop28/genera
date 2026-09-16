@@ -53,6 +53,9 @@ public class Expediente extends AuditableEntity {
 
   private String propertyAddress;
 
+  @Column(nullable = false)
+  private boolean allRequiredDocumentsUploaded;
+
   private String decisionReason;
 
   private UUID decidedByUserId;
@@ -124,6 +127,14 @@ public class Expediente extends AuditableEntity {
   public void close() {
     ExpedienteStateMachine.ensureAllowed(this.status, ExpedienteStatus.CLOSED);
     this.status = ExpedienteStatus.CLOSED;
+  }
+
+  public void markAllRequiredDocumentsUploaded() {
+    this.allRequiredDocumentsUploaded = true;
+  }
+
+  public boolean isAllRequiredDocumentsUploaded() {
+    return allRequiredDocumentsUploaded;
   }
 
   public String getDecisionReason() {

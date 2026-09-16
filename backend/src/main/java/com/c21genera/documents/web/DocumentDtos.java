@@ -5,7 +5,7 @@ import com.c21genera.documents.ProcessingStatus;
 import com.c21genera.documents.domain.Document;
 import com.c21genera.documents.domain.DocumentVersion;
 import com.c21genera.documents.domain.ReturnReasonCode;
-import com.c21genera.documents.domain.ReviewDecision;
+import com.c21genera.shared.domain.ReviewDecision;
 import jakarta.validation.constraints.NotNull;
 import java.time.Instant;
 import java.util.UUID;

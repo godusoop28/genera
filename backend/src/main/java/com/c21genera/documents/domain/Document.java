@@ -1,5 +1,7 @@
 package com.c21genera.documents.domain;
 
+import com.c21genera.shared.domain.ReviewDecision;
+
 import com.c21genera.documents.DocumentStatus;
 import com.c21genera.shared.domain.DocumentTypeCode;
 import com.c21genera.shared.jpa.AuditableEntity;

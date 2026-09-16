@@ -1,5 +1,7 @@
 package com.c21genera.documents.domain;
 
+import com.c21genera.shared.domain.ReviewDecision;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

@@ -1,7 +1,7 @@
 package com.c21genera.expedientes.web;
 
 import com.c21genera.expedientes.ExpedienteStatus;
-import com.c21genera.expedientes.RequiredDocumentSpec;
+import com.c21genera.shared.domain.RequiredDocumentSpec;
 import com.c21genera.expedientes.domain.AccreditationType;
 import com.c21genera.expedientes.domain.Expediente;
 import com.c21genera.expedientes.domain.ExpedienteParticipant;

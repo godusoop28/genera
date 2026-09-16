@@ -1,6 +1,5 @@
 package com.c21genera.publicaccess.web;
 
-import com.c21genera.expedientes.ExpedienteLifecycleApi;
 import com.c21genera.publicaccess.PublicAccessTokenApi;
 import com.c21genera.shared.config.PublicLinkProperties;
 import java.time.Instant;
@@ -14,19 +13,21 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * No depende del módulo expedientes (evitaría un ciclo entre módulos, ver
+ * AGENTS §7): la existencia del expediente la garantiza la llave foránea de
+ * public_access_token -> expediente en la base de datos.
+ */
 @RestController
 @RequestMapping("/api/v1/internal/expedientes/{expedienteId}/public-link")
 @PreAuthorize("hasAuthority('PUBLIC_LINK_GENERATE')")
 public class PublicLinkController {
 
   private final PublicAccessTokenApi tokenApi;
-  private final ExpedienteLifecycleApi expedienteApi;
   private final PublicLinkProperties properties;
 
-  public PublicLinkController(
-      PublicAccessTokenApi tokenApi, ExpedienteLifecycleApi expedienteApi, PublicLinkProperties properties) {
+  public PublicLinkController(PublicAccessTokenApi tokenApi, PublicLinkProperties properties) {
     this.tokenApi = tokenApi;
-    this.expedienteApi = expedienteApi;
     this.properties = properties;
   }
 
@@ -35,14 +36,11 @@ public class PublicLinkController {
   @PostMapping
   @ResponseStatus(HttpStatus.CREATED)
   public PublicLinkResponse generate(@PathVariable UUID expedienteId) {
-    expedienteApi.getSummary(expedienteId); // valida existencia (404 si no existe)
-    PublicAccessTokenApi.IssuedToken issued = tokenApi.generate(expedienteId);
-    return toResponse(issued);
+    return toResponse(tokenApi.generate(expedienteId));
   }
 
   @PostMapping("/regenerate")
   public PublicLinkResponse regenerate(@PathVariable UUID expedienteId) {
-    expedienteApi.getSummary(expedienteId);
     return toResponse(tokenApi.regenerate(expedienteId));
   }
 
