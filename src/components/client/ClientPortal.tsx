@@ -27,7 +27,7 @@ export function ClientPortal({ expediente }: { expediente: Expediente }) {
 
   return (
     <div className="flex min-h-screen flex-col bg-app-bg">
-      <header className="border-b border-border bg-white">
+      <header className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-4 lg:px-8">
           <BrandLogo tone="light" size="sm" />
           <button
@@ -49,7 +49,7 @@ export function ClientPortal({ expediente }: { expediente: Expediente }) {
           No necesitas crear una cuenta. Esta liga es tu acceso directo a este expediente.
         </p>
 
-        <div className="mt-8 rounded-2xl border border-border bg-white p-5">
+        <div className="mt-8 rounded-2xl border border-border bg-card p-5">
           <Stepper steps={steps} currentStep={step} maxReachedStep={maxReached} onStepClick={setStep} />
         </div>
 
@@ -61,7 +61,7 @@ export function ClientPortal({ expediente }: { expediente: Expediente }) {
         </div>
       </main>
 
-      <footer className="border-t border-border bg-white px-4 py-4 text-center lg:px-8">
+      <footer className="border-t border-border bg-card px-4 py-4 text-center lg:px-8">
         <BrandFooter className="mx-auto" />
       </footer>
     </div>

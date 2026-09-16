@@ -13,7 +13,7 @@ export function ExpedienteHeader({ expediente }: { expediente: Expediente }) {
   const [emailOpen, setEmailOpen] = useState(false);
 
   return (
-    <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-border bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
+    <div className="mb-6 flex flex-col gap-4 rounded-2xl border border-border bg-card p-5 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-xl font-semibold text-obsessed">{expediente.folio}</h1>

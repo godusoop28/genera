@@ -71,8 +71,8 @@ export function UsersTable() {
         </Button>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-border bg-white">
-        <table className="w-full text-left text-sm">
+      <div className="overflow-x-auto rounded-2xl border border-border bg-card">
+        <table className="w-full min-w-[720px] text-left text-sm">
           <thead className="border-b border-border bg-app-bg text-xs uppercase tracking-wide text-muted">
             <tr>
               <th className="px-5 py-3 font-medium">Nombre</th>
@@ -89,7 +89,7 @@ export function UsersTable() {
                 <tr key={user.id}>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-obsessed text-xs font-semibold text-gold">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-ink text-xs font-semibold text-gold">
                         {initials(user.name)}
                       </div>
                       <span className="font-medium text-obsessed">{user.name}</span>

@@ -25,7 +25,7 @@ export function PdfViewerModal({ open, onClose, title, children }: PdfViewerModa
           <button
             type="button"
             onClick={() => setZoom((z) => Math.max(50, z - 10))}
-            className="rounded-lg px-2 py-1 hover:bg-white"
+            className="rounded-lg px-2 py-1 hover:bg-card"
             aria-label="Reducir zoom"
           >
             <Minus className="h-3.5 w-3.5" aria-hidden />
@@ -34,7 +34,7 @@ export function PdfViewerModal({ open, onClose, title, children }: PdfViewerModa
           <button
             type="button"
             onClick={() => setZoom((z) => Math.min(150, z + 10))}
-            className="rounded-lg px-2 py-1 hover:bg-white"
+            className="rounded-lg px-2 py-1 hover:bg-card"
             aria-label="Aumentar zoom"
           >
             <Plus className="h-3.5 w-3.5" aria-hidden />
@@ -62,6 +62,7 @@ export function PdfViewerModal({ open, onClose, title, children }: PdfViewerModa
       </div>
 
       <div className="-mx-4 flex justify-center overflow-auto bg-app-bg/40 p-3 sm:-mx-6 sm:p-6">
+        {/* La "hoja" simula papel físico: se mantiene blanca a propósito en todos los temas. */}
         <div
           className="w-full max-w-2xl rounded-sm bg-white p-5 shadow-md sm:p-10"
           style={{ fontSize: `${zoom}%` }}

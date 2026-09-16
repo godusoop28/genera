@@ -20,14 +20,17 @@ import type { ContractCalculations, Expediente } from "@/types/expediente";
 import { Maximize2 } from "lucide-react";
 import { useState } from "react";
 
+// El contenido del "papel" simula un documento impreso: usa colores fijos
+// (no reactivos al tema) para que siga siendo legible sobre fondo blanco en
+// cualquier tema de la aplicación.
 function ContractDocumentContent({ expediente, calculations }: { expediente: Expediente; calculations: ContractCalculations }) {
   return (
-    <div className="text-[13px] leading-relaxed text-obsessed/90">
+    <div className="text-[13px] leading-relaxed text-neutral-800">
       <p className="mb-1 text-center text-xs font-medium uppercase tracking-wide text-dark-gold">
         Vista previa de prototipo — no es el documento oficial generado
       </p>
-      <h2 className="mb-1 text-center text-base font-bold tracking-wide text-obsessed">{CONTRACT_TITLE}</h2>
-      <p className="mb-6 text-center text-xs text-muted">
+      <h2 className="mb-1 text-center text-base font-bold tracking-wide text-neutral-900">{CONTRACT_TITLE}</h2>
+      <p className="mb-6 text-center text-xs text-neutral-500">
         Registrado ante PROFECO {CONTRACT_PROFECO_NUMBER} · {CONTRACT_PROFECO_REGISTRATION_DATE}
       </p>
 
@@ -42,7 +45,7 @@ function ContractDocumentContent({ expediente, calculations }: { expediente: Exp
       {CONTRACT_DECLARATIONS.map((d) => (
         <div key={d.id} className="mb-3">
           <p className="font-medium">{d.title}</p>
-          <p className="text-justify text-obsessed/80">{d.text}</p>
+          <p className="text-justify text-neutral-700">{d.text}</p>
         </div>
       ))}
 
@@ -50,32 +53,32 @@ function ContractDocumentContent({ expediente, calculations }: { expediente: Exp
       {CONTRACT_CLAUSES.map((c) => (
         <div key={c.id} className="mb-3">
           <p className="font-medium">{c.title}</p>
-          <p className="text-justify text-obsessed/80">{c.text}</p>
+          <p className="text-justify text-neutral-700">{c.text}</p>
         </div>
       ))}
 
       <h3 className="mb-2 mt-6 font-semibold">Anexo A — Características del inmueble</h3>
-      <ul className="mb-4 list-disc pl-5 text-obsessed/80">
+      <ul className="mb-4 list-disc pl-5 text-neutral-700">
         {CONTRACT_ANNEX_A_FIELDS.map((f) => (
           <li key={f}>{f}</li>
         ))}
       </ul>
 
       <h3 className="mb-2 mt-6 font-semibold">Anexo B — Información puesta a disposición del cliente</h3>
-      <ul className="mb-4 list-disc pl-5 text-obsessed/80">
+      <ul className="mb-4 list-disc pl-5 text-neutral-700">
         {CONTRACT_ANNEX_B_ITEMS.map((f) => (
           <li key={f}>{f}</li>
         ))}
       </ul>
 
       <h3 className="mb-2 mt-6 font-semibold">Anexo C — Carta de derechos del cliente</h3>
-      <ul className="mb-4 list-disc pl-5 text-obsessed/80">
+      <ul className="mb-4 list-disc pl-5 text-neutral-700">
         {CONTRACT_ANNEX_C_RIGHTS.map((f) => (
           <li key={f}>{f}</li>
         ))}
       </ul>
 
-      <div className="mt-6 border-t border-border pt-4 text-xs text-muted">
+      <div className="mt-6 border-t border-neutral-200 pt-4 text-xs text-neutral-500">
         <p>Precio autorizado: {calculations.priceWritten || "sin definir"}</p>
         <p>Comisión + IVA: calculada automáticamente al capturar el precio autorizado.</p>
       </div>
@@ -105,8 +108,8 @@ export function ContractPreview({ expediente, calculations }: { expediente: Expe
       >
         <div className="mx-auto max-h-72 max-w-xs overflow-hidden rounded-sm bg-white p-5 shadow-sm">
           <Badge tone="gold" className="mb-2">Vista previa de prototipo</Badge>
-          <h3 className="mb-3 text-center text-[11px] font-bold tracking-wide text-obsessed">{CONTRACT_TITLE}</h3>
-          <p className="line-clamp-[8] text-justify text-[9px] leading-relaxed text-obsessed/80">
+          <h3 className="mb-3 text-center text-[11px] font-bold tracking-wide text-neutral-900">{CONTRACT_TITLE}</h3>
+          <p className="line-clamp-[8] text-justify text-[9px] leading-relaxed text-neutral-700">
             {CONTRACT_DECLARATIONS[0].text}
           </p>
         </div>

@@ -40,14 +40,14 @@ export function Modal({ open, onClose, title, children, size = "md", footer }: M
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4">
       <button
         aria-label="Cerrar"
-        className="absolute inset-0 bg-obsessed/40 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-brand-ink/40 backdrop-blur-[2px]"
         onClick={onClose}
       />
       <div
         role="dialog"
         aria-modal="true"
         className={cn(
-          "relative w-full rounded-2xl border border-border bg-white p-4 shadow-lg max-h-[92vh] overflow-y-auto sm:p-6",
+          "relative w-full rounded-2xl border border-border bg-card p-4 shadow-lg max-h-[92vh] overflow-y-auto sm:p-6",
           sizeClasses[size],
         )}
       >

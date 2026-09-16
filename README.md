@@ -39,6 +39,9 @@ No hay:
 - Cierre de venta documental
 - Gestión de usuarios internos, roles y matriz de permisos (los propietarios
   **no** tienen cuenta ni aparecen aquí)
+- Configuración personal: tema (claro, oscuro, dorado, alto contraste),
+  tamaño de fuente, datos de cuenta (incluido el correo), notificaciones y
+  restablecer los datos de la demostración
 
 ## Rutas principales
 
@@ -52,6 +55,7 @@ No hay:
 | `/carga/[linkId]` | Portal público del cliente (sin cuenta), según la liga del expediente |
 | `/carga/demo-expediente` | Portal público del expediente de ejemplo |
 | `/usuarios` | Usuarios internos y matriz de roles y permisos |
+| `/configuracion` | Tema, tamaño de fuente, cuenta, notificaciones y reinicio de datos de demo (accesible desde el ícono de engrane del encabezado) |
 
 ## Cómo probar el flujo demo
 

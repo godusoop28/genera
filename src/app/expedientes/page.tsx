@@ -76,7 +76,7 @@ export default function ExpedientesPage() {
               "rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors",
               filter === f.id
                 ? "border-gold bg-gold/15 text-dark-gold"
-                : "border-border bg-white text-muted hover:text-obsessed",
+                : "border-border bg-card text-muted hover:text-obsessed",
             )}
           >
             {f.label}
@@ -85,7 +85,7 @@ export default function ExpedientesPage() {
       </div>
 
       {filtered.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border bg-white p-10 text-center text-sm text-muted">
+        <div className="rounded-2xl border border-dashed border-border bg-card p-10 text-center text-sm text-muted">
           No hay expedientes en este filtro.
         </div>
       ) : (
@@ -94,7 +94,7 @@ export default function ExpedientesPage() {
             <Link
               key={expediente.id}
               href={`/expedientes/${expediente.id}`}
-              className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-obsessed/5"
+              className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-obsessed/5"
             >
               <span className="absolute inset-y-0 left-0 w-1 bg-gold" aria-hidden />
 

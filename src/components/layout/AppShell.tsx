@@ -20,11 +20,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="fixed inset-0 z-40 lg:hidden">
           <button
             aria-label="Cerrar menú"
-            className="absolute inset-0 bg-obsessed/40"
+            className="absolute inset-0 bg-brand-ink/40"
             onClick={() => setMobileOpen(false)}
           />
           <div className="absolute inset-y-0 left-0 flex w-72 max-w-[80vw] flex-col shadow-xl">
-            <div className="flex justify-end bg-obsessed px-3 pt-3">
+            <div className="flex justify-end bg-brand-ink px-3 pt-3">
               <button
                 aria-label="Cerrar menú"
                 onClick={() => setMobileOpen(false)}

@@ -10,14 +10,14 @@ export function RolePermissionMatrix() {
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-3">
         {ROLES.map((role) => (
-          <div key={role.id} className="rounded-2xl border border-border bg-white p-4">
+          <div key={role.id} className="rounded-2xl border border-border bg-card p-4">
             <p className="text-sm font-semibold text-obsessed">{role.name}</p>
             <p className="mt-1 text-xs text-muted">{role.description}</p>
           </div>
         ))}
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-border bg-white">
+      <div className="overflow-x-auto rounded-2xl border border-border bg-card">
         <table className="w-full min-w-[640px] text-left text-sm">
           <thead className="border-b border-border bg-app-bg text-xs uppercase tracking-wide text-muted">
             <tr>

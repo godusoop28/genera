@@ -20,22 +20,22 @@ export function DocumentPreviewModal({
           {Array.from({ length: Math.min(pageCount, 2) }).map((_, index) => (
             <div
               key={index}
-              className="flex aspect-[3/4] w-full flex-col gap-3 rounded-lg border border-border bg-white p-6 shadow-inner"
+              className="flex aspect-[3/4] w-full flex-col gap-3 rounded-lg border border-neutral-200 bg-white p-6 shadow-inner"
               style={{
                 marginLeft: index > 0 ? "12px" : 0,
                 marginTop: index > 0 ? "-88%" : 0,
                 zIndex: -index,
               }}
             >
-              <div className="h-2.5 w-2/3 rounded bg-app-bg" />
-              <div className="h-2 w-full rounded bg-app-bg" />
-              <div className="h-2 w-full rounded bg-app-bg" />
-              <div className="h-2 w-5/6 rounded bg-app-bg" />
-              <div className="mt-4 h-24 w-full rounded bg-app-bg" />
-              <div className="mt-4 h-2 w-full rounded bg-app-bg" />
-              <div className="h-2 w-full rounded bg-app-bg" />
-              <div className="h-2 w-4/6 rounded bg-app-bg" />
-              <div className="mt-auto h-2 w-1/3 self-end rounded bg-app-bg" />
+              <div className="h-2.5 w-2/3 rounded bg-neutral-100" />
+              <div className="h-2 w-full rounded bg-neutral-100" />
+              <div className="h-2 w-full rounded bg-neutral-100" />
+              <div className="h-2 w-5/6 rounded bg-neutral-100" />
+              <div className="mt-4 h-24 w-full rounded bg-neutral-100" />
+              <div className="mt-4 h-2 w-full rounded bg-neutral-100" />
+              <div className="h-2 w-full rounded bg-neutral-100" />
+              <div className="h-2 w-4/6 rounded bg-neutral-100" />
+              <div className="mt-auto h-2 w-1/3 self-end rounded bg-neutral-100" />
             </div>
           ))}
         </div>

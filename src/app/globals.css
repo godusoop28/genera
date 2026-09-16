@@ -1,10 +1,7 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f4f4f4;
-  --foreground: #252526;
-
-  /* Paleta oficial CENTURY 21 Genera */
+  /* Paleta oficial CENTURY 21 Genera — constante en todos los temas */
   --color-c21-gold: #beaf87;
   --color-c21-dark-gold: #a19276;
   --color-c21-obsessed-grey: #252526;
@@ -13,12 +10,13 @@
   --color-c21-white: #ffffff;
   --color-c21-black: #000000;
 
+  /* ---- Tema: Claro (predeterminado) ---- */
+  --fg: #252526;
   --color-app-bg: #f4f4f4;
   --color-card: #ffffff;
   --color-border: #dcdcdc;
   --color-muted: #6b6b6c;
 
-  /* Colores semánticos discretos: no reemplazan la identidad principal */
   --color-success-bg: #eaf5ec;
   --color-success-text: #1f7a3d;
   --color-warning-bg: #fdf2e3;
@@ -29,6 +27,83 @@
   --color-info-text: #3d5a70;
   --color-manual-bg: #f1efe9;
   --color-manual-text: #6b5a34;
+
+  --background: var(--color-app-bg);
+  --foreground: var(--fg);
+}
+
+/* ---- Tema: Oscuro ---- */
+:root[data-theme="dark"] {
+  --fg: #f2f1ee;
+  --color-app-bg: #17181a;
+  --color-card: #232427;
+  --color-border: #37383c;
+  --color-muted: #9a9a9e;
+
+  --color-success-bg: #16301f;
+  --color-success-text: #7bdca0;
+  --color-warning-bg: #3a2a12;
+  --color-warning-text: #f0b35c;
+  --color-danger-bg: #3a1c1a;
+  --color-danger-text: #f4948b;
+  --color-info-bg: #1c2730;
+  --color-info-text: #a4cbe3;
+  --color-manual-bg: #2c2717;
+  --color-manual-text: #ddccA0;
+}
+
+/* ---- Tema: Dorado (premium, superficies cálidas) ---- */
+:root[data-theme="gold"] {
+  --fg: #2b2418;
+  --color-app-bg: #faf6ee;
+  --color-card: #fffdf9;
+  --color-border: #e6dcc7;
+  --color-muted: #7a6f5a;
+
+  --color-success-bg: #e9f2e6;
+  --color-success-text: #1f7a3d;
+  --color-warning-bg: #f7ecd8;
+  --color-warning-text: #8a5314;
+  --color-danger-bg: #f6e6e2;
+  --color-danger-text: #97362a;
+  --color-info-bg: #eef1ee;
+  --color-info-text: #3d5a70;
+  --color-manual-bg: #f1e9d4;
+  --color-manual-text: #6b5a34;
+}
+
+/* ---- Tema: Alto contraste (accesible) ---- */
+:root[data-theme="contrast"] {
+  --fg: #000000;
+  --color-app-bg: #ffffff;
+  --color-card: #ffffff;
+  --color-border: #111111;
+  --color-muted: #333333;
+
+  --color-success-bg: #d9f7e0;
+  --color-success-text: #04521c;
+  --color-warning-bg: #fff0cc;
+  --color-warning-text: #5c3d00;
+  --color-danger-bg: #ffe1de;
+  --color-danger-text: #7a0d02;
+  --color-info-bg: #dbeeff;
+  --color-info-text: #0b3a66;
+  --color-manual-bg: #f0ead8;
+  --color-manual-text: #4a3a12;
+}
+
+/* ---- Tamaño de fuente (escala toda la interfaz de forma proporcional) ---- */
+html[data-font-size="sm"] {
+  font-size: 87.5%;
+}
+html[data-font-size="md"] {
+  font-size: 100%;
+}
+html[data-font-size="lg"] {
+  font-size: 112.5%;
+}
+html[data-font-size="xl"] {
+  font-size: 125%;
 }
 
 @theme inline {
@@ -39,7 +114,10 @@
 
   --color-gold: var(--color-c21-gold);
   --color-dark-gold: var(--color-c21-dark-gold);
-  --color-obsessed: var(--color-c21-obsessed-grey);
+  /* "obsessed" es texto/acento reactivo al tema; "brand-ink" es la superficie
+     de marca (sidebar, avatares, toasts) que se mantiene fija en todos los temas. */
+  --color-obsessed: var(--fg);
+  --color-brand-ink: var(--color-c21-obsessed-grey);
   --color-medium-grey: var(--color-c21-medium-grey);
   --color-light-grey: var(--color-c21-light-grey);
 
@@ -61,8 +139,11 @@
 
 body {
   background: var(--color-app-bg);
-  color: var(--foreground);
+  color: var(--fg);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 
 * {

@@ -29,7 +29,7 @@ export function Stepper({ steps, currentStep, maxReachedStep, onStepClick }: Ste
                 className={cn(
                   "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold",
                   isComplete && "bg-dark-gold text-white",
-                  isActive && "bg-obsessed text-white",
+                  isActive && "bg-brand-ink text-white",
                   !isComplete && !isActive && "bg-app-bg text-muted border border-border",
                 )}
               >

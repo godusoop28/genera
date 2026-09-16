@@ -30,7 +30,7 @@ export function RejectDocumentModal({ open, documentName, onClose, onConfirm }: 
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             rows={3}
-            className="w-full rounded-xl border border-border bg-white px-3.5 py-2.5 text-sm text-obsessed focus:border-gold focus:outline-none focus:ring-4 focus:ring-gold/20"
+            className="w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm text-obsessed focus:border-gold focus:outline-none focus:ring-4 focus:ring-gold/20"
           />
         </div>
         <div className="mt-2 flex justify-end gap-3">

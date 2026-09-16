@@ -28,7 +28,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   };
 
   return (
-    <div className="flex h-full flex-col bg-obsessed">
+    <div className="flex h-full flex-col bg-brand-ink">
       <div className="border-b border-white/10 px-5 py-5">
         <BrandLogo tone="dark" size="md" />
       </div>

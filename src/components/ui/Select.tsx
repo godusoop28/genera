@@ -32,7 +32,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
           ref={ref}
           id={selectId}
           className={cn(
-            "w-full appearance-none rounded-xl border border-border bg-white px-3.5 py-2.5 pr-10 text-sm text-obsessed transition-colors focus:border-gold focus:outline-none focus:ring-4 focus:ring-gold/20",
+            "w-full appearance-none rounded-xl border border-border bg-card px-3.5 py-2.5 pr-10 text-sm text-obsessed transition-colors focus:border-gold focus:outline-none focus:ring-4 focus:ring-gold/20",
             className,
           )}
           {...props}

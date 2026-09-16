@@ -204,7 +204,7 @@ export function DocumentUploadCard({
   return (
     <div
       className={cn(
-        "rounded-2xl border bg-white p-5 shadow-sm transition-all duration-200",
+        "rounded-2xl border bg-card p-5 shadow-sm transition-all duration-200",
         isError
           ? "border-danger-text/50 ring-1 ring-danger-text/20"
           : isDone
@@ -354,7 +354,7 @@ function PhotoGrid({
         <div
           key={page.id}
           className={cn(
-            "group/thumb relative flex aspect-[3/4] flex-col overflow-hidden rounded-xl border bg-white",
+            "group/thumb relative flex aspect-[3/4] flex-col overflow-hidden rounded-xl border bg-card",
             isError ? "border-danger-text/40" : "border-border",
           )}
         >
@@ -373,7 +373,7 @@ function PhotoGrid({
             type="button"
             onClick={() => onRemove(page.id)}
             aria-label="Quitar fotografía"
-            className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-obsessed/70 text-white opacity-0 transition-opacity group-hover/thumb:opacity-100"
+            className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-brand-ink/70 text-white opacity-0 transition-opacity group-hover/thumb:opacity-100"
           >
             <X className="h-3 w-3" aria-hidden />
           </button>
@@ -443,7 +443,7 @@ function AIVerificationSteps({ status }: { status: LocalPipelineStatus }) {
 function PdfResultCard({ pageCount, onView }: { pageCount: number; onView: () => void }) {
   return (
     <div className="flex items-center gap-3.5 rounded-xl border border-success-text/20 bg-success-bg/60 px-4 py-3.5">
-      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-white text-danger-text shadow-sm">
+      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-card text-danger-text shadow-sm">
         <FileText className="h-6 w-6" aria-hidden />
       </div>
       <div className="min-w-0 flex-1">
@@ -455,7 +455,7 @@ function PdfResultCard({ pageCount, onView }: { pageCount: number; onView: () =>
       <button
         type="button"
         onClick={onView}
-        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-obsessed transition-colors hover:bg-app-bg"
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-obsessed transition-colors hover:bg-app-bg"
       >
         <Eye className="h-3.5 w-3.5" aria-hidden />
         Ver

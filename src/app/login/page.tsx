@@ -28,7 +28,7 @@ export default function LoginPage() {
           <Badge tone="neutral">{PROTOTYPE_BADGE_TEXT}</Badge>
         </div>
 
-        <div className="rounded-2xl border border-border bg-white p-8 shadow-sm">
+        <div className="rounded-2xl border border-border bg-card p-8 shadow-sm">
           <div className="mb-6 flex flex-col items-center text-center">
             <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gold/15">
               <FileLock2 className="h-7 w-7 text-dark-gold" aria-hidden />
