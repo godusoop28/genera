@@ -6,6 +6,16 @@
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
 
+// El access token vive en memoria (lo fija AuthProvider tras login/refresh) para
+// que las funciones de src/lib/api/*.ts no tengan que recibirlo explícitamente
+// en cada llamada. Nunca se persiste aquí: AuthProvider decide dónde guardarlo
+// (sessionStorage) para sobrevivir a un refresh de página.
+let currentAccessToken: string | null = null;
+
+export function setAccessToken(token: string | null) {
+  currentAccessToken = token;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -24,12 +34,13 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { body, accessToken, headers, ...rest } = options;
+  const token = accessToken ?? currentAccessToken;
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...rest,
     headers: {
       "Content-Type": "application/json",
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...headers,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,

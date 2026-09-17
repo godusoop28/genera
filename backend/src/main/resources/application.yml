@@ -2,9 +2,6 @@ spring:
   application:
     name: c21genera-backend
   jackson:
-    serialization:
-      write-dates-as-timestamps: false
-      write-date-timestamps-as-nanoseconds: false
     default-property-inclusion: non_null
   jpa:
     open-in-view: false

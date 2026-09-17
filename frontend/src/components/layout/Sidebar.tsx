@@ -2,7 +2,7 @@
 
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { BrandFooter } from "@/components/brand/BrandFooter";
-import { useDemoApp } from "@/context/DemoAppProvider";
+import { useAuth } from "@/context/AuthProvider";
 import { cn } from "@/lib/utils";
 import { FilePlus2, Files, LogOut, Users } from "lucide-react";
 import Link from "next/link";
@@ -19,10 +19,10 @@ const navItems = [
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { logout } = useDemoApp();
+  const { logout } = useAuth();
 
   const handleLogout = () => {
-    logout();
+    void logout();
     onNavigate?.();
     router.push("/login");
   };

@@ -1,8 +1,7 @@
 "use client";
 
-import { useDemoApp } from "@/context/DemoAppProvider";
+import { useAuth } from "@/context/AuthProvider";
 import { initials } from "@/lib/utils";
-import { ROLES } from "@/data/permissions";
 import { Menu, Settings } from "lucide-react";
 import Link from "next/link";
 
@@ -11,8 +10,9 @@ interface HeaderProps {
 }
 
 export function Header({ onMenuClick }: HeaderProps) {
-  const { currentUser } = useDemoApp();
-  const role = ROLES.find((r) => r.id === currentUser.roleId);
+  const { user } = useAuth();
+  const displayName = user?.name ?? "Personal interno";
+  const roleName = user?.role ?? "";
 
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-card/90 px-4 py-3.5 backdrop-blur-sm lg:px-8">
@@ -34,11 +34,11 @@ export function Header({ onMenuClick }: HeaderProps) {
           <Settings className="h-5 w-5" />
         </Link>
         <div className="hidden text-right leading-tight sm:block">
-          <p className="text-sm font-medium text-obsessed">{currentUser.name}</p>
-          <p className="text-xs text-muted">{role?.name ?? "Personal interno"}</p>
+          <p className="text-sm font-medium text-obsessed">{displayName}</p>
+          <p className="text-xs text-muted">{roleName}</p>
         </div>
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-ink text-xs font-semibold text-gold">
-          {initials(currentUser.name)}
+          {initials(displayName)}
         </div>
       </div>
     </header>

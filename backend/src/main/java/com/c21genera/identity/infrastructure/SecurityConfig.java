@@ -35,10 +35,18 @@ public class SecurityConfig {
 
   @Bean
   @Order(1)
-  public SecurityFilterChain publicApiFilterChain(HttpSecurity http) throws Exception {
+  public SecurityFilterChain publicApiFilterChain(HttpSecurity http, CorsConfigurationSource corsConfigurationSource)
+      throws Exception {
     http.securityMatcher(
-            "/api/v1/public/**", "/api/v1/auth/**", "/actuator/health/**", "/swagger-ui/**", "/v3/api-docs/**")
+            "/api/v1/public/**",
+            "/api/v1/auth/**",
+            "/actuator/health/**",
+            "/swagger-ui.html",
+            "/swagger-ui/**",
+            "/v3/api-docs/**",
+            "/v3/api-docs.yaml")
         .csrf(AbstractHttpConfigurer::disable)
+        .cors(cors -> cors.configurationSource(corsConfigurationSource))
         .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .headers(
             headers ->
