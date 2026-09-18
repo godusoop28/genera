@@ -6,6 +6,7 @@ import type {
   ExpedienteConfig,
   ExtractedField,
 } from "@/types/expediente";
+import { propertyTypeLabels } from "@/types/expediente";
 
 export const defaultExpedienteConfig: ExpedienteConfig = {
   contractType: "intermediacion_exclusiva",
@@ -14,8 +15,9 @@ export const defaultExpedienteConfig: ExpedienteConfig = {
   signerCharacter: "propietario",
   accreditation: "escritura_publica",
   condominiumRegime: false,
-  propertyType: "vivienda",
+  propertyType: "casa",
   legalStatus: "en_revision",
+  civilStatus: "soltero",
 };
 
 let idCounter = 0;
@@ -120,7 +122,7 @@ export function defaultExtractedFieldsFor(exp: Expediente): ExtractedField[] {
     {
       id: "tipo-inmueble",
       label: "Tipo de inmueble",
-      value: exp.config.propertyType === "vivienda" ? "Vivienda destinada a casa habitación" : "Terreno destinado a casa habitación",
+      value: propertyTypeLabels[exp.config.propertyType],
       source: "Escritura",
       confidence: "alta",
       origin: "extraido",
@@ -147,8 +149,8 @@ export function defaultExtractedFieldsFor(exp: Expediente): ExtractedField[] {
       label: "Superficie de construcción",
       value: "",
       source: "Escritura",
-      origin: exp.config.propertyType === "vivienda" ? "extraido" : "no_aplica",
-      notApplicable: exp.config.propertyType !== "vivienda",
+      origin: exp.config.propertyType !== "terreno" ? "extraido" : "no_aplica",
+      notApplicable: exp.config.propertyType === "terreno",
     },
     { id: "gravamenes", label: "Existencia de gravámenes", value: "", source: "Certificado de gravamen", confidence: "alta", origin: "extraido" },
     { id: "situacion-predial", label: "Situación de predial", value: "", source: "Predial", confidence: "alta", origin: "extraido" },

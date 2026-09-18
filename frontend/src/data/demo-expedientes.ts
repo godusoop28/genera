@@ -12,8 +12,10 @@ function heroExpediente(): Expediente {
       signerCharacter: "propietario",
       accreditation: "escritura_publica",
       condominiumRegime: false,
-      propertyType: "vivienda",
+      propertyType: "casa",
       legalStatus: "libre_gravamen",
+      civilStatus: "casado",
+      maritalPropertyRegime: "bienes_mancomunados",
     },
   });
 
@@ -114,8 +116,8 @@ function secondaryExpediente(
 
 function correctionsExpediente(): Expediente {
   const exp = secondaryExpediente("EXP-2026-003", "Carlos Ramírez", "corrections_requested", 2, "2026-09-12T09:00:00.000Z");
-  exp.documents["domicilio"] = {
-    requirementId: "domicilio",
+  exp.documents["recibo-cfe"] = {
+    requirementId: "recibo-cfe",
     status: "returned",
     pages: [],
     uploadedAt: "2026-09-11T09:00:00.000Z",
@@ -128,7 +130,7 @@ function correctionsExpediente(): Expediente {
     },
   };
   exp.activity = [
-    makeActivity("documento_devuelto", "Documento devuelto para corrección: Comprobante de domicilio.", "2026-09-12T09:00:00.000Z"),
+    makeActivity("documento_devuelto", "Documento devuelto para corrección: Recibo de CFE.", "2026-09-12T09:00:00.000Z"),
     makeActivity("documentos_enviados", "El cliente envió su documentación.", "2026-09-11T09:05:00.000Z"),
     makeActivity("expediente_creado", "Expediente EXP-2026-003 creado.", "2026-09-10T09:00:00.000Z"),
   ];

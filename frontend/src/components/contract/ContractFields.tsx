@@ -5,6 +5,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { useDemoApp } from "@/context/DemoAppProvider";
 import type { Expediente } from "@/types/expediente";
+import { propertyTypeLabels } from "@/types/expediente";
 
 function ReadOnlyField({ label, value, source }: { label: string; value: string; source: string }) {
   return (
@@ -76,7 +77,7 @@ export function ContractFields({ expediente }: { expediente: Expediente }) {
           <ReadOnlyField label="Carácter" value={expediente.config.signerCharacter} source="Poder notarial" />
           <ReadOnlyField
             label="Tipo de inmueble"
-            value={expediente.config.propertyType === "vivienda" ? "Vivienda destinada a casa habitación" : "Terreno destinado a casa habitación"}
+            value={propertyTypeLabels[expediente.config.propertyType]}
             source="Escritura"
           />
           <ReadOnlyField

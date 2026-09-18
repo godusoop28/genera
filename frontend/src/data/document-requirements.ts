@@ -19,8 +19,8 @@ export function buildDocumentRequirements(
   for (const owner of owners) {
     requirements.push({
       id: `ine-${owner.id}`,
-      name: `INE de ${owner.label.toLowerCase()}`,
-      description: "Sube frente y reverso de la credencial para votar.",
+      name: `INE o pasaporte de ${owner.label.toLowerCase()}`,
+      description: "Sube frente y reverso de la credencial para votar (INE) o las páginas del pasaporte vigente.",
       category: "identidad",
       required: true,
       ownerId: owner.id,
@@ -37,29 +37,43 @@ export function buildDocumentRequirements(
     },
     {
       id: "escritura",
-      name: "Escritura completa",
+      name: "Escritura completa (testimonios)",
       description: "Todas las páginas de la escritura del inmueble.",
       category: "propiedad",
       required: true,
     },
     {
-      id: "domicilio",
-      name: "Comprobante de domicilio",
+      id: "plano-catastral",
+      name: "Plano catastral",
+      description: "Plano catastral del inmueble.",
+      category: "propiedad",
+      required: true,
+    },
+    {
+      id: "boleta-rpp",
+      name: "Boleta de inscripción al RPP",
+      description: "Boleta de inscripción al Registro Público de la Propiedad.",
+      category: "propiedad",
+      required: true,
+    },
+    {
+      id: "recibo-cfe",
+      name: "Recibo de CFE",
       description: "No mayor a 3 meses de antigüedad.",
       category: "propiedad",
       required: true,
     },
     {
-      id: "gravamen",
-      name: "Certificado actualizado de libertad o existencia de gravamen",
-      description: "Emitido por el Registro Público de la Propiedad.",
+      id: "recibo-agua",
+      name: "Recibo de agua",
+      description: "No mayor a 3 meses de antigüedad.",
       category: "propiedad",
       required: true,
     },
     {
       id: "predial",
-      name: "Predial vigente",
-      description: "Comprobante de pago del impuesto predial del año en curso.",
+      name: "Predial",
+      description: "Comprobante de pago del impuesto predial. No es necesario que esté vigente en esta etapa.",
       category: "propiedad",
       required: true,
     },
@@ -80,6 +94,15 @@ export function buildDocumentRequirements(
     description: "Reglamento del condominio y constancia de adeudo.",
     category: "propiedad",
     required: config.condominiumRegime,
+    conditional: true,
+  });
+
+  requirements.push({
+    id: "acta-matrimonio",
+    name: "Acta de matrimonio",
+    description: "Requerida cuando el propietario es casado(a).",
+    category: "identidad",
+    required: config.civilStatus === "casado",
     conditional: true,
   });
 

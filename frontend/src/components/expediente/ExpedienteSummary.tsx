@@ -2,6 +2,7 @@ import { ActivityTimeline } from "@/components/expediente/ActivityTimeline";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader } from "@/components/ui/Card";
 import type { Expediente } from "@/types/expediente";
+import { propertyTypeLabels } from "@/types/expediente";
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -23,10 +24,7 @@ export function ExpedienteSummary({ expediente }: { expediente: Expediente }) {
         <Row label="Propietario(s)" value={`${expediente.owners.length} — ${expediente.ownerName}`} />
         <Row label="Tipo de persona" value={expediente.config.personType === "fisica" ? "Persona física" : "Persona moral"} />
         <Row label="Carácter" value={expediente.config.signerCharacter} />
-        <Row
-          label="Tipo de inmueble"
-          value={expediente.config.propertyType === "vivienda" ? "Vivienda" : "Terreno"}
-        />
+        <Row label="Tipo de inmueble" value={propertyTypeLabels[expediente.config.propertyType]} />
         <Row label="Privacidad" value={expediente.privacyConsent.mainConsent ? "Aceptada" : "Pendiente"} />
         <Row label="Documentos" value={`${acceptedDocs.length}/${requiredDocs.length} aceptados`} />
         <Row

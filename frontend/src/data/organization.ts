@@ -17,3 +17,7 @@ export const PROTOTYPE_BADGE_TEXT = "Prototipo visual";
 
 // Contacto genérico de interfaz (demo). No se usa para representar documentos legales.
 export const ORG_DEMO_EMAIL = "ventas@c21genera.com";
+
+// TODO: reemplazar con la dirección real de la oficina antes de salir a producción.
+export const ORG_OFFICE_ADDRESS = "Dirección de la oficina pendiente de confirmar";
+export const ORG_OFFICE_MAPS_URL = "https://maps.google.com/?q=CENTURY+21+Genera";

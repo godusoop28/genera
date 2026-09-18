@@ -5,6 +5,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Select";
 import { Toggle } from "@/components/ui/Toggle";
 import type { ExpedienteConfig } from "@/types/expediente";
+import { maritalPropertyRegimeLabels, maritalStatusLabels, propertyTypeLabels } from "@/types/expediente";
 
 interface ExpedienteConfigFormProps {
   config: ExpedienteConfig;
@@ -79,10 +80,7 @@ export function ExpedienteConfigForm({ config, onChange }: ExpedienteConfigFormP
           label="Tipo de inmueble"
           value={config.propertyType}
           onChange={(e) => onChange("propertyType", e.target.value as ExpedienteConfig["propertyType"])}
-          options={[
-            { label: "Vivienda destinada a casa habitación", value: "vivienda" },
-            { label: "Terreno destinado a casa habitación", value: "terreno" },
-          ]}
+          options={Object.entries(propertyTypeLabels).map(([value, label]) => ({ label, value }))}
         />
 
         <Select
@@ -95,10 +93,28 @@ export function ExpedienteConfigForm({ config, onChange }: ExpedienteConfigFormP
             { label: "En revisión", value: "en_revision" },
           ]}
         />
+
+        <Select
+          label="Estado civil"
+          value={config.civilStatus}
+          onChange={(e) => onChange("civilStatus", e.target.value as ExpedienteConfig["civilStatus"])}
+          options={Object.entries(maritalStatusLabels).map(([value, label]) => ({ label, value }))}
+        />
+
+        {config.civilStatus === "casado" ? (
+          <Select
+            label="Régimen conyugal"
+            value={config.maritalPropertyRegime ?? "bienes_mancomunados"}
+            onChange={(e) =>
+              onChange("maritalPropertyRegime", e.target.value as ExpedienteConfig["maritalPropertyRegime"])
+            }
+            options={Object.entries(maritalPropertyRegimeLabels).map(([value, label]) => ({ label, value }))}
+          />
+        ) : null}
       </div>
       <p className="mt-2 text-xs text-muted">
-        La situación jurídica declarada aquí es preliminar; se actualizará con el certificado de
-        gravamen recibido.
+        La situación jurídica declarada aquí es preliminar; se actualizará conforme avance la
+        revisión documental.
       </p>
 
       <div className="mt-6 space-y-4 border-t border-border pt-5">
@@ -111,6 +127,11 @@ export function ExpedienteConfigForm({ config, onChange }: ExpedienteConfigFormP
         {config.signerCharacter === "apoderado" ? (
           <p className="text-xs text-dark-gold">
             El poder notarial se solicitará automáticamente por tratarse de un apoderado.
+          </p>
+        ) : null}
+        {config.civilStatus === "casado" ? (
+          <p className="text-xs text-dark-gold">
+            El acta de matrimonio se solicitará automáticamente por tratarse de un propietario casado.
           </p>
         ) : null}
       </div>

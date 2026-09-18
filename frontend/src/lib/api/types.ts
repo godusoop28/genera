@@ -19,7 +19,7 @@ export type BackendExpedienteStatus =
 export type BackendPersonType = "FISICA" | "MORAL";
 export type BackendSignerCharacter = "PROPIETARIO" | "COPROPIETARIO" | "APODERADO";
 export type BackendAccreditationType = "ESCRITURA_PUBLICA" | "CONTRATO_PRIVADO";
-export type BackendPropertyCaseType = "HOUSING" | "RESIDENTIAL_LAND";
+export type BackendPropertyCaseType = "HOUSING" | "DEPARTMENT" | "RESIDENTIAL_LAND" | "COMMERCIAL";
 export type BackendPropertyLegalStatus = "LIBRE_GRAVAMEN" | "CON_GRAVAMEN" | "EN_REVISION";
 export type BackendParticipantRole = "OWNER" | "CO_OWNER" | "ATTORNEY" | "LEGAL_REPRESENTATIVE";
 

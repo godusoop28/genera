@@ -53,9 +53,30 @@ export type PersonType = "fisica" | "moral";
 
 export type SignerCharacter = "propietario" | "copropietario" | "apoderado";
 
-export type PropertyType = "vivienda" | "terreno";
+export type PropertyType = "casa" | "departamento" | "terreno" | "comercial";
+
+export const propertyTypeLabels: Record<PropertyType, string> = {
+  casa: "Casa",
+  departamento: "Departamento",
+  terreno: "Terreno",
+  comercial: "Comercial",
+};
 
 export type PropertyLegalStatus = "libre_gravamen" | "con_gravamen" | "en_revision";
+
+export type MaritalStatus = "soltero" | "casado";
+
+export const maritalStatusLabels: Record<MaritalStatus, string> = {
+  soltero: "Soltero(a)",
+  casado: "Casado(a)",
+};
+
+export type MaritalPropertyRegime = "bienes_mancomunados" | "separacion_bienes";
+
+export const maritalPropertyRegimeLabels: Record<MaritalPropertyRegime, string> = {
+  bienes_mancomunados: "Régimen conyugal (bienes mancomunados)",
+  separacion_bienes: "Separación de bienes",
+};
 
 export interface ExpedienteConfig {
   contractType: ContractTypeId;
@@ -66,6 +87,8 @@ export interface ExpedienteConfig {
   condominiumRegime: boolean;
   propertyType: PropertyType;
   legalStatus: PropertyLegalStatus;
+  civilStatus: MaritalStatus;
+  maritalPropertyRegime?: MaritalPropertyRegime;
 }
 
 // ---------- Propietarios ----------

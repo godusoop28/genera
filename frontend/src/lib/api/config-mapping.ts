@@ -33,7 +33,10 @@ export function toBackendAccreditationType(value: AccreditationType): BackendAcc
 }
 
 export function toBackendPropertyCaseType(value: PropertyType): BackendPropertyCaseType {
-  return value === "vivienda" ? "HOUSING" : "RESIDENTIAL_LAND";
+  if (value === "casa") return "HOUSING";
+  if (value === "departamento") return "DEPARTMENT";
+  if (value === "terreno") return "RESIDENTIAL_LAND";
+  return "COMMERCIAL";
 }
 
 export function toBackendLegalStatus(value: PropertyLegalStatus): BackendPropertyLegalStatus {

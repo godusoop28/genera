@@ -24,9 +24,31 @@ import { Save } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+interface PropertyAddressForm {
+  street: string;
+  number: string;
+  neighborhood: string;
+  municipality: string;
+  state: string;
+  zipCode: string;
+}
+
+const emptyPropertyAddress: PropertyAddressForm = {
+  street: "",
+  number: "",
+  neighborhood: "",
+  municipality: "",
+  state: "",
+  zipCode: "",
+};
+
+function formatPropertyAddress(a: PropertyAddressForm): string {
+  return `${a.street} ${a.number}, ${a.neighborhood}, ${a.municipality}, ${a.state}, C.P. ${a.zipCode}`;
+}
+
 export default function NuevoExpedientePage() {
   const [ownerName, setOwnerName] = useState("");
-  const [propertyAddress, setPropertyAddress] = useState("");
+  const [propertyAddress, setPropertyAddress] = useState<PropertyAddressForm>(emptyPropertyAddress);
   const [config, setConfig] = useState<ExpedienteConfig>(defaultExpedienteConfig);
   const [submitting, setSubmitting] = useState(false);
   const { showToast } = useToast();
@@ -41,9 +63,19 @@ export default function NuevoExpedientePage() {
     setConfig((prev) => ({ ...prev, [key]: value }));
   };
 
+  const setAddressField = <K extends keyof PropertyAddressForm>(key: K, value: PropertyAddressForm[K]) => {
+    setPropertyAddress((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const isAddressComplete = Object.values(propertyAddress).every((v) => v.trim().length > 0);
+
   const handleCreate = async () => {
     if (!ownerName.trim()) {
       showToast("Captura el nombre del propietario.");
+      return;
+    }
+    if (!isAddressComplete) {
+      showToast("Captura todos los campos del domicilio del inmueble.");
       return;
     }
     setSubmitting(true);
@@ -56,7 +88,7 @@ export default function NuevoExpedientePage() {
         condominiumRegime: config.condominiumRegime,
         propertyCaseType: toBackendPropertyCaseType(config.propertyType),
         declaredLegalStatus: toBackendLegalStatus(config.legalStatus),
-        propertyAddress: propertyAddress.trim() || undefined,
+        propertyAddress: formatPropertyAddress(propertyAddress),
         participants: buildBackendParticipants(ownerName.trim(), config.ownerCount),
       });
       showToast(`Expediente ${created.folio} creado en el backend.`);
@@ -86,11 +118,43 @@ export default function NuevoExpedientePage() {
             onChange={(e) => setOwnerName(e.target.value)}
             placeholder="Ej. Juan Pérez López"
           />
-          <Input
-            label="Domicilio del inmueble (opcional)"
-            value={propertyAddress}
-            onChange={(e) => setPropertyAddress(e.target.value)}
-          />
+        </div>
+
+        <div className="mt-4 border-t border-border pt-4">
+          <p className="mb-3 text-sm font-medium text-obsessed">Domicilio del inmueble</p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Input
+              label="Calle"
+              value={propertyAddress.street}
+              onChange={(e) => setAddressField("street", e.target.value)}
+              containerClassName="lg:col-span-2"
+            />
+            <Input
+              label="Número"
+              value={propertyAddress.number}
+              onChange={(e) => setAddressField("number", e.target.value)}
+            />
+            <Input
+              label="Colonia"
+              value={propertyAddress.neighborhood}
+              onChange={(e) => setAddressField("neighborhood", e.target.value)}
+            />
+            <Input
+              label="Municipio"
+              value={propertyAddress.municipality}
+              onChange={(e) => setAddressField("municipality", e.target.value)}
+            />
+            <Input
+              label="Estado"
+              value={propertyAddress.state}
+              onChange={(e) => setAddressField("state", e.target.value)}
+            />
+            <Input
+              label="Código postal"
+              value={propertyAddress.zipCode}
+              onChange={(e) => setAddressField("zipCode", e.target.value)}
+            />
+          </div>
         </div>
       </Card>
 
