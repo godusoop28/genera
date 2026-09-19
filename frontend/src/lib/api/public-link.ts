@@ -1,4 +1,5 @@
 import { apiClient } from "@/lib/api/client";
+import { DEMO_MODE, demoGeneratePublicLink } from "@/lib/api/demo-data";
 
 export interface PublicLinkResponse {
   url: string;
@@ -6,6 +7,7 @@ export interface PublicLinkResponse {
 }
 
 export function generatePublicLink(expedienteId: string) {
+  if (DEMO_MODE) return demoGeneratePublicLink(expedienteId);
   return apiClient.post<PublicLinkResponse>(`/internal/expedientes/${expedienteId}/public-link`);
 }
 

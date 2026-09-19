@@ -22,6 +22,19 @@ import {
 const ACCESS_TOKEN_KEY = "c21genera-access-token";
 const REFRESH_TOKEN_KEY = "c21genera-refresh-token";
 
+// Prototipo visual: mientras esto sea true, la app entra directo sin login
+// contra el backend, con un usuario de prueba. Poner en false para volver a
+// exigir autenticación real.
+const SKIP_AUTH_FOR_PROTOTYPE = false;
+
+const DEMO_USER: MeResponse = {
+  id: "demo-user",
+  name: "Usuario Demo",
+  email: "demo@century21genera.local",
+  role: "ADMIN",
+  permissions: ["*"],
+};
+
 interface AuthContextValue {
   user: MeResponse | null;
   isAuthenticated: boolean;
@@ -33,10 +46,11 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<MeResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<MeResponse | null>(SKIP_AUTH_FOR_PROTOTYPE ? DEMO_USER : null);
+  const [isLoading, setIsLoading] = useState(!SKIP_AUTH_FOR_PROTOTYPE);
 
   useEffect(() => {
+    if (SKIP_AUTH_FOR_PROTOTYPE) return;
     const storedAccessToken = window.sessionStorage.getItem(ACCESS_TOKEN_KEY);
     Promise.resolve(storedAccessToken)
       .then((token) => {
@@ -56,6 +70,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
+    if (SKIP_AUTH_FOR_PROTOTYPE) {
+      setUser(DEMO_USER);
+      return;
+    }
     const auth = await apiLogin(email, password);
     window.sessionStorage.setItem(ACCESS_TOKEN_KEY, auth.accessToken);
     window.sessionStorage.setItem(REFRESH_TOKEN_KEY, auth.refreshToken);
@@ -65,6 +83,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    if (SKIP_AUTH_FOR_PROTOTYPE) {
+      setUser(null);
+      return;
+    }
     const refreshToken = window.sessionStorage.getItem(REFRESH_TOKEN_KEY);
     window.sessionStorage.removeItem(ACCESS_TOKEN_KEY);
     window.sessionStorage.removeItem(REFRESH_TOKEN_KEY);
