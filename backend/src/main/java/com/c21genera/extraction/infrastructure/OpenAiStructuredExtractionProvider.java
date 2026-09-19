@@ -127,9 +127,10 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
               "image_url", Map.of("url", "data:image/png;base64," + base64)));
     }
 
+    // No se fija "temperature": algunos modelos (p. ej. los de razonamiento) solo aceptan
+    // su valor por defecto y rechazan la petición si se sobreescribe, incluso a 0.
     return Map.of(
         "model", properties.model(),
-        "temperature", 0,
         "response_format", Map.of("type", "json_object"),
         "messages",
             List.of(
