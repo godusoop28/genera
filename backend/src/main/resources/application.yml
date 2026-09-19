@@ -1,6 +1,15 @@
 spring:
   application:
     name: c21genera-backend
+  main:
+    # El free tier de Render (0.1 CPU) hace que el arranque completo tarde
+    # varios minutos; lazy-init evita crear beans que no se tocan al
+    # arrancar (S3Client, servicios de módulos no usados por los seeders,
+    # controladores REST, etc.). Flyway y los ApplicationRunner (seeders)
+    # siguen ejecutándose eagerly: Spring Boot resuelve los Runners por tipo
+    # después del refresh, y eso arrastra a Flyway vía @DependsOn en el
+    # EntityManagerFactory.
+    lazy-initialization: true
   jackson:
     default-property-inclusion: non_null
   jpa:
