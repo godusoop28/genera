@@ -9,6 +9,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.HexFormat;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -25,6 +26,7 @@ import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignReques
  * producción, sin cambiar el dominio). El bucket se asume privado.
  */
 @Component
+@ConditionalOnProperty(prefix = "app.storage", name = "provider", havingValue = "s3", matchIfMissing = true)
 public class S3FileStorage implements FileStorage {
 
   private final S3Client s3Client;

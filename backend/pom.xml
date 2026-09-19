@@ -186,6 +186,13 @@
 			<artifactId>url-connection-client</artifactId>
 		</dependency>
 
+		<!-- Object storage alternative: Cloudinary (app.storage.provider=cloudinary) -->
+		<dependency>
+			<groupId>com.cloudinary</groupId>
+			<artifactId>cloudinary-http5</artifactId>
+			<version>2.3.0</version>
+		</dependency>
+
 		<!-- Document processing: PDF generation, DOCX templating, real MIME sniffing, EXIF -->
 		<dependency>
 			<groupId>org.apache.pdfbox</groupId>

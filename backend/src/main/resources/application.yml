@@ -80,6 +80,8 @@ app:
     cors:
       allowed-origins: ${FRONTEND_URL:http://localhost:3000}
   storage:
+    # "s3" (MinIO/AWS S3/Cloudflare R2) o "cloudinary".
+    provider: ${STORAGE_PROVIDER:s3}
     endpoint: ${S3_ENDPOINT:http://localhost:9000}
     region: ${S3_REGION:us-east-1}
     bucket: ${S3_BUCKET:c21genera-expedientes}
@@ -87,6 +89,10 @@ app:
     secret-key: ${S3_SECRET_KEY:}
     path-style-access: true
     presigned-url-ttl: PT10M
+  cloudinary:
+    cloud-name: ${CLOUDINARY_CLOUD_NAME:}
+    api-key: ${CLOUDINARY_API_KEY:}
+    api-secret: ${CLOUDINARY_API_SECRET:}
   upload:
     max-file-size-bytes: 15728640 # 15 MB
     max-files-per-request: 20
