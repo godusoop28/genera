@@ -87,13 +87,17 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
               .formatted(type.name(), String.join(", ", fieldNames));
 
       Map<String, Object> requestBody = buildRequestBody(userPrompt, pageImagesBase64);
-      JsonNode response =
+      // Se deserializa a mano con el ObjectMapper propio (com.fasterxml.jackson): los
+      // HttpMessageConverter de RestClient usan Jackson 3 (tools.jackson.databind, ver
+      // CoreConfig), que no sabe construir el JsonNode de la línea clásica.
+      String rawResponse =
           restClient
               .post()
               .uri("/chat/completions")
               .body(requestBody)
               .retrieve()
-              .body(JsonNode.class);
+              .body(String.class);
+      JsonNode response = objectMapper.readTree(rawResponse);
 
       return parseResponse(response);
     } catch (Exception e) {
