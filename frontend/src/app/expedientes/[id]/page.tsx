@@ -1,6 +1,7 @@
 "use client";
 
 import { PageContainer } from "@/components/layout/PageContainer";
+import { DocumentsPanel } from "./DocumentsPanel";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -339,17 +340,7 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
         </Card>
       ) : null}
 
-      {tab === "documentos" ? (
-        <Card>
-          <CardHeader title="Documentos y contrato" />
-          <p className="text-sm text-muted">
-            La carga/revisión de documentos y la generación del contrato requieren un almacenamiento
-            S3-compatible (MinIO) que no está configurado en este entorno de prueba. El backend
-            expone estos endpoints completos (ver <code>backend/README.md</code> y Swagger UI en{" "}
-            <code>/swagger-ui.html</code>); solo falta levantar MinIO para probarlos desde aquí.
-          </p>
-        </Card>
-      ) : null}
+      {tab === "documentos" ? <DocumentsPanel expedienteId={id} /> : null}
     </PageContainer>
   );
 }

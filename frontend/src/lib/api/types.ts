@@ -119,3 +119,96 @@ export interface ProblemDetailBody {
   code?: string;
   status?: number;
 }
+
+export type BackendDocumentStatus =
+  | "PENDING"
+  | "UPLOADED"
+  | "READY_FOR_REVIEW"
+  | "ACCEPTED"
+  | "RETURNED"
+  | "REJECTED"
+  | "REPLACED";
+
+export type BackendProcessingStatus = "QUEUED" | "PROCESSING" | "QUALITY_FAILED" | "PROCESSED" | "FAILED";
+
+export type ReturnReasonCode =
+  | "BLURRY_IMAGE"
+  | "INCOMPLETE_DOCUMENT"
+  | "EXPIRED_DOCUMENT"
+  | "ILLEGIBLE_INFORMATION"
+  | "WRONG_DOCUMENT"
+  | "MISSING_PAGE"
+  | "OTHER";
+
+export interface DocumentResponse {
+  id: string;
+  expedienteId: string;
+  requirementCode: string;
+  type: string;
+  participantId: string | null;
+  required: boolean;
+  status: BackendDocumentStatus;
+  currentVersionNumber: number;
+}
+
+export interface DocumentVersionResponse {
+  id: string;
+  documentId: string;
+  versionNumber: number;
+  uploadedAt: string;
+  uploadedVia: string;
+  processingStatus: BackendProcessingStatus;
+}
+
+export interface DownloadResponse {
+  url: string;
+}
+
+export interface ExtractedFieldObservationResponse {
+  id: string;
+  documentId: string;
+  documentVersionId: string;
+  fieldName: string;
+  detectedValue: string | null;
+  confirmedValue: string | null;
+  origin: string;
+  confidence: number | null;
+  updatedAt: string;
+}
+
+export interface DataConflictResponse {
+  id: string;
+  fieldName: string;
+  description: string;
+  resolved: boolean;
+  detectedAt: string;
+  resolvedAt: string | null;
+}
+
+export type ContractGenerationStatus = "GENERATED" | "SIGNED" | "DELIVERED";
+
+export interface ContractGenerationResponse {
+  id: string;
+  expedienteId: string;
+  versionNumber: number;
+  docxStorageKey: string;
+  pdfStorageKey: string;
+  generatedAt: string;
+  generatedBy: string;
+  sha256: string;
+  status: ContractGenerationStatus;
+  signedAt: string | null;
+  deliveredAt: string | null;
+  deliveryMethod: string | null;
+}
+
+export interface ContractCalculationsResponse {
+  price: string;
+  priceWritten: string;
+  commission: string;
+  vat: string;
+  totalCommissionWithVat: string;
+  penalty: string;
+  exclusivityDays: number;
+  exclusivityEndDate: string;
+}

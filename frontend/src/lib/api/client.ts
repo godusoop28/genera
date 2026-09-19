@@ -69,3 +69,24 @@ export const apiClient = {
     request<T>(path, { ...options, method: "PATCH", body }),
   delete: <T>(path: string, options?: RequestOptions) => request<T>(path, { ...options, method: "DELETE" }),
 };
+
+// Subida de archivos: nunca pasa por `request` porque no debe fijar
+// Content-Type: application/json (el navegador pone el boundary multipart solo).
+export async function uploadFiles<T>(path: string, fieldName: string, files: File[]): Promise<T> {
+  const formData = new FormData();
+  for (const file of files) formData.append(fieldName, file);
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    headers: currentAccessToken ? { Authorization: `Bearer ${currentAccessToken}` } : undefined,
+    body: formData,
+  });
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new ApiError(data?.detail ?? data?.title ?? response.statusText, response.status, data?.code);
+  }
+
+  return data as T;
+}
