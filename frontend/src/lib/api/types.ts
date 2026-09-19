@@ -212,3 +212,49 @@ export interface ContractCalculationsResponse {
   exclusivityDays: number;
   exclusivityEndDate: string;
 }
+
+// --- Portal público del cliente (sin cuenta, autenticado por token en la URL) ---
+
+export interface PublicExpedienteResponse {
+  folio: string;
+  status: BackendExpedienteStatus;
+}
+
+export interface PrivacyNoticeResponse {
+  templateId: string;
+  type: string;
+  version: number;
+  sha256: string;
+  effectiveFrom: string;
+}
+
+export interface PrivacyConsentResponse {
+  mainPurposesAccepted: boolean;
+  secondaryPurposesAccepted: boolean;
+  acceptedAt: string;
+  hasSignature: boolean;
+}
+
+export interface ManualClientDataResponse {
+  civilStatus: string | null;
+  authorizedPrice: string | null;
+  email: string | null;
+  phone: string | null;
+  notificationAddress: string | null;
+  visitInstructions: string | null;
+  marketingDataAuthorized: boolean | null;
+  receiveAdsAuthorized: boolean | null;
+  additionalServicesRequested: string | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  parkingSpots: number | null;
+  conservationStatus: string | null;
+  availableServices: string | null;
+  relevantFeatures: string | null;
+  contractSignatureDate: string | null;
+}
+
+export interface SubmitDocumentsResponse {
+  submitted: boolean;
+  status: BackendExpedienteStatus;
+}
