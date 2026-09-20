@@ -264,6 +264,32 @@ export interface EmailAttachmentPreview {
   downloadUrl: string;
 }
 
+export type BackendRoleCode = "ADMINISTRATOR" | "ADVISOR" | "DOCUMENT_REVIEWER";
+export type BackendUserStatus = "ACTIVE" | "INACTIVE";
+
+export interface UserResponse {
+  id: string;
+  name: string;
+  email: string;
+  roleCode: BackendRoleCode;
+  roleName: string;
+  status: BackendUserStatus;
+  lastActivityAt: string | null;
+}
+
+export interface RoleResponse {
+  id: string;
+  code: BackendRoleCode;
+  name: string;
+  description: string;
+  permissions: string[];
+}
+
+export interface PermissionResponse {
+  code: string;
+  description: string;
+}
+
 export interface EmailPreviewResponse {
   subject: string;
   body: string;

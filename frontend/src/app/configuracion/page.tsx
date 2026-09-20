@@ -1,9 +1,7 @@
 import { PageContainer } from "@/components/layout/PageContainer";
 import { AccountSettingsForm } from "@/components/settings/AccountSettingsForm";
-import { DataResetCard } from "@/components/settings/DataResetCard";
 import { FontSizeControl } from "@/components/settings/FontSizeControl";
 import { NotificationSettingsCard } from "@/components/settings/NotificationSettingsCard";
-import { SecuritySettingsCard } from "@/components/settings/SecuritySettingsCard";
 import { ThemeSwitcher } from "@/components/settings/ThemeSwitcher";
 
 export default function ConfiguracionPage() {
@@ -20,8 +18,6 @@ export default function ConfiguracionPage() {
         <div className="flex flex-col gap-6">
           <AccountSettingsForm />
           <NotificationSettingsCard />
-          <SecuritySettingsCard />
-          <DataResetCard />
         </div>
       </div>
     </PageContainer>

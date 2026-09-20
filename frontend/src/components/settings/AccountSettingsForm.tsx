@@ -4,24 +4,31 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { useToast } from "@/components/ui/Toast";
-import { useDemoApp } from "@/context/DemoAppProvider";
-import { ROLES } from "@/data/permissions";
+import { useAuth } from "@/context/AuthProvider";
+import { ApiError } from "@/lib/api/client";
+import { updateUser } from "@/lib/api/users";
+import type { BackendRoleCode } from "@/lib/api/types";
 import { useState } from "react";
 
 export function AccountSettingsForm() {
-  const { currentUser, updateUser } = useDemoApp();
+  const { user, refreshUser } = useAuth();
   const { showToast } = useToast();
-  const [name, setName] = useState(currentUser.name);
-  const [email, setEmail] = useState(currentUser.email ?? "");
-  const role = ROLES.find((r) => r.id === currentUser.roleId);
+  const [name, setName] = useState(user?.name ?? "");
+  const [email, setEmail] = useState(user?.email ?? "");
+  const [saving, setSaving] = useState(false);
 
-  const handleSave = () => {
-    updateUser(currentUser.id, (u) => ({
-      ...u,
-      name: name.trim() || u.name,
-      email: email.trim() || undefined,
-    }));
-    showToast("Datos de la cuenta actualizados.");
+  const handleSave = async () => {
+    if (!user || !name.trim() || !email.trim()) return;
+    setSaving(true);
+    try {
+      await updateUser(user.id, name.trim(), email.trim(), user.role as BackendRoleCode);
+      await refreshUser();
+      showToast("Datos de la cuenta actualizados.");
+    } catch (err) {
+      showToast(err instanceof ApiError ? `No se pudo guardar (${err.status}): ${err.message}` : "Error de conexión.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -36,10 +43,12 @@ export function AccountSettingsForm() {
           onChange={(e) => setEmail(e.target.value)}
           placeholder="nombre@c21genera.com"
         />
-        <Input label="Rol" value={role?.name ?? ""} readOnly containerClassName="sm:col-span-2" />
+        <Input label="Rol" value={user?.role ?? ""} readOnly containerClassName="sm:col-span-2" />
       </div>
       <div className="mt-4 flex justify-end">
-        <Button onClick={handleSave}>Guardar cambios</Button>
+        <Button onClick={handleSave} disabled={saving || !name.trim() || !email.trim()}>
+          Guardar cambios
+        </Button>
       </div>
     </Card>
   );
