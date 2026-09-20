@@ -235,8 +235,10 @@ export interface PrivacyConsentResponse {
   hasSignature: boolean;
 }
 
+export type BackendCivilStatus = "SOLTERO" | "CASADO" | "UNION_LIBRE" | "DIVORCIADO" | "VIUDO";
+
 export interface ManualClientDataResponse {
-  civilStatus: string | null;
+  civilStatus: BackendCivilStatus | null;
   authorizedPrice: string | null;
   email: string | null;
   phone: string | null;

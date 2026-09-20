@@ -50,23 +50,29 @@ public class ManualClientData {
     this.expedienteId = expedienteId;
   }
 
+  /**
+   * Fusiona, no reemplaza: el cliente y el staff llenan estos datos en
+   * momentos distintos (p. ej. el cliente manda email/teléfono en un paso y
+   * estado civil en otro), así que un campo ausente en la petición no debe
+   * borrar un valor ya guardado.
+   */
   public void update(ManualClientDataUpdate update) {
-    this.civilStatus = update.civilStatus();
-    this.authorizedPrice = update.authorizedPrice();
-    this.email = update.email();
-    this.phone = update.phone();
-    this.notificationAddress = update.notificationAddress();
-    this.visitInstructions = update.visitInstructions();
-    this.marketingDataAuthorized = update.marketingDataAuthorized();
-    this.receiveAdsAuthorized = update.receiveAdsAuthorized();
-    this.additionalServicesRequested = update.additionalServicesRequested();
-    this.bedrooms = update.bedrooms();
-    this.bathrooms = update.bathrooms();
-    this.parkingSpots = update.parkingSpots();
-    this.conservationStatus = update.conservationStatus();
-    this.availableServices = update.availableServices();
-    this.relevantFeatures = update.relevantFeatures();
-    this.contractSignatureDate = update.contractSignatureDate();
+    if (update.civilStatus() != null) this.civilStatus = update.civilStatus();
+    if (update.authorizedPrice() != null) this.authorizedPrice = update.authorizedPrice();
+    if (update.email() != null) this.email = update.email();
+    if (update.phone() != null) this.phone = update.phone();
+    if (update.notificationAddress() != null) this.notificationAddress = update.notificationAddress();
+    if (update.visitInstructions() != null) this.visitInstructions = update.visitInstructions();
+    if (update.marketingDataAuthorized() != null) this.marketingDataAuthorized = update.marketingDataAuthorized();
+    if (update.receiveAdsAuthorized() != null) this.receiveAdsAuthorized = update.receiveAdsAuthorized();
+    if (update.additionalServicesRequested() != null) this.additionalServicesRequested = update.additionalServicesRequested();
+    if (update.bedrooms() != null) this.bedrooms = update.bedrooms();
+    if (update.bathrooms() != null) this.bathrooms = update.bathrooms();
+    if (update.parkingSpots() != null) this.parkingSpots = update.parkingSpots();
+    if (update.conservationStatus() != null) this.conservationStatus = update.conservationStatus();
+    if (update.availableServices() != null) this.availableServices = update.availableServices();
+    if (update.relevantFeatures() != null) this.relevantFeatures = update.relevantFeatures();
+    if (update.contractSignatureDate() != null) this.contractSignatureDate = update.contractSignatureDate();
   }
 
   public UUID getExpedienteId() {

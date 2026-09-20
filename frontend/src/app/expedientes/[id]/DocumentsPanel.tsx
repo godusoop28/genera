@@ -28,6 +28,7 @@ import type {
   ReturnReasonCode,
 } from "@/lib/api/types";
 import { Modal } from "@/components/ui/Modal";
+import { documentTypeLabel } from "@/lib/document-type-labels";
 import { Download, FileText, Loader2, Mail, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -393,7 +394,7 @@ function DocumentRow({ document, onChanged }: { document: DocumentResponse; onCh
     <div className="rounded-lg border border-border p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <span className="text-sm font-medium text-obsessed">{document.type}</span>
+          <span className="text-sm font-medium text-obsessed">{documentTypeLabel(document.type)}</span>
           {!document.required ? <span className="ml-2 text-xs text-muted">(condicional)</span> : null}
         </div>
         <div className="flex items-center gap-2">

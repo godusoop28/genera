@@ -96,7 +96,7 @@ class AuditEventRecorder {
 
   @ApplicationModuleListener
   void on(DocumentReviewed event) {
-    record("DocumentReviewed", "Document", event.documentId(), null, "Documento revisado: " + event.decision());
+    record("DocumentReviewed", "Document", event.documentId(), event.reviewedByUserId(), "Documento revisado: " + event.decision());
     activity(event.expedienteId(), ActivityCategory.DOCUMENT, "Un documento fue revisado: " + event.decision());
   }
 

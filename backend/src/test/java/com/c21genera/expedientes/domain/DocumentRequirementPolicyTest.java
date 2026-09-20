@@ -22,16 +22,24 @@ class DocumentRequirementPolicyTest {
     return specs.stream().filter(s -> s.type() == type && s.required()).count();
   }
 
+  private static List<RequiredDocumentSpec> compute(
+      List<ExpedienteParticipant> participants,
+      SignerCharacter signerCharacter,
+      boolean condominiumRegime,
+      CivilStatus civilStatus) {
+    return DocumentRequirementPolicy.compute(
+        participants,
+        signerCharacter,
+        PersonType.FISICA,
+        AccreditationType.ESCRITURA_PUBLICA,
+        condominiumRegime,
+        PropertyCaseType.HOUSING,
+        civilStatus);
+  }
+
   @Test
   void oneOwnerGeneratesOneIne() {
-    List<RequiredDocumentSpec> specs =
-        DocumentRequirementPolicy.compute(
-            List.of(participant()),
-            SignerCharacter.PROPIETARIO,
-            PersonType.FISICA,
-            AccreditationType.ESCRITURA_PUBLICA,
-            false,
-            PropertyCaseType.HOUSING);
+    List<RequiredDocumentSpec> specs = compute(List.of(participant()), SignerCharacter.PROPIETARIO, false, null);
 
     assertThat(countRequired(specs, DocumentTypeCode.INE)).isEqualTo(1);
   }
@@ -43,14 +51,7 @@ class DocumentRequirementPolicyTest {
             new ExpedienteParticipant(UUID.randomUUID(), ParticipantRole.OWNER, "Propietario 1", 1),
             new ExpedienteParticipant(UUID.randomUUID(), ParticipantRole.CO_OWNER, "Propietario 2", 2));
 
-    List<RequiredDocumentSpec> specs =
-        DocumentRequirementPolicy.compute(
-            owners,
-            SignerCharacter.COPROPIETARIO,
-            PersonType.FISICA,
-            AccreditationType.ESCRITURA_PUBLICA,
-            false,
-            PropertyCaseType.HOUSING);
+    List<RequiredDocumentSpec> specs = compute(owners, SignerCharacter.COPROPIETARIO, false, null);
 
     assertThat(countRequired(specs, DocumentTypeCode.INE)).isEqualTo(2);
   }
@@ -63,28 +64,14 @@ class DocumentRequirementPolicyTest {
             new ExpedienteParticipant(UUID.randomUUID(), ParticipantRole.CO_OWNER, "Propietario 2", 2),
             new ExpedienteParticipant(UUID.randomUUID(), ParticipantRole.CO_OWNER, "Propietario 3", 3));
 
-    List<RequiredDocumentSpec> specs =
-        DocumentRequirementPolicy.compute(
-            owners,
-            SignerCharacter.COPROPIETARIO,
-            PersonType.FISICA,
-            AccreditationType.ESCRITURA_PUBLICA,
-            false,
-            PropertyCaseType.HOUSING);
+    List<RequiredDocumentSpec> specs = compute(owners, SignerCharacter.COPROPIETARIO, false, null);
 
     assertThat(countRequired(specs, DocumentTypeCode.INE)).isEqualTo(3);
   }
 
   @Test
   void attorneyRequiresPowerOfAttorney() {
-    List<RequiredDocumentSpec> specs =
-        DocumentRequirementPolicy.compute(
-            List.of(participant()),
-            SignerCharacter.APODERADO,
-            PersonType.FISICA,
-            AccreditationType.ESCRITURA_PUBLICA,
-            false,
-            PropertyCaseType.HOUSING);
+    List<RequiredDocumentSpec> specs = compute(List.of(participant()), SignerCharacter.APODERADO, false, null);
 
     assertThat(specs)
         .filteredOn(s -> s.type() == DocumentTypeCode.POWER_OF_ATTORNEY)
@@ -94,14 +81,7 @@ class DocumentRequirementPolicyTest {
 
   @Test
   void ownerActingOnOwnBehalfDoesNotRequirePowerOfAttorney() {
-    List<RequiredDocumentSpec> specs =
-        DocumentRequirementPolicy.compute(
-            List.of(participant()),
-            SignerCharacter.PROPIETARIO,
-            PersonType.FISICA,
-            AccreditationType.ESCRITURA_PUBLICA,
-            false,
-            PropertyCaseType.HOUSING);
+    List<RequiredDocumentSpec> specs = compute(List.of(participant()), SignerCharacter.PROPIETARIO, false, null);
 
     assertThat(specs)
         .filteredOn(s -> s.type() == DocumentTypeCode.POWER_OF_ATTORNEY)
@@ -115,22 +95,8 @@ class DocumentRequirementPolicyTest {
 
   @Test
   void condominiumRegimeIsRequiredOnlyWhenApplicable() {
-    List<RequiredDocumentSpec> withCondominium =
-        DocumentRequirementPolicy.compute(
-            List.of(participant()),
-            SignerCharacter.PROPIETARIO,
-            PersonType.FISICA,
-            AccreditationType.ESCRITURA_PUBLICA,
-            true,
-            PropertyCaseType.HOUSING);
-    List<RequiredDocumentSpec> withoutCondominium =
-        DocumentRequirementPolicy.compute(
-            List.of(participant()),
-            SignerCharacter.PROPIETARIO,
-            PersonType.FISICA,
-            AccreditationType.ESCRITURA_PUBLICA,
-            false,
-            PropertyCaseType.HOUSING);
+    List<RequiredDocumentSpec> withCondominium = compute(List.of(participant()), SignerCharacter.PROPIETARIO, true, null);
+    List<RequiredDocumentSpec> withoutCondominium = compute(List.of(participant()), SignerCharacter.PROPIETARIO, false, null);
 
     assertThat(withCondominium)
         .filteredOn(s -> s.type() == DocumentTypeCode.CONDOMINIUM_REGIME)
@@ -143,20 +109,43 @@ class DocumentRequirementPolicyTest {
   }
 
   @Test
+  void marriageCertificateIsRequiredOnlyWhenMarried() {
+    List<RequiredDocumentSpec> married = compute(List.of(participant()), SignerCharacter.PROPIETARIO, false, CivilStatus.CASADO);
+    List<RequiredDocumentSpec> single = compute(List.of(participant()), SignerCharacter.PROPIETARIO, false, CivilStatus.SOLTERO);
+    List<RequiredDocumentSpec> unknown = compute(List.of(participant()), SignerCharacter.PROPIETARIO, false, null);
+
+    assertThat(married)
+        .filteredOn(s -> s.type() == DocumentTypeCode.MARRIAGE_CERTIFICATE)
+        .singleElement()
+        .satisfies(s -> assertThat(s.required()).isTrue());
+    assertThat(single)
+        .filteredOn(s -> s.type() == DocumentTypeCode.MARRIAGE_CERTIFICATE)
+        .singleElement()
+        .satisfies(s -> assertThat(s.required()).isFalse());
+    assertThat(unknown)
+        .filteredOn(s -> s.type() == DocumentTypeCode.MARRIAGE_CERTIFICATE)
+        .singleElement()
+        .satisfies(s -> assertThat(s.required()).isFalse());
+  }
+
+  @Test
   void baseDocumentsAreAlwaysRequired() {
-    List<RequiredDocumentSpec> specs =
-        DocumentRequirementPolicy.compute(
-            List.of(participant()),
-            SignerCharacter.PROPIETARIO,
-            PersonType.FISICA,
-            AccreditationType.ESCRITURA_PUBLICA,
-            false,
-            PropertyCaseType.HOUSING);
+    List<RequiredDocumentSpec> specs = compute(List.of(participant()), SignerCharacter.PROPIETARIO, false, null);
 
     assertThat(countRequired(specs, DocumentTypeCode.TAX_STATUS_CERTIFICATE)).isEqualTo(1);
     assertThat(countRequired(specs, DocumentTypeCode.DEED)).isEqualTo(1);
-    assertThat(countRequired(specs, DocumentTypeCode.PROOF_OF_ADDRESS)).isEqualTo(1);
-    assertThat(countRequired(specs, DocumentTypeCode.LIEN_CERTIFICATE)).isEqualTo(1);
+    assertThat(countRequired(specs, DocumentTypeCode.CADASTRAL_PLAN)).isEqualTo(1);
+    assertThat(countRequired(specs, DocumentTypeCode.RPP_REGISTRATION_SLIP)).isEqualTo(1);
+    assertThat(countRequired(specs, DocumentTypeCode.ELECTRICITY_RECEIPT)).isEqualTo(1);
+    assertThat(countRequired(specs, DocumentTypeCode.WATER_RECEIPT)).isEqualTo(1);
     assertThat(countRequired(specs, DocumentTypeCode.PROPERTY_TAX)).isEqualTo(1);
+  }
+
+  @Test
+  void libertyOfLienCertificateAndSingleProofOfAddressAreNoLongerRequired() {
+    List<RequiredDocumentSpec> specs = compute(List.of(participant()), SignerCharacter.PROPIETARIO, false, null);
+
+    assertThat(specs).noneMatch(s -> s.type() == DocumentTypeCode.LIEN_CERTIFICATE);
+    assertThat(specs).noneMatch(s -> s.type() == DocumentTypeCode.PROOF_OF_ADDRESS);
   }
 }

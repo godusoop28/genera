@@ -24,7 +24,8 @@ public final class DocumentRequirementPolicy {
       PersonType personType,
       AccreditationType accreditationType,
       boolean condominiumRegime,
-      PropertyCaseType propertyCaseType) {
+      PropertyCaseType propertyCaseType,
+      CivilStatus civilStatus) {
 
     List<RequiredDocumentSpec> specs = new ArrayList<>();
 
@@ -37,8 +38,10 @@ public final class DocumentRequirementPolicy {
 
     specs.add(new RequiredDocumentSpec("fiscal", DocumentTypeCode.TAX_STATUS_CERTIFICATE, true, false, null));
     specs.add(new RequiredDocumentSpec("escritura", DocumentTypeCode.DEED, true, false, null));
-    specs.add(new RequiredDocumentSpec("domicilio", DocumentTypeCode.PROOF_OF_ADDRESS, true, false, null));
-    specs.add(new RequiredDocumentSpec("gravamen", DocumentTypeCode.LIEN_CERTIFICATE, true, false, null));
+    specs.add(new RequiredDocumentSpec("plano-catastral", DocumentTypeCode.CADASTRAL_PLAN, true, false, null));
+    specs.add(new RequiredDocumentSpec("boleta-rpp", DocumentTypeCode.RPP_REGISTRATION_SLIP, true, false, null));
+    specs.add(new RequiredDocumentSpec("recibo-cfe", DocumentTypeCode.ELECTRICITY_RECEIPT, true, false, null));
+    specs.add(new RequiredDocumentSpec("recibo-agua", DocumentTypeCode.WATER_RECEIPT, true, false, null));
     specs.add(new RequiredDocumentSpec("predial", DocumentTypeCode.PROPERTY_TAX, true, false, null));
 
     // Condicionales.
@@ -47,6 +50,11 @@ public final class DocumentRequirementPolicy {
 
     specs.add(
         new RequiredDocumentSpec("condominio", DocumentTypeCode.CONDOMINIUM_REGIME, condominiumRegime, true, null));
+
+    boolean requiresMarriageCertificate = civilStatus == CivilStatus.CASADO;
+    specs.add(
+        new RequiredDocumentSpec(
+            "acta-matrimonio", DocumentTypeCode.MARRIAGE_CERTIFICATE, requiresMarriageCertificate, true, null));
 
     return List.copyOf(specs);
   }

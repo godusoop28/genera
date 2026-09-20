@@ -114,7 +114,8 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
             expediente.getPersonType(),
             expediente.getAccreditationType(),
             expediente.isCondominiumRegime(),
-            expediente.getPropertyCaseType());
+            expediente.getPropertyCaseType(),
+            null);
     events.publishEvent(new ExpedienteRequirementsChanged(expediente.getId(), requirements));
 
     return expediente;
@@ -151,18 +152,36 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
   public List<RequiredDocumentSpec> requirementsOf(UUID expedienteId) {
     Expediente expediente = get(expedienteId);
     List<ExpedienteParticipant> participants = participantsOf(expedienteId);
+    return computeRequirements(expediente, participants);
+  }
+
+  private List<RequiredDocumentSpec> computeRequirements(Expediente expediente, List<ExpedienteParticipant> participants) {
+    ManualClientData data = manualDataOf(expediente.getId());
     return DocumentRequirementPolicy.compute(
         participants,
         expediente.getSignerCharacter(),
         expediente.getPersonType(),
         expediente.getAccreditationType(),
         expediente.isCondominiumRegime(),
-        expediente.getPropertyCaseType());
+        expediente.getPropertyCaseType(),
+        data.getCivilStatus());
   }
 
+  /**
+   * Si el estado civil (u otro dato que alimente la política de requisitos)
+   * cambia después de creado el expediente, hay que volver a materializar
+   * documentos (p. ej. acta de matrimonio al declararse casado). documents
+   * escucha este mismo evento que en la creación y es idempotente: no
+   * duplica los que ya existen (ver DocumentService.on(ExpedienteRequirementsChanged)).
+   */
   public ManualClientData updateManualData(UUID expedienteId, ManualClientDataUpdate update) {
     ManualClientData data = manualDataOf(expedienteId);
     data.update(update);
+
+    Expediente expediente = get(expedienteId);
+    List<RequiredDocumentSpec> requirements = computeRequirements(expediente, participantsOf(expedienteId));
+    events.publishEvent(new ExpedienteRequirementsChanged(expedienteId, requirements));
+
     return data;
   }
 

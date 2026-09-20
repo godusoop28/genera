@@ -180,7 +180,7 @@ public class DocumentService implements DocumentsApi {
     // expedientes escucha este evento para decidir su propia transición de
     // estado (UNDER_REVIEW / CORRECTIONS_REQUESTED); documents no lo comanda
     // directamente, para evitar una dependencia cíclica entre módulos.
-    events.publishEvent(new DocumentReviewed(document.getExpedienteId(), documentId, decision));
+    events.publishEvent(new DocumentReviewed(document.getExpedienteId(), documentId, decision, reviewerId));
 
     if (decision == ReviewDecision.ACCEPTED && allRequiredAccepted(document.getExpedienteId())) {
       events.publishEvent(new AllRequiredDocumentsApproved(document.getExpedienteId()));

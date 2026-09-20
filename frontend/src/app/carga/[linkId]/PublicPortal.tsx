@@ -19,7 +19,8 @@ import {
   updateClientData,
   uploadPublicDocumentVersion,
 } from "@/lib/api/public";
-import type { DocumentResponse, ManualClientDataResponse, PublicExpedienteResponse } from "@/lib/api/types";
+import type { BackendCivilStatus, DocumentResponse, ManualClientDataResponse, PublicExpedienteResponse } from "@/lib/api/types";
+import { documentTypeLabel } from "@/lib/document-type-labels";
 import { HelpCircle, Loader2, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -179,10 +180,19 @@ function PrivacyStep({ token, onContinue }: { token: string; onContinue: () => v
   );
 }
 
+const civilStatusOptions: { value: BackendCivilStatus; label: string }[] = [
+  { value: "SOLTERO", label: "Soltero(a)" },
+  { value: "CASADO", label: "Casado(a)" },
+  { value: "UNION_LIBRE", label: "Unión libre" },
+  { value: "DIVORCIADO", label: "Divorciado(a)" },
+  { value: "VIUDO", label: "Viudo(a)" },
+];
+
 function ClientDataStep({ token, onContinue }: { token: string; onContinue: () => void }) {
   const [data, setData] = useState<ManualClientDataResponse | null>(null);
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [civilStatus, setCivilStatus] = useState<BackendCivilStatus | "">("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -192,6 +202,7 @@ function ClientDataStep({ token, onContinue }: { token: string; onContinue: () =
         setData(d);
         setEmail(d.email ?? "");
         setPhone(d.phone ?? "");
+        setCivilStatus(d.civilStatus ?? "");
       })
       .catch(() => undefined);
   }, [token]);
@@ -200,7 +211,7 @@ function ClientDataStep({ token, onContinue }: { token: string; onContinue: () =
     setSubmitting(true);
     setError(null);
     try {
-      await updateClientData(token, { email, phone });
+      await updateClientData(token, { email, phone, civilStatus: civilStatus || null });
       onContinue();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No se pudo guardar tu información. Intenta de nuevo.");
@@ -235,6 +246,24 @@ function ClientDataStep({ token, onContinue }: { token: string; onContinue: () =
               placeholder="55 0000 0000"
               className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-gold"
             />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium tracking-wide text-muted uppercase">Estado civil</label>
+            <select
+              value={civilStatus}
+              onChange={(e) => setCivilStatus(e.target.value as BackendCivilStatus)}
+              className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-gold"
+            >
+              <option value="">Selecciona una opción</option>
+              {civilStatusOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            {civilStatus === "CASADO" ? (
+              <p className="mt-1 text-xs text-muted">Si estás casado(a), más adelante se te pedirá tu acta de matrimonio.</p>
+            ) : null}
           </div>
           {error ? <p className="text-sm text-danger-text">{error}</p> : null}
           <div className="flex justify-end">
@@ -360,7 +389,7 @@ function PublicDocumentRow({
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3">
       <div>
-        <span className="text-sm font-medium text-obsessed">{document.type}</span>
+        <span className="text-sm font-medium text-obsessed">{documentTypeLabel(document.type)}</span>
         {!document.required ? <span className="ml-2 text-xs text-muted">(condicional)</span> : null}
       </div>
       <div className="flex items-center gap-2">

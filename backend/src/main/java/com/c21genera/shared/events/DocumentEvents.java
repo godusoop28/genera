@@ -22,7 +22,7 @@ public final class DocumentEvents {
       UUID expedienteId, UUID documentId, UUID documentVersionId, DocumentTypeCode type, List<PageRef> pages) {}
 
   /** expedientes escucha esto para decidir la transición de estado correspondiente. */
-  public record DocumentReviewed(UUID expedienteId, UUID documentId, ReviewDecision decision) {}
+  public record DocumentReviewed(UUID expedienteId, UUID documentId, ReviewDecision decision, UUID reviewedByUserId) {}
 
   /** Se publica cuando TODOS los documentos obligatorios de un expediente quedan ACCEPTED. */
   public record AllRequiredDocumentsApproved(UUID expedienteId) {}
