@@ -258,3 +258,14 @@ export interface SubmitDocumentsResponse {
   submitted: boolean;
   status: BackendExpedienteStatus;
 }
+
+export interface EmailAttachmentPreview {
+  fileName: string;
+  downloadUrl: string;
+}
+
+export interface EmailPreviewResponse {
+  subject: string;
+  body: string;
+  attachments: EmailAttachmentPreview[];
+}

@@ -17,15 +17,18 @@ import {
 } from "@/lib/api/documents";
 import { generateContract, getContractData, listContracts, markContractDelivered, markContractSigned } from "@/lib/api/contracts";
 import { getExtractedFields } from "@/lib/api/extraction";
+import { getDocumentsEmailPreview } from "@/lib/api/notifications";
 import type {
   ContractCalculationsResponse,
   ContractGenerationResponse,
   DocumentResponse,
   DocumentVersionResponse,
+  EmailPreviewResponse,
   ExtractedFieldObservationResponse,
   ReturnReasonCode,
 } from "@/lib/api/types";
-import { Download, FileText, Loader2, Upload } from "lucide-react";
+import { Modal } from "@/components/ui/Modal";
+import { Download, FileText, Loader2, Mail, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const processingLabels: Record<DocumentVersionResponse["processingStatus"], string> = {
@@ -80,6 +83,8 @@ export function DocumentsPanel({ expedienteId }: { expedienteId: string }) {
   const [contractData, setContractData] = useState<ContractCalculationsResponse | null>(null);
   const [contracts, setContracts] = useState<ContractGenerationResponse[]>([]);
   const [generatingContract, setGeneratingContract] = useState(false);
+  const [emailPreview, setEmailPreview] = useState<EmailPreviewResponse | null>(null);
+  const [loadingEmailPreview, setLoadingEmailPreview] = useState(false);
 
   const loadDocuments = useCallback(() => {
     listDocuments(expedienteId).then(setDocuments).catch(() => undefined);
@@ -127,6 +132,22 @@ export function DocumentsPanel({ expedienteId }: { expedienteId: string }) {
       loadContracts();
     } catch (err) {
       showToast(err instanceof ApiError ? `No se pudo actualizar (${err.status}).` : "Error de conexión.");
+    }
+  };
+
+  const handleOpenEmailPreview = async () => {
+    setLoadingEmailPreview(true);
+    try {
+      const preview = await getDocumentsEmailPreview(expedienteId);
+      setEmailPreview(preview);
+    } catch (err) {
+      showToast(
+        err instanceof ApiError
+          ? `No se pudo armar la vista previa (${err.status}): ${err.message}`
+          : "Error de conexión.",
+      );
+    } finally {
+      setLoadingEmailPreview(false);
     }
   };
 
@@ -193,6 +214,45 @@ export function DocumentsPanel({ expedienteId }: { expedienteId: string }) {
           </ul>
         ) : null}
       </Card>
+
+      <Card>
+        <CardHeader
+          title="Envío a notaría"
+          description="El envío es manual: aquí solo se arma el correo con los documentos aceptados para que lo revises y lo mandes tú mismo."
+        />
+        <Button onClick={handleOpenEmailPreview} disabled={loadingEmailPreview} size="sm">
+          {loadingEmailPreview ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Mail className="h-4 w-4" aria-hidden />}
+          Vista previa de envío
+        </Button>
+      </Card>
+
+      <Modal open={emailPreview !== null} onClose={() => setEmailPreview(null)} title="Vista previa de envío a notaría">
+        {emailPreview ? (
+          <div className="flex flex-col gap-4">
+            <p className="text-xs text-muted">
+              Esto no envía nada. Copia el contenido o descarga los documentos y envíalos tú mismo desde tu correo.
+            </p>
+            <Field label="Asunto" value={emailPreview.subject} />
+            <div>
+              <dt className="text-xs font-medium tracking-wide text-muted uppercase">Cuerpo</dt>
+              <dd className="mt-0.5 whitespace-pre-wrap text-sm text-obsessed">{emailPreview.body}</dd>
+            </div>
+            <div>
+              <dt className="mb-2 text-xs font-medium tracking-wide text-muted uppercase">Documentos adjuntos</dt>
+              <ul className="flex flex-col gap-2">
+                {emailPreview.attachments.map((a) => (
+                  <li key={a.fileName} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+                    <span className="text-obsessed">{a.fileName}</span>
+                    <a href={a.downloadUrl} target="_blank" rel="noreferrer" className="text-dark-gold hover:underline">
+                      Descargar
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

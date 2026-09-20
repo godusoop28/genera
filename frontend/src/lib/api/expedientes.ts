@@ -61,3 +61,15 @@ export function getRequirements(id: string) {
   if (DEMO_MODE) return demoGetRequirements(id);
   return apiClient.get<RequirementResponse[]>(`/internal/expedientes/${id}/requirements`);
 }
+
+export function signReception(id: string) {
+  return apiClient.post<void>(`/internal/expedientes/${id}/reception/sign`);
+}
+
+export function acceptProperty(id: string) {
+  return apiClient.post<ExpedienteResponse>(`/internal/expedientes/${id}/accept-property`);
+}
+
+export function rejectProperty(id: string, reason: string) {
+  return apiClient.post<ExpedienteResponse>(`/internal/expedientes/${id}/reject-property`, { reason });
+}

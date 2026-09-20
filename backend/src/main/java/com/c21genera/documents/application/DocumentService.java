@@ -267,4 +267,17 @@ public class DocumentService implements DocumentsApi {
   public List<UUID> documentIdsOf(UUID expedienteId) {
     return documentRepository.findByExpedienteId(expedienteId).stream().map(Document::getId).toList();
   }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<AcceptedDocumentView> acceptedDocumentsOf(UUID expedienteId) {
+    return documentRepository.findByExpedienteId(expedienteId).stream()
+        .filter(d -> d.getStatus() == DocumentStatus.ACCEPTED)
+        .flatMap(
+            d ->
+                currentAcceptedPdfStorageKey(d.getId())
+                    .map(key -> new AcceptedDocumentView(d.getId(), d.getType().name(), key))
+                    .stream())
+        .toList();
+  }
 }

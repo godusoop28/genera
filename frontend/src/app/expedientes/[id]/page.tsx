@@ -10,11 +10,19 @@ import { ApiError } from "@/lib/api/client";
 import { getActivity } from "@/lib/api/activity";
 import { getClosingCase, getClosingNotes, addClosingNote } from "@/lib/api/closing";
 import { getComplianceChecklist } from "@/lib/api/compliance";
-import { getExpediente, getParticipants, getRequirements } from "@/lib/api/expedientes";
+import {
+  acceptProperty,
+  getExpediente,
+  getParticipants,
+  getRequirements,
+  rejectProperty,
+  signReception,
+} from "@/lib/api/expedientes";
 import { generatePublicLink } from "@/lib/api/public-link";
 import { backendStatusLabels, backendStatusTone } from "@/lib/api/status-labels";
 import type {
   ActivityResponse,
+  BackendExpedienteStatus,
   ClosingCaseResponse,
   ClosingNoteResponse,
   ComplianceChecklistResponse,
@@ -23,8 +31,14 @@ import type {
   RequirementResponse,
 } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
-import { Copy, Link2, RefreshCw } from "lucide-react";
+import { Copy, FileSignature, Link2, RefreshCw, ThumbsDown, ThumbsUp } from "lucide-react";
 import { use, useCallback, useEffect, useState } from "react";
+
+const PROPERTY_DECIDABLE_STATUSES: BackendExpedienteStatus[] = [
+  "RECEPTION_SIGNED",
+  "CONTRACT_PREPARATION",
+  "READY_FOR_SIGNATURE",
+];
 
 const tabs = [
   { id: "resumen", label: "Resumen" },
@@ -53,6 +67,10 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
   const [publicLink, setPublicLink] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [signingReception, setSigningReception] = useState(false);
+  const [decidingProperty, setDecidingProperty] = useState(false);
+  const [showRejectForm, setShowRejectForm] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
 
   const load = useCallback(() => {
     getExpediente(id)
@@ -104,6 +122,48 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
       showToast("Nota agregada.");
     } catch (err) {
       showToast(err instanceof ApiError ? `No se pudo agregar la nota (${err.status}).` : "Error de conexión.");
+    }
+  };
+
+  const handleSignReception = async () => {
+    setSigningReception(true);
+    try {
+      await signReception(id);
+      showToast("Recepción firmada.");
+      load();
+    } catch (err) {
+      showToast(err instanceof ApiError ? `No se pudo firmar la recepción (${err.status}): ${err.message}` : "Error de conexión.");
+    } finally {
+      setSigningReception(false);
+    }
+  };
+
+  const handleAcceptProperty = async () => {
+    setDecidingProperty(true);
+    try {
+      await acceptProperty(id);
+      showToast("Inmueble aceptado.");
+      load();
+    } catch (err) {
+      showToast(err instanceof ApiError ? `No se pudo aceptar el inmueble (${err.status}): ${err.message}` : "Error de conexión.");
+    } finally {
+      setDecidingProperty(false);
+    }
+  };
+
+  const handleRejectProperty = async () => {
+    if (!rejectReason.trim()) return;
+    setDecidingProperty(true);
+    try {
+      await rejectProperty(id, rejectReason.trim());
+      showToast("Inmueble rechazado.");
+      setShowRejectForm(false);
+      setRejectReason("");
+      load();
+    } catch (err) {
+      showToast(err instanceof ApiError ? `No se pudo rechazar el inmueble (${err.status}): ${err.message}` : "Error de conexión.");
+    } finally {
+      setDecidingProperty(false);
     }
   };
 
@@ -205,6 +265,53 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
               ) : null}
             </div>
           </Card>
+
+          {expediente.status === "DOCUMENTS_APPROVED" ? (
+            <Card>
+              <CardHeader
+                title="Recepción documental"
+                description="Los documentos ya fueron aprobados; firma la recepción para continuar con el contrato."
+              />
+              <Button onClick={handleSignReception} disabled={signingReception}>
+                <FileSignature className="h-4 w-4" aria-hidden />
+                Firmar recepción
+              </Button>
+            </Card>
+          ) : null}
+
+          {PROPERTY_DECIDABLE_STATUSES.includes(expediente.status) ? (
+            <Card>
+              <CardHeader title="Decisión sobre el inmueble" description="Cierra el ciclo del expediente: aceptado o rechazado." />
+              <div className="flex flex-wrap items-center gap-3">
+                <Button onClick={handleAcceptProperty} disabled={decidingProperty}>
+                  <ThumbsUp className="h-4 w-4" aria-hidden />
+                  Aceptar inmueble
+                </Button>
+                <Button variant="danger" onClick={() => setShowRejectForm((v) => !v)} disabled={decidingProperty}>
+                  <ThumbsDown className="h-4 w-4" aria-hidden />
+                  Rechazar inmueble
+                </Button>
+              </div>
+              {showRejectForm ? (
+                <div className="mt-3 flex flex-col gap-2 rounded-lg bg-app-bg p-3">
+                  <input
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    placeholder="Motivo del rechazo…"
+                    className="rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-gold"
+                  />
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="danger" onClick={handleRejectProperty} disabled={decidingProperty || !rejectReason.trim()}>
+                      Confirmar rechazo
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setShowRejectForm(false)}>
+                      Cancelar
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+            </Card>
+          ) : null}
         </div>
       ) : null}
 

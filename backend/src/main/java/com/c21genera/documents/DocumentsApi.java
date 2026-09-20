@@ -31,5 +31,10 @@ public interface DocumentsApi {
 
   List<UUID> documentIdsOf(UUID expedienteId);
 
+  /** Documentos ya ACCEPTED de un expediente, con su tipo y el PDF de la versión vigente. */
+  List<AcceptedDocumentView> acceptedDocumentsOf(UUID expedienteId);
+
   record PageView(int pageNumber, String storageKeyOriginal, String mimeType) {}
+
+  record AcceptedDocumentView(UUID documentId, String type, String pdfStorageKey) {}
 }
