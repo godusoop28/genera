@@ -250,6 +250,13 @@ export function DocumentsPanel({ expedienteId }: { expedienteId: string }) {
                 ))}
               </ul>
             </div>
+            {emailPreview.documentTypesWithoutFile.length > 0 ? (
+              <p className="rounded-lg bg-warning-bg px-3 py-2 text-sm text-warning-text">
+                {emailPreview.documentTypesWithoutFile.join(", ")} se{" "}
+                {emailPreview.documentTypesWithoutFile.length > 1 ? "marcaron" : "marcó"} como aceptado(s) pero todavía no tiene(n) un
+                archivo generado, así que no se puede adjuntar por ahora.
+              </p>
+            ) : null}
           </div>
         ) : null}
       </Modal>

@@ -271,13 +271,12 @@ public class DocumentService implements DocumentsApi {
   @Override
   @Transactional(readOnly = true)
   public List<AcceptedDocumentView> acceptedDocumentsOf(UUID expedienteId) {
+    // pdfStorageKey queda null cuando el staff aceptó manualmente una versión
+    // que nunca generó PDF (p. ej. anuló un QUALITY_FAILED): sigue siendo
+    // "aceptado" pero no hay archivo que adjuntar todavía.
     return documentRepository.findByExpedienteId(expedienteId).stream()
         .filter(d -> d.getStatus() == DocumentStatus.ACCEPTED)
-        .flatMap(
-            d ->
-                currentAcceptedPdfStorageKey(d.getId())
-                    .map(key -> new AcceptedDocumentView(d.getId(), d.getType().name(), key))
-                    .stream())
+        .map(d -> new AcceptedDocumentView(d.getId(), d.getType().name(), currentAcceptedPdfStorageKey(d.getId()).orElse(null)))
         .toList();
   }
 }

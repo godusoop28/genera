@@ -268,4 +268,5 @@ export interface EmailPreviewResponse {
   subject: string;
   body: string;
   attachments: EmailAttachmentPreview[];
+  documentTypesWithoutFile: string[];
 }

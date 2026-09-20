@@ -31,7 +31,11 @@ public interface DocumentsApi {
 
   List<UUID> documentIdsOf(UUID expedienteId);
 
-  /** Documentos ya ACCEPTED de un expediente, con su tipo y el PDF de la versión vigente. */
+  /**
+   * Documentos ya ACCEPTED de un expediente, con su tipo y el PDF de la
+   * versión vigente. pdfStorageKey es null cuando el staff aceptó una
+   * versión que nunca llegó a generar PDF (p. ej. anuló un QUALITY_FAILED).
+   */
   List<AcceptedDocumentView> acceptedDocumentsOf(UUID expedienteId);
 
   record PageView(int pageNumber, String storageKeyOriginal, String mimeType) {}

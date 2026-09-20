@@ -61,8 +61,12 @@ class NotificationServiceTest {
   void previewBuildsContentWithoutSendingAnything() {
     UUID expedienteId = UUID.randomUUID();
     UUID acceptedDoc = UUID.randomUUID();
+    UUID acceptedWithoutFile = UUID.randomUUID();
     when(documentsApi.acceptedDocumentsOf(expedienteId))
-        .thenReturn(List.of(new AcceptedDocumentView(acceptedDoc, "DEED", "processed/doc1.pdf")));
+        .thenReturn(
+            List.of(
+                new AcceptedDocumentView(acceptedDoc, "DEED", "processed/doc1.pdf"),
+                new AcceptedDocumentView(acceptedWithoutFile, "INE", null)));
     when(fileStorage.generateTemporaryDownloadUrl(eq("processed/doc1.pdf"), any()))
         .thenReturn(URI.create("https://example.com/signed-download"));
 
@@ -71,6 +75,7 @@ class NotificationServiceTest {
     assertThat(preview.attachments()).hasSize(1);
     assertThat(preview.attachments().getFirst().fileName()).isEqualTo("DEED.pdf");
     assertThat(preview.attachments().getFirst().downloadUrl()).hasToString("https://example.com/signed-download");
+    assertThat(preview.documentTypesWithoutFile()).containsExactly("INE");
     verify(queue, org.mockito.Mockito.never()).enqueue(any(), any());
   }
 

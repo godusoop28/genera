@@ -46,7 +46,14 @@ public class NotificationService {
 
   public record EmailAttachmentPreview(String fileName, URI downloadUrl) {}
 
-  public record EmailPreview(String subject, String body, List<EmailAttachmentPreview> attachments) {}
+  /**
+   * documentTypesWithoutFile: documentos ya ACCEPTED por el staff pero cuya
+   * versión nunca generó un PDF (p. ej. se anuló un QUALITY_FAILED a mano);
+   * no hay nada que adjuntar todavía para esos, y el staff debe saberlo antes
+   * de enviar el correo, no descubrirlo después con la notaría.
+   */
+  public record EmailPreview(
+      String subject, String body, List<EmailAttachmentPreview> attachments, List<String> documentTypesWithoutFile) {}
 
   /** No envía nada: solo arma la vista previa para que el staff decida cómo enviarla manualmente. */
   public EmailPreview preview(UUID expedienteId) {
@@ -56,12 +63,14 @@ public class NotificationService {
     }
     List<EmailAttachmentPreview> attachments =
         accepted.stream()
+            .filter(doc -> doc.pdfStorageKey() != null)
             .map(
                 doc ->
                     new EmailAttachmentPreview(
                         doc.type() + ".pdf", fileStorage.generateTemporaryDownloadUrl(doc.pdfStorageKey(), storageProperties.presignedUrlTtl())))
             .toList();
-    return new EmailPreview(SUBJECT, BODY_INTRO, attachments);
+    List<String> withoutFile = accepted.stream().filter(doc -> doc.pdfStorageKey() == null).map(AcceptedDocumentView::type).toList();
+    return new EmailPreview(SUBJECT, BODY_INTRO, attachments, withoutFile);
   }
 
   public void sendAcceptedDocuments(UUID expedienteId, String recipientEmail) {
