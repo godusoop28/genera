@@ -62,7 +62,13 @@ public class UserService {
 
   @Transactional(readOnly = true)
   public User get(UUID userId) {
-    return userRepository.findById(userId).orElseThrow(() -> new NotFoundException("Usuario", userId));
+    User user = userRepository.findById(userId).orElseThrow(() -> new NotFoundException("Usuario", userId));
+    // role es LAZY y open-in-view está desactivado: los controllers mapean a
+    // UserResponse (que lee user.getRole()) después de que esta transacción
+    // ya cerró, así que hay que inicializarlo aquí o revienta con
+    // LazyInitializationException.
+    org.hibernate.Hibernate.initialize(user.getRole());
+    return user;
   }
 
   @Transactional(readOnly = true)
