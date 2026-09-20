@@ -80,7 +80,8 @@ public class DocumentVersionProcessor {
 
       NormalizedImage normalized = normalizer.normalize(original, page.mimeType());
       DocumentQualityAnalyzer.QualityResult quality =
-          qualityAnalyzer.analyze(normalized.content(), normalized.mimeType(), normalized.widthPx(), normalized.heightPx());
+          qualityAnalyzer.analyze(
+              normalized.content(), normalized.mimeType(), normalized.widthPx(), normalized.heightPx(), payload.type());
       if (!quality.acceptable()) {
         qualityIssues.addAll(quality.issues());
       }
