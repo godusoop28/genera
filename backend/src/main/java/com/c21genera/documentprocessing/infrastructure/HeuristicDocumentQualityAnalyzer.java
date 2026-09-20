@@ -2,23 +2,34 @@ package com.c21genera.documentprocessing.infrastructure;
 
 import com.c21genera.documentprocessing.domain.DocumentQualityAnalyzer;
 import com.c21genera.shared.domain.DocumentTypeCode;
+import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import javax.imageio.ImageIO;
 import org.springframework.stereotype.Component;
 
 /**
  * Chequeos determinísticos de calidad (ver AGENTS §36): resolución mínima,
- * relación de aspecto razonable y orientación vertical para una fotografía
- * de documento. No intenta detectar borrosidad ni contenido: eso queda fuera
- * del alcance del Módulo 1.
+ * relación de aspecto razonable, orientación vertical y nitidez (varianza
+ * del filtro Laplaciano) para una fotografía de documento. No intenta
+ * entender el contenido: eso queda fuera del alcance del Módulo 1.
  */
 @Component
 public class HeuristicDocumentQualityAnalyzer implements DocumentQualityAnalyzer {
 
   private static final int MIN_DIMENSION_PX = 500;
   private static final double MAX_ASPECT_RATIO = 6.0;
+
+  // Calibrado con BlurDetectorTest: una foto de documento nítida con texto
+  // denso da ~11 000, una muy borrosa (desenfoque gaussiano fuerte
+  // simulado) da ~340. Se deja el umbral bajo a propósito para esta primera
+  // versión (sin fotos reales con las que calibrar todavía): prioriza no
+  // rechazar fotos legítimas sobre atrapar todo el desenfoque leve. El
+  // staff siempre puede aceptar a mano un documento marcado como borroso si
+  // a simple vista se ve bien.
+  private static final double MIN_SHARPNESS_VARIANCE = 150.0;
 
   /** Tipos cuyo original físico es naturalmente horizontal (tarjeta/credencial o plano). */
   private static final Set<DocumentTypeCode> LANDSCAPE_ALLOWED_TYPES =
@@ -43,8 +54,23 @@ public class HeuristicDocumentQualityAnalyzer implements DocumentQualityAnalyzer
 
     if (normalizedImage.length == 0) {
       issues.add("Archivo de imagen vacío");
+    } else {
+      double sharpness = readSharpness(normalizedImage);
+      if (sharpness >= 0 && sharpness < MIN_SHARPNESS_VARIANCE) {
+        issues.add("La foto está borrosa o movida, vuelve a tomarla con buen enfoque e iluminación");
+      }
     }
 
     return issues.isEmpty() ? QualityResult.ok() : QualityResult.rejected(issues);
+  }
+
+  /** -1 si la imagen no se pudo decodificar (no debería pasar: ya es un JPEG normalizado válido). */
+  private double readSharpness(byte[] normalizedImage) {
+    try {
+      var image = ImageIO.read(new ByteArrayInputStream(normalizedImage));
+      return image != null ? BlurDetector.laplacianVariance(image) : -1;
+    } catch (Exception e) {
+      return -1;
+    }
   }
 }
