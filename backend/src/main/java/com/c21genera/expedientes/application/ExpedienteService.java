@@ -29,6 +29,7 @@ import com.c21genera.shared.events.DocumentEvents.DocumentReviewed;
 import com.c21genera.shared.events.DocumentEvents.ReceptionSigned;
 import com.c21genera.shared.domain.ReviewDecision;
 import com.c21genera.shared.events.PrivacyEvents.PrivacyAccepted;
+import com.c21genera.shared.events.PublicAccessEvents.PublicLinkGenerated;
 import com.c21genera.shared.domain.NotFoundException;
 import java.time.Clock;
 import java.time.Year;
@@ -196,6 +197,12 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
         participants);
   }
 
+  /** publicaccess publica este evento al emitir la liga; expedientes decide su propia transición. */
+  @ApplicationModuleListener
+  void on(PublicLinkGenerated event) {
+    get(event.expedienteId()).transitionToIfAllowed(ExpedienteStatus.WAITING_PRIVACY);
+  }
+
   /** privacy publica este evento; expedientes decide su propia transición (ver AGENTS §7). */
   @ApplicationModuleListener
   void on(PrivacyAccepted event) {
@@ -230,7 +237,13 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
 
   @Override
   public void recordPrivacyAccepted(UUID expedienteId) {
-    get(expedienteId).transitionToIfAllowed(ExpedienteStatus.WAITING_DOCUMENTS);
+    // Idempotente y tolerante a que la liga se haya generado antes de que
+    // existiera la transición DRAFT -> WAITING_PRIVACY (ver PublicLinkGenerated):
+    // si el expediente sigue en DRAFT, lo avanza igual porque el consentimiento
+    // ya ocurrió realmente.
+    Expediente expediente = get(expedienteId);
+    expediente.transitionToIfAllowed(ExpedienteStatus.WAITING_PRIVACY);
+    expediente.transitionToIfAllowed(ExpedienteStatus.WAITING_DOCUMENTS);
   }
 
   @Override

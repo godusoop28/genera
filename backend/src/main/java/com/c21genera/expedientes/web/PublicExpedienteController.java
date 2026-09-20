@@ -67,9 +67,12 @@ public class PublicExpedienteController {
     UUID expedienteId = resolve(token);
     Expediente expediente = expedienteService.get(expedienteId);
 
-    if (expediente.getStatus() != ExpedienteStatus.WAITING_DOCUMENTS) {
+    if (expediente.getStatus() == ExpedienteStatus.DRAFT || expediente.getStatus() == ExpedienteStatus.WAITING_PRIVACY) {
       throw new RequiredDocumentsPendingException(
           "Debes aceptar el aviso de privacidad antes de enviar tu documentación.");
+    }
+    if (expediente.getStatus() != ExpedienteStatus.WAITING_DOCUMENTS) {
+      throw new RequiredDocumentsPendingException("Esta documentación ya fue enviada.");
     }
 
     ManualClientData data = expedienteService.manualDataOf(expedienteId);
