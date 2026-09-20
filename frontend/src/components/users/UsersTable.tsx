@@ -17,6 +17,7 @@ import { useCallback, useEffect, useState } from "react";
 export function UsersTable() {
   const { showToast } = useToast();
   const [users, setUsers] = useState<UserResponse[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [roles, setRoles] = useState<RoleResponse[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [editUser, setEditUser] = useState<UserResponse | null>(null);
@@ -28,9 +29,14 @@ export function UsersTable() {
 
   const loadUsers = useCallback(() => {
     listUsers()
-      .then((page) => setUsers(page.items))
-      .catch(() => showToast("No se pudo cargar la lista de usuarios."));
-  }, [showToast]);
+      .then((page) => {
+        setUsers(page.items);
+        setLoadError(null);
+      })
+      .catch((err) => {
+        setLoadError(err instanceof ApiError ? `No se pudo cargar la lista de usuarios (${err.status}).` : "Error de conexión.");
+      });
+  }, []);
 
   useEffect(() => {
     loadUsers();
@@ -121,7 +127,16 @@ export function UsersTable() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {users === null ? (
+            {loadError ? (
+              <tr>
+                <td colSpan={5} className="px-5 py-4">
+                  <p className="mb-2 text-sm text-danger-text">{loadError}</p>
+                  <Button size="sm" variant="secondary" onClick={loadUsers}>
+                    Reintentar
+                  </Button>
+                </td>
+              </tr>
+            ) : users === null ? (
               <tr>
                 <td colSpan={5} className="px-5 py-4 text-sm text-muted">
                   Cargando usuarios…
