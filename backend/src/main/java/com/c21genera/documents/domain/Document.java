@@ -59,6 +59,16 @@ public class Document extends AuditableEntity {
     this.currentVersionNumber = 0;
   }
 
+  /**
+   * Un requisito condicional (p. ej. acta de matrimonio) se materializa como
+   * fila desde el inicio con required=false y puede volverse obligatorio
+   * después, cuando cambie el dato que lo condiciona (ver
+   * DocumentService.on(ExpedienteRequirementsChanged)).
+   */
+  public void updateRequired(boolean required) {
+    this.required = required;
+  }
+
   public int startNewVersion() {
     this.currentVersionNumber += 1;
     this.status = DocumentStatus.UPLOADED;

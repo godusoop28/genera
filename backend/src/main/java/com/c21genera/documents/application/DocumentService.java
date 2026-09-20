@@ -70,15 +70,25 @@ public class DocumentService implements DocumentsApi {
     this.clock = clock;
   }
 
-  /** Materializa los Document a partir de la política calculada por expedientes (ver AGENTS §21/§88). */
+  /**
+   * Materializa los Document a partir de la política calculada por
+   * expedientes (ver AGENTS §21/§88). Si el requisito ya existía (p. ej. un
+   * condicional que se creó con required=false), actualiza su bandera en
+   * vez de duplicarlo: la política puede recalcularse después de la
+   * creación (p. ej. al declararse casado), y ese cambio debe reflejarse en
+   * el documento ya materializado, no solo en los nuevos.
+   */
   @ApplicationModuleListener
   void on(ExpedienteRequirementsChanged event) {
     for (RequiredDocumentSpec spec : event.requirements()) {
-      if (documentRepository.existsByExpedienteIdAndRequirementCode(event.expedienteId(), spec.requirementCode())) {
-        continue;
-      }
-      documentRepository.save(
-          new Document(event.expedienteId(), spec.requirementCode(), spec.type(), spec.participantId(), spec.required()));
+      documentRepository
+          .findByExpedienteIdAndRequirementCode(event.expedienteId(), spec.requirementCode())
+          .ifPresentOrElse(
+              existing -> existing.updateRequired(spec.required()),
+              () ->
+                  documentRepository.save(
+                      new Document(
+                          event.expedienteId(), spec.requirementCode(), spec.type(), spec.participantId(), spec.required())));
     }
   }
 
