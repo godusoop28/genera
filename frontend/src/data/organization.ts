@@ -18,6 +18,8 @@ export const PROTOTYPE_BADGE_TEXT = "Prototipo visual";
 // Contacto genérico de interfaz (demo). No se usa para representar documentos legales.
 export const ORG_DEMO_EMAIL = "ventas@c21genera.com";
 
-// TODO: reemplazar con la dirección real de la oficina antes de salir a producción.
-export const ORG_OFFICE_ADDRESS = "Dirección de la oficina pendiente de confirmar";
-export const ORG_OFFICE_MAPS_URL = "https://maps.google.com/?q=CENTURY+21+Genera";
+// Ubicación enviada por el cliente como pin de Google Maps (sin calle ni
+// número); la calle y colonia se obtuvieron de las coordenadas.
+// TODO: confirmar con el cliente el número exterior de la oficina.
+export const ORG_OFFICE_ADDRESS = "Calle Tommy, Col. Potrero Verde, Cuernavaca, Morelos, C.P. 62448";
+export const ORG_OFFICE_MAPS_URL = "https://www.google.com/maps/search/?api=1&query=18.9212055,-99.2208328";
