@@ -1,7 +1,15 @@
 "use client";
 
 import { login as apiLogin, logout as apiLogout, me as apiMe } from "@/lib/api/auth";
-import { ApiError, setAccessToken } from "@/lib/api/client";
+import {
+  ACCESS_TOKEN_KEY,
+  ApiError,
+  REFRESH_TOKEN_KEY,
+  clearTokens,
+  setAccessToken,
+  setSessionExpiredHandler,
+  storeTokens,
+} from "@/lib/api/client";
 import type { MeResponse } from "@/lib/api/types";
 import {
   createContext,
@@ -18,9 +26,6 @@ import {
 // backend real, ver AGENTS de este monorepo). El access token vive en memoria
 // + sessionStorage (suficiente para un prototipo; nunca localStorage, para no
 // sobrevivir más allá de la pestaña).
-
-const ACCESS_TOKEN_KEY = "c21genera-access-token";
-const REFRESH_TOKEN_KEY = "c21genera-refresh-token";
 
 // Prototipo visual: mientras esto sea true, la app entra directo sin login
 // contra el backend, con un usuario de prueba. Poner en false para volver a
@@ -52,6 +57,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (SKIP_AUTH_FOR_PROTOTYPE) return;
+    // Si el refresh token deja de servir, el cliente API limpia los tokens y
+    // aquí se vacía la sesión; RequireAuth redirige a /login.
+    setSessionExpiredHandler(() => setUser(null));
     const storedAccessToken = window.sessionStorage.getItem(ACCESS_TOKEN_KEY);
     Promise.resolve(storedAccessToken)
       .then((token) => {
@@ -63,11 +71,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (profile) setUser(profile);
       })
       .catch(() => {
-        window.sessionStorage.removeItem(ACCESS_TOKEN_KEY);
-        window.sessionStorage.removeItem(REFRESH_TOKEN_KEY);
-        setAccessToken(null);
+        clearTokens();
       })
       .finally(() => setIsLoading(false));
+    return () => setSessionExpiredHandler(null);
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
@@ -76,9 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     const auth = await apiLogin(email, password);
-    window.sessionStorage.setItem(ACCESS_TOKEN_KEY, auth.accessToken);
-    window.sessionStorage.setItem(REFRESH_TOKEN_KEY, auth.refreshToken);
-    setAccessToken(auth.accessToken);
+    storeTokens(auth.accessToken, auth.refreshToken);
     const profile = await apiMe();
     setUser(profile);
   }, []);
@@ -89,9 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     const refreshToken = window.sessionStorage.getItem(REFRESH_TOKEN_KEY);
-    window.sessionStorage.removeItem(ACCESS_TOKEN_KEY);
-    window.sessionStorage.removeItem(REFRESH_TOKEN_KEY);
-    setAccessToken(null);
+    clearTokens();
     setUser(null);
     if (refreshToken) {
       try {

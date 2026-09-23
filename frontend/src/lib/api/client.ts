@@ -12,8 +12,83 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8
 // (sessionStorage) para sobrevivir a un refresh de página.
 let currentAccessToken: string | null = null;
 
+export const ACCESS_TOKEN_KEY = "c21genera-access-token";
+export const REFRESH_TOKEN_KEY = "c21genera-refresh-token";
+
 export function setAccessToken(token: string | null) {
   currentAccessToken = token;
+}
+
+// Único punto que escribe/borra tokens: memoria y sessionStorage siempre juntos.
+export function storeTokens(accessToken: string, refreshToken?: string | null) {
+  currentAccessToken = accessToken;
+  window.sessionStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+  if (refreshToken) window.sessionStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+}
+
+export function clearTokens() {
+  currentAccessToken = null;
+  window.sessionStorage.removeItem(ACCESS_TOKEN_KEY);
+  window.sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+}
+
+// AuthProvider registra aquí cómo cerrar la sesión (limpiar el usuario del
+// contexto) cuando el refresh token ya no sirve.
+let onSessionExpired: (() => void) | null = null;
+
+export function setSessionExpiredHandler(handler: (() => void) | null) {
+  onSessionExpired = handler;
+}
+
+// Un solo refresh en curso a la vez: las peticiones que reciben 401 al mismo
+// tiempo esperan esta misma promesa. Resuelve al nuevo access token, o null si
+// la sesión ya no se puede renovar.
+let refreshPromise: Promise<string | null> | null = null;
+
+function refreshAccessToken(): Promise<string | null> {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      const refreshToken = window.sessionStorage.getItem(REFRESH_TOKEN_KEY);
+      if (!refreshToken) return null;
+      // fetch directo (no `request`) para que /auth/refresh nunca intente
+      // refrescarse a sí mismo.
+      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+      });
+      if (!response.ok) return null;
+      const data = await response.json().catch(() => null);
+      if (!data?.accessToken) return null;
+      storeTokens(data.accessToken, data.refreshToken);
+      return data.accessToken as string;
+    })()
+      .then((token) => {
+        if (!token) {
+          clearTokens();
+          onSessionExpired?.();
+        }
+        return token;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
+// Ejecuta la petición y, si responde 401, renueva el access token y la repite
+// UNA sola vez. Los endpoints /auth/* nunca se reintentan.
+async function fetchWithAuth(path: string, doFetch: (token: string | null) => Promise<Response>, explicitToken?: string) {
+  const token = explicitToken ?? currentAccessToken;
+  const response = await doFetch(token);
+  if (response.status !== 401 || path.startsWith("/auth/")) return response;
+
+  // Otra petición ya renovó el token mientras esta estaba en vuelo: basta con
+  // repetirla con el token vigente.
+  const newToken = currentAccessToken && currentAccessToken !== token ? currentAccessToken : await refreshAccessToken();
+  if (!newToken) return response;
+  return doFetch(newToken);
 }
 
 export class ApiError extends Error {
@@ -34,17 +109,20 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { body, accessToken, headers, ...rest } = options;
-  const token = accessToken ?? currentAccessToken;
-
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...rest,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...headers,
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  const response = await fetchWithAuth(
+    path,
+    (token) =>
+      fetch(`${API_BASE_URL}${path}`, {
+        ...rest,
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...headers,
+        },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      }),
+    accessToken,
+  );
 
   if (response.status === 204) {
     return undefined as T;
@@ -78,11 +156,13 @@ export async function uploadFiles<T>(path: string, fieldName: string, files: Fil
   const formData = new FormData();
   for (const file of files) formData.append(fieldName, file);
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: "POST",
-    headers: currentAccessToken ? { Authorization: `Bearer ${currentAccessToken}` } : undefined,
-    body: formData,
-  });
+  const response = await fetchWithAuth(path, (token) =>
+    fetch(`${API_BASE_URL}${path}`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      body: formData,
+    }),
+  );
 
   const data = await response.json().catch(() => null);
 
