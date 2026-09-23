@@ -8,6 +8,7 @@ import { Stepper } from "@/components/documents/Stepper";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
+import { ORG_OFFICE_ADDRESS, ORG_OFFICE_MAPS_URL } from "@/data/organization";
 import { PRIVACY_CONSENT_TEXT, PRIVACY_SECONDARY_OPT_OUT_TEXT } from "@/data/privacy-reference";
 import { ApiError } from "@/lib/api/client";
 import {
@@ -21,7 +22,7 @@ import {
 } from "@/lib/api/public";
 import type { BackendCivilStatus, DocumentResponse, ManualClientDataResponse, PublicExpedienteResponse } from "@/lib/api/types";
 import { documentTypeLabel } from "@/lib/document-type-labels";
-import { HelpCircle, Loader2, Upload } from "lucide-react";
+import { HelpCircle, Loader2, MapPin, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const steps = ["Aviso de privacidad", "Datos de contacto", "Documentos", "Confirmación"];
@@ -325,6 +326,28 @@ function DocumentsStep({ token, onContinue }: { token: string; onContinue: () =>
             ))}
           </div>
         )}
+      </Card>
+
+      <Card>
+        <div className="flex items-start gap-3">
+          <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-dark-gold" aria-hidden />
+          <div>
+            <p className="text-sm font-medium text-obsessed">¿No tienes tus documentos a la mano o no puedes subirlos?</p>
+            <p className="mt-1 text-sm text-muted">
+              Puedes acudir a nuestra oficina con tus documentos originales y nosotros los escaneamos por ti.
+              También puedes pedirle ayuda a tu asesor.
+            </p>
+            <p className="mt-2 text-sm font-medium text-obsessed">{ORG_OFFICE_ADDRESS}</p>
+            <a
+              href={ORG_OFFICE_MAPS_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 inline-flex items-center gap-1.5 text-sm font-medium text-dark-gold hover:underline"
+            >
+              Ver ubicación en el mapa
+            </a>
+          </div>
+        </div>
       </Card>
 
       {error ? <p className="text-sm text-danger-text">{error}</p> : null}

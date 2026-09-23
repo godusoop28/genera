@@ -26,7 +26,8 @@ import { useRouter } from "next/navigation";
 
 interface PropertyAddressForm {
   street: string;
-  number: string;
+  exteriorNumber: string;
+  interiorNumber: string;
   neighborhood: string;
   municipality: string;
   state: string;
@@ -35,15 +36,20 @@ interface PropertyAddressForm {
 
 const emptyPropertyAddress: PropertyAddressForm = {
   street: "",
-  number: "",
+  exteriorNumber: "",
+  interiorNumber: "",
   neighborhood: "",
   municipality: "",
   state: "",
   zipCode: "",
 };
 
+// El número interior es opcional (casas sin departamento/local).
+const optionalAddressFields: (keyof PropertyAddressForm)[] = ["interiorNumber"];
+
 function formatPropertyAddress(a: PropertyAddressForm): string {
-  return `${a.street} ${a.number}, ${a.neighborhood}, ${a.municipality}, ${a.state}, C.P. ${a.zipCode}`;
+  const interior = a.interiorNumber.trim() ? ` Int. ${a.interiorNumber.trim()}` : "";
+  return `${a.street} No. Ext. ${a.exteriorNumber}${interior}, ${a.neighborhood}, ${a.municipality}, ${a.state}, C.P. ${a.zipCode}`;
 }
 
 export default function NuevoExpedientePage() {
@@ -67,7 +73,9 @@ export default function NuevoExpedientePage() {
     setPropertyAddress((prev) => ({ ...prev, [key]: value }));
   };
 
-  const isAddressComplete = Object.values(propertyAddress).every((v) => v.trim().length > 0);
+  const isAddressComplete = (Object.keys(propertyAddress) as (keyof PropertyAddressForm)[])
+    .filter((key) => !optionalAddressFields.includes(key))
+    .every((key) => propertyAddress[key].trim().length > 0);
 
   const handleCreate = async () => {
     if (!ownerName.trim()) {
@@ -75,7 +83,7 @@ export default function NuevoExpedientePage() {
       return;
     }
     if (!isAddressComplete) {
-      showToast("Captura todos los campos del domicilio del inmueble.");
+      showToast("Captura todos los campos obligatorios del domicilio del inmueble.");
       return;
     }
     setSubmitting(true);
@@ -130,9 +138,15 @@ export default function NuevoExpedientePage() {
               containerClassName="lg:col-span-2"
             />
             <Input
-              label="Número"
-              value={propertyAddress.number}
-              onChange={(e) => setAddressField("number", e.target.value)}
+              label="Número exterior"
+              value={propertyAddress.exteriorNumber}
+              onChange={(e) => setAddressField("exteriorNumber", e.target.value)}
+            />
+            <Input
+              label="Número interior (opcional)"
+              value={propertyAddress.interiorNumber}
+              onChange={(e) => setAddressField("interiorNumber", e.target.value)}
+              placeholder="Ej. 3B"
             />
             <Input
               label="Colonia"

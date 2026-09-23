@@ -72,8 +72,10 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
 
+  const [refreshing, setRefreshing] = useState(false);
+
   const load = useCallback(() => {
-    getExpediente(id)
+    const main = getExpediente(id)
       .then((data) => {
         setExpediente(data);
         setLoadError(null);
@@ -97,7 +99,20 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
         }
       });
     getClosingNotes(id).then(setClosingNotes).catch(() => undefined);
+    return main;
   }, [id]);
+
+  // Antes el botón recargaba en silencio y parecía no hacer nada: ahora
+  // muestra que está trabajando y confirma cuando terminó.
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await load();
+      showToast("Información del expediente actualizada.");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     load();
@@ -201,9 +216,9 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
             </span>
             <Badge tone={backendStatusTone[expediente.status]}>{backendStatusLabels[expediente.status]}</Badge>
           </div>
-          <Button variant="secondary" size="sm" onClick={load}>
-            <RefreshCw className="h-4 w-4" aria-hidden />
-            Actualizar
+          <Button variant="secondary" size="sm" onClick={handleRefresh} disabled={refreshing}>
+            <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} aria-hidden />
+            {refreshing ? "Actualizando…" : "Recargar información"}
           </Button>
         </div>
         {expediente.propertyAddress ? (
