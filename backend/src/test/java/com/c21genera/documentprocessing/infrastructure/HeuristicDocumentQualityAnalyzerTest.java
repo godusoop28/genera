@@ -74,6 +74,34 @@ class HeuristicDocumentQualityAnalyzerTest {
   }
 
   @Test
+  void rejectsAPlainGrayImageExplainingThatNoDocumentIsVisible() throws IOException {
+    BufferedImage gray = new BufferedImage(1200, 1600, BufferedImage.TYPE_INT_RGB);
+    var g = gray.createGraphics();
+    g.setColor(new Color(128, 128, 128));
+    g.fillRect(0, 0, gray.getWidth(), gray.getHeight());
+    g.dispose();
+
+    QualityResult result = analyzer.analyze(encodeJpeg(gray), "image/jpeg", 1200, 1600, DocumentTypeCode.INE);
+
+    assertThat(result.acceptable()).isFalse();
+    assertThat(result.issues()).anyMatch(issue -> issue.contains("gris o sin contraste"));
+  }
+
+  @Test
+  void rejectsAnAlmostBlackPhoto() throws IOException {
+    BufferedImage dark = documentLikeImage();
+    var g = dark.createGraphics();
+    g.setColor(new Color(0, 0, 0, 235));
+    g.fillRect(0, 0, dark.getWidth(), dark.getHeight());
+    g.dispose();
+
+    QualityResult result = analyzer.analyze(encodeJpeg(dark), "image/jpeg", 1200, 1600, DocumentTypeCode.DEED);
+
+    assertThat(result.acceptable()).isFalse();
+    assertThat(result.issues()).anyMatch(issue -> issue.contains("oscura") || issue.contains("contraste"));
+  }
+
+  @Test
   void rejectsARealBlurryDocumentPhoto() throws IOException {
     byte[] jpeg = encodeJpeg(heavilyBlur(documentLikeImage(), 20));
 

@@ -12,5 +12,7 @@ public enum DocumentStatus {
   ACCEPTED,
   RETURNED,
   REJECTED,
-  REPLACED
+  REPLACED,
+  /** El staff determinó, con justificación, que este requisito no aplica a este expediente. */
+  NOT_APPLICABLE
 }

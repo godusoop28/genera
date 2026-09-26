@@ -1,5 +1,6 @@
 package com.c21genera.expedientes;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -17,7 +18,34 @@ public record ExpedienteSummary(
     PropertyLegalStatus declaredLegalStatus,
     String propertyAddress,
     UUID createdByUserId,
-    List<ParticipantView> participants) {
+    List<ParticipantView> participants,
+    LegalDetails legalDetails) {
 
-  public record ParticipantView(UUID id, String role, String fullName, int ordinal) {}
+  /** role: OWNER, CO_OWNER, ATTORNEY o LEGAL_REPRESENTATIVE. */
+  public record ParticipantView(
+      UUID id,
+      String role,
+      String fullName,
+      int ordinal,
+      String nationality,
+      IdDocumentType idDocumentType,
+      String idDocumentNumber,
+      String idDocumentIssuer,
+      LocalDate birthDate,
+      CivilStatus civilStatus,
+      MaritalRegime maritalRegime,
+      String rfc,
+      String curp,
+      String email,
+      String phone,
+      String address) {
+
+    public boolean isOwner() {
+      return "OWNER".equals(role) || "CO_OWNER".equals(role);
+    }
+
+    public boolean isRepresentative() {
+      return "ATTORNEY".equals(role) || "LEGAL_REPRESENTATIVE".equals(role);
+    }
+  }
 }

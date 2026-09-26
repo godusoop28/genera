@@ -16,12 +16,21 @@ public final class ExpedienteEvents {
 
   private ExpedienteEvents() {}
 
-  public record ExpedienteCreated(UUID expedienteId, String folio, UUID createdByUserId) {}
+  public record ExpedienteCreated(UUID expedienteId, String folio, UUID createdByUserId, Actor actor) {}
 
   /** Documents escucha esto para materializar sus propios Document a partir de la política calculada. */
   public record ExpedienteRequirementsChanged(UUID expedienteId, List<RequiredDocumentSpec> requirements) {}
 
-  public record PropertyAccepted(UUID expedienteId, UUID decidedByUserId) {}
+  /**
+   * Se corrigió información del expediente (datos principales,
+   * participantes, datos legales o datos del cliente). contracts escucha
+   * esto para invalidar los contratos todavía no firmados: cualquier
+   * corrección relevante obliga a generar una nueva versión.
+   */
+  public record ExpedienteDataCorrected(
+      UUID expedienteId, Actor actor, String section, List<String> changedFields, String reason, boolean contractRelevant) {}
 
-  public record PropertyRejected(UUID expedienteId, UUID decidedByUserId, String reason) {}
+  public record PropertyAccepted(UUID expedienteId, UUID decidedByUserId, Actor actor) {}
+
+  public record PropertyRejected(UUID expedienteId, UUID decidedByUserId, String reason, Actor actor) {}
 }

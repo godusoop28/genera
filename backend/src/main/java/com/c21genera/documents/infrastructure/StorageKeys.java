@@ -14,7 +14,7 @@ public final class StorageKeys {
   public static String categoryOf(DocumentTypeCode type) {
     return switch (type) {
       case INE, PASSPORT, CURP, POWER_OF_ATTORNEY, MARRIAGE_CERTIFICATE -> "identity";
-      case TAX_STATUS_CERTIFICATE -> "tax";
+      case TAX_STATUS_CERTIFICATE, INCORPORATION_DEED -> "tax";
       case DEED,
           PROOF_OF_ADDRESS,
           LIEN_CERTIFICATE,
@@ -30,7 +30,8 @@ public final class StorageKeys {
           ADJUDICATION,
           WILL,
           MORTGAGE,
-          LEASE_AGREEMENT -> "property";
+          LEASE_AGREEMENT,
+          PRIVATE_CONTRACT -> "property";
       case OTHER -> "misc";
     };
   }

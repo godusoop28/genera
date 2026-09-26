@@ -37,10 +37,21 @@ public class DocumentReview {
   @Column(nullable = false)
   private Instant reviewedAt;
 
+  /** Solo en aceptaciones por excepción: por qué se aceptó pese a las alertas y cuáles eran. */
+  private String overrideJustification;
+  private String overriddenIssues;
+
   protected DocumentReview() {}
 
   public DocumentReview(
-      UUID documentVersionId, ReviewDecision decision, ReturnReasonCode reasonCode, String comment, UUID reviewedBy, Instant reviewedAt) {
+      UUID documentVersionId,
+      ReviewDecision decision,
+      ReturnReasonCode reasonCode,
+      String comment,
+      UUID reviewedBy,
+      Instant reviewedAt,
+      String overrideJustification,
+      String overriddenIssues) {
     this.id = UUID.randomUUID();
     this.documentVersionId = documentVersionId;
     this.decision = decision;
@@ -48,6 +59,16 @@ public class DocumentReview {
     this.comment = comment;
     this.reviewedBy = reviewedBy;
     this.reviewedAt = reviewedAt;
+    this.overrideJustification = overrideJustification;
+    this.overriddenIssues = overriddenIssues;
+  }
+
+  public String getOverrideJustification() {
+    return overrideJustification;
+  }
+
+  public String getOverriddenIssues() {
+    return overriddenIssues;
   }
 
   public UUID getId() {

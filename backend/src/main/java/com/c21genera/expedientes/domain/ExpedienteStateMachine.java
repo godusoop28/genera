@@ -43,23 +43,33 @@ public final class ExpedienteStateMachine {
     map.put(
         ExpedienteStatus.CORRECTIONS_REQUESTED,
         EnumSet.of(ExpedienteStatus.UNDER_REVIEW, ExpedienteStatus.PROPERTY_REJECTED));
+    // Si una corrección agrega un documento obligatorio (p. ej. un nuevo
+    // copropietario), el expediente vuelve a correcciones aunque ya se
+    // hubiera aprobado la documentación o firmado la recepción.
     map.put(
         ExpedienteStatus.DOCUMENTS_APPROVED,
-        EnumSet.of(ExpedienteStatus.RECEPTION_SIGNED, ExpedienteStatus.PROPERTY_REJECTED));
+        EnumSet.of(
+            ExpedienteStatus.RECEPTION_SIGNED, ExpedienteStatus.CORRECTIONS_REQUESTED, ExpedienteStatus.PROPERTY_REJECTED));
     map.put(
         ExpedienteStatus.RECEPTION_SIGNED,
         EnumSet.of(
-            ExpedienteStatus.CONTRACT_PREPARATION,
-            ExpedienteStatus.PROPERTY_ACCEPTED,
-            ExpedienteStatus.PROPERTY_REJECTED));
+            ExpedienteStatus.CONTRACT_PREPARATION, ExpedienteStatus.CORRECTIONS_REQUESTED, ExpedienteStatus.PROPERTY_REJECTED));
     map.put(
         ExpedienteStatus.CONTRACT_PREPARATION,
         EnumSet.of(
-            ExpedienteStatus.READY_FOR_SIGNATURE,
-            ExpedienteStatus.PROPERTY_ACCEPTED,
-            ExpedienteStatus.PROPERTY_REJECTED));
+            ExpedienteStatus.READY_FOR_SIGNATURE, ExpedienteStatus.CORRECTIONS_REQUESTED, ExpedienteStatus.PROPERTY_REJECTED));
+    // Una corrección de datos invalida el contrato pendiente de firma y
+    // regresa a preparación para generar una nueva versión.
     map.put(
         ExpedienteStatus.READY_FOR_SIGNATURE,
+        EnumSet.of(
+            ExpedienteStatus.CONTRACT_SIGNED,
+            ExpedienteStatus.CONTRACT_PREPARATION,
+            ExpedienteStatus.CORRECTIONS_REQUESTED,
+            ExpedienteStatus.PROPERTY_REJECTED));
+    // El inmueble solo se acepta con el contrato de intermediación ya firmado.
+    map.put(
+        ExpedienteStatus.CONTRACT_SIGNED,
         EnumSet.of(ExpedienteStatus.PROPERTY_ACCEPTED, ExpedienteStatus.PROPERTY_REJECTED));
     map.put(ExpedienteStatus.PROPERTY_ACCEPTED, EnumSet.of(ExpedienteStatus.CLOSED));
     map.put(ExpedienteStatus.PROPERTY_REJECTED, EnumSet.of(ExpedienteStatus.CLOSED));

@@ -31,6 +31,12 @@ public interface DocumentsApi {
 
   List<UUID> documentIdsOf(UUID expedienteId);
 
+  /** Para verificar acceso: a qué expediente pertenece un documento. */
+  Optional<UUID> expedienteIdOfDocument(UUID documentId);
+
+  /** Estado de cada requisito documental (para el checklist previo al contrato). status: nombre de DocumentStatus. */
+  List<RequirementStatusView> requirementStatusOf(UUID expedienteId);
+
   /**
    * Documentos ya ACCEPTED de un expediente, con su tipo y el PDF de la
    * versión vigente. pdfStorageKey es null cuando el staff aceptó una
@@ -40,5 +46,8 @@ public interface DocumentsApi {
 
   record PageView(int pageNumber, String storageKeyOriginal, String mimeType) {}
 
-  record AcceptedDocumentView(UUID documentId, String type, String pdfStorageKey) {}
+  record AcceptedDocumentView(UUID documentId, String type, UUID participantId, String pdfStorageKey) {}
+
+  record RequirementStatusView(
+      UUID documentId, com.c21genera.shared.domain.DocumentTypeCode type, UUID participantId, boolean required, String status) {}
 }

@@ -1,6 +1,6 @@
 package com.c21genera.expedientes;
 
-/** API pública del módulo expedientes (ver AGENTS §9). Sin strings libres. */
+/** API pública del módulo expedientes (ver AGENTS §9). Sin strings libres. El orden importa: refleja el avance. */
 public enum ExpedienteStatus {
   DRAFT,
   WAITING_PRIVACY,
@@ -12,6 +12,7 @@ public enum ExpedienteStatus {
   RECEPTION_SIGNED,
   CONTRACT_PREPARATION,
   READY_FOR_SIGNATURE,
+  CONTRACT_SIGNED,
   PROPERTY_ACCEPTED,
   PROPERTY_REJECTED,
   CLOSED

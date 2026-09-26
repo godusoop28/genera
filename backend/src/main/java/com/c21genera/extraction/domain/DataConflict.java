@@ -22,7 +22,8 @@ public class DataConflict {
   @Column(nullable = false)
   private UUID expedienteId;
 
-  @Column(nullable = false, length = 64)
+  /** Clave del tipo de hallazgo (ver DocumentConsistencyChecker.Finding#key). */
+  @Column(nullable = false, length = 160)
   private String fieldName;
 
   @Column(nullable = false)
@@ -40,6 +41,9 @@ public class DataConflict {
 
   private String resolutionNote;
 
+  @Column(nullable = false)
+  private boolean resolvedAutomatically;
+
   protected DataConflict() {}
 
   public DataConflict(UUID expedienteId, String fieldName, String description, Instant detectedAt) {
@@ -56,6 +60,22 @@ public class DataConflict {
     this.resolvedByUserId = resolvedByUserId;
     this.resolutionNote = resolutionNote;
     this.resolvedAt = now;
+  }
+
+  /** Los datos volvieron a coincidir (tras una corrección o un documento nuevo): se cierra sin intervención. */
+  public void closeBecauseDataNowMatches(Instant now) {
+    this.resolved = true;
+    this.resolvedAutomatically = true;
+    this.resolutionNote = "Los datos ya coinciden tras una corrección o la carga de un documento nuevo.";
+    this.resolvedAt = now;
+  }
+
+  public void refreshDescription(String description) {
+    this.description = description;
+  }
+
+  public boolean isResolvedAutomatically() {
+    return resolvedAutomatically;
   }
 
   public UUID getId() {

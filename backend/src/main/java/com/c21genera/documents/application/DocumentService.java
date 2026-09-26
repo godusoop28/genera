@@ -1,11 +1,5 @@
 package com.c21genera.documents.application;
 
-import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsApproved;
-import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsUploaded;
-import com.c21genera.shared.events.DocumentEvents.DocumentReviewed;
-import com.c21genera.shared.events.DocumentEvents.DocumentVersionUploaded;
-import com.c21genera.shared.events.DocumentEvents.PageRef;
-import com.c21genera.shared.events.DocumentEvents.ReceptionSigned;
 import com.c21genera.documents.DocumentStatus;
 import com.c21genera.documents.DocumentsApi;
 import com.c21genera.documents.domain.Document;
@@ -15,7 +9,6 @@ import com.c21genera.documents.domain.DocumentReview;
 import com.c21genera.documents.domain.DocumentVersion;
 import com.c21genera.documents.domain.ReceptionNotReadyException;
 import com.c21genera.documents.domain.ReturnReasonCode;
-import com.c21genera.shared.domain.ReviewDecision;
 import com.c21genera.documents.domain.UploadedVia;
 import com.c21genera.documents.infrastructure.DocumentPageRepository;
 import com.c21genera.documents.infrastructure.DocumentRepository;
@@ -24,15 +17,32 @@ import com.c21genera.documents.infrastructure.DocumentVersionRepository;
 import com.c21genera.documents.infrastructure.FileValidator;
 import com.c21genera.documents.infrastructure.FileValidator.ValidatedFile;
 import com.c21genera.documents.infrastructure.StorageKeys;
-import com.c21genera.shared.events.ExpedienteEvents.ExpedienteRequirementsChanged;
-import com.c21genera.shared.domain.RequiredDocumentSpec;
+import com.c21genera.shared.domain.ConflictException;
 import com.c21genera.shared.domain.NotFoundException;
+import com.c21genera.shared.domain.RequiredDocumentSpec;
+import com.c21genera.shared.domain.ReviewDecision;
+import com.c21genera.shared.domain.UnprocessableException;
+import com.c21genera.shared.events.Actor;
+import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsApproved;
+import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsUploaded;
+import com.c21genera.shared.events.DocumentEvents.DocumentApplicabilityChanged;
+import com.c21genera.shared.events.DocumentEvents.DocumentContentAssessed;
+import com.c21genera.shared.events.DocumentEvents.DocumentReviewed;
+import com.c21genera.shared.events.DocumentEvents.DocumentVersionUploaded;
+import com.c21genera.shared.events.DocumentEvents.PageRef;
+import com.c21genera.shared.events.DocumentEvents.ReceptionSigned;
+import com.c21genera.shared.events.DocumentEvents.RequiredDocumentsReopened;
+import com.c21genera.shared.events.ExpedienteEvents.ExpedienteRequirementsChanged;
 import com.c21genera.shared.storage.FileStorage;
 import java.io.ByteArrayInputStream;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Service;
@@ -41,6 +51,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional
 public class DocumentService implements DocumentsApi {
+
+  /** Una justificación de excepción o de "No aplica" debe explicar algo, no solo "ok". */
+  static final int MIN_JUSTIFICATION_LENGTH = 15;
 
   private final DocumentRepository documentRepository;
   private final DocumentVersionRepository versionRepository;
@@ -72,24 +85,46 @@ public class DocumentService implements DocumentsApi {
 
   /**
    * Materializa los Document a partir de la política calculada por
-   * expedientes (ver AGENTS §21/§88). Si el requisito ya existía (p. ej. un
-   * condicional que se creó con required=false), actualiza su bandera en
-   * vez de duplicarlo: la política puede recalcularse después de la
-   * creación (p. ej. al declararse casado), y ese cambio debe reflejarse en
-   * el documento ya materializado, no solo en los nuevos.
+   * expedientes (ver AGENTS §21/§88). Idempotente: si el requisito ya
+   * existía, actualiza su bandera de obligatorio; si dejó de figurar en la
+   * política (p. ej. se cambió de escritura a contrato privado, o se eliminó
+   * un copropietario), deja de ser obligatorio pero conserva su historial.
    */
   @ApplicationModuleListener
   void on(ExpedienteRequirementsChanged event) {
+    Completeness before = completenessOf(event.expedienteId());
+    List<Document> existing = documentRepository.findByExpedienteId(event.expedienteId());
+    Set<String> currentCodes = event.requirements().stream().map(RequiredDocumentSpec::requirementCode).collect(Collectors.toSet());
+
     for (RequiredDocumentSpec spec : event.requirements()) {
-      documentRepository
-          .findByExpedienteIdAndRequirementCode(event.expedienteId(), spec.requirementCode())
+      existing.stream()
+          .filter(d -> d.getRequirementCode().equals(spec.requirementCode()))
+          .findFirst()
           .ifPresentOrElse(
-              existing -> existing.updateRequired(spec.required()),
+              d -> d.updateRequired(spec.required()),
               () ->
                   documentRepository.save(
                       new Document(
                           event.expedienteId(), spec.requirementCode(), spec.type(), spec.participantId(), spec.required())));
     }
+    for (Document d : existing) {
+      if (!currentCodes.contains(d.getRequirementCode())) {
+        d.updateRequired(false);
+      }
+    }
+    documentRepository.flush();
+    publishCompletenessChanges(event.expedienteId(), before);
+  }
+
+  /** Resultado de la revisión de contenido con IA (ver extraction). */
+  @ApplicationModuleListener
+  void on(DocumentContentAssessed event) {
+    versionRepository
+        .findById(event.documentVersionId())
+        .ifPresent(
+            v ->
+                v.recordAiAssessment(
+                    event.matchesExpectedType(), event.legible(), event.detectedDocumentKind(), event.observations(), clock.instant()));
   }
 
   @Transactional(readOnly = true)
@@ -108,6 +143,11 @@ public class DocumentService implements DocumentsApi {
   }
 
   @Transactional(readOnly = true)
+  public Optional<DocumentVersion> latestVersion(UUID documentId) {
+    return versionRepository.findByDocumentIdOrderByVersionNumberDesc(documentId).stream().findFirst();
+  }
+
+  @Transactional(readOnly = true)
   public DocumentVersion getVersion(UUID documentVersionId) {
     return versionRepository
         .findById(documentVersionId)
@@ -116,22 +156,35 @@ public class DocumentService implements DocumentsApi {
 
   @Transactional(readOnly = true)
   public DocumentVersion latestVersionOf(UUID documentId) {
-    return versionRepository.findByDocumentIdOrderByVersionNumberDesc(documentId).stream()
-        .findFirst()
-        .orElseThrow(() -> new NotFoundException("Versión de documento para el documento", documentId));
+    return latestVersion(documentId).orElseThrow(() -> new NotFoundException("Versión de documento para el documento", documentId));
+  }
+
+  @Transactional(readOnly = true)
+  public List<DocumentReview> reviewsOf(UUID documentId) {
+    List<UUID> versionIds = versionsOf(documentId).stream().map(DocumentVersion::getId).toList();
+    return versionIds.isEmpty() ? List.of() : reviewRepository.findByDocumentVersionIdInOrderByReviewedAtDesc(versionIds);
   }
 
   public record UploadedFileContent(byte[] content, String originalFilename) {}
 
   /** Público (fotos JPG/PNG) o interno (permite PDF). Ver AGENTS §32/§94. */
-  public DocumentVersion uploadVersion(UUID documentId, List<UploadedFileContent> files, UploadedVia via) {
+  public DocumentVersion uploadVersion(UUID documentId, List<UploadedFileContent> files, UploadedVia via, Actor actor) {
     Document document = get(documentId);
+    if (files == null || files.isEmpty()) {
+      throw new UnprocessableException("NO_FILES", "Selecciona al menos un archivo.");
+    }
+    if (via == UploadedVia.PUBLIC_PORTAL && document.getStatus() == DocumentStatus.ACCEPTED) {
+      throw new ConflictException("DOCUMENT_ALREADY_ACCEPTED", "Este documento ya fue aceptado; no es necesario volver a cargarlo.");
+    }
+    Completeness before = completenessOf(document.getExpedienteId());
+    String previousStatus = document.getStatus().name();
     int versionNumber = document.startNewVersion();
     Instant now = clock.instant();
-    DocumentVersion version = new DocumentVersion(documentId, versionNumber, now, via);
+    DocumentVersion version =
+        new DocumentVersion(documentId, versionNumber, now, via, actor.isStaff() ? actor.userId() : null, actor.isStaff() ? actor.name() : null);
     versionRepository.save(version);
 
-    List<PageRef> pageRefs = new java.util.ArrayList<>();
+    List<PageRef> pageRefs = new ArrayList<>();
     int pageNumber = 1;
     for (UploadedFileContent file : files) {
       ValidatedFile validated =
@@ -161,42 +214,182 @@ public class DocumentService implements DocumentsApi {
     }
 
     events.publishEvent(
-        new DocumentVersionUploaded(document.getExpedienteId(), documentId, version.getId(), document.getType(), pageRefs));
+        new DocumentVersionUploaded(
+            document.getExpedienteId(),
+            documentId,
+            version.getId(),
+            document.getType(),
+            pageRefs,
+            document.getParticipantId(),
+            actor,
+            previousStatus));
 
-    if (allRequiredUploaded(document.getExpedienteId())) {
-      events.publishEvent(new AllRequiredDocumentsUploaded(document.getExpedienteId()));
-    }
-
+    documentRepository.flush();
+    publishCompletenessChanges(document.getExpedienteId(), before);
     return version;
   }
 
-  public Document review(UUID documentId, ReviewDecision decision, ReturnReasonCode reasonCode, String comment, UUID reviewerId) {
-    Document document = get(documentId);
-    DocumentVersion latest = latestVersionOf(documentId);
+  public record ReviewCommand(
+      UUID documentId,
+      ReviewDecision decision,
+      ReturnReasonCode reasonCode,
+      String comment,
+      String overrideJustification,
+      boolean mayOverride,
+      Actor actor) {}
 
-    if (document.getStatus() != DocumentStatus.READY_FOR_REVIEW && document.getStatus() != DocumentStatus.RETURNED
-        && document.getStatus() != DocumentStatus.UPLOADED) {
-      throw new DocumentNotReviewableException("El documento no está en un estado revisable (" + document.getStatus() + ").");
+  /**
+   * Aceptar exige que la versión vigente no tenga alertas (calidad
+   * insuficiente, archivo sin procesar, o la IA indicó que no corresponde al
+   * documento solicitado o que es ilegible). Con alertas solo se puede
+   * aceptar por excepción: con el permiso DOCUMENT_QUALITY_OVERRIDE y una
+   * justificación, que queda registrada junto con el usuario responsable.
+   * Devolver o rechazar exige un motivo, que el cliente verá en su liga.
+   */
+  public Document review(ReviewCommand command) {
+    Document document = get(command.documentId());
+    DocumentVersion latest = latestVersionOf(command.documentId());
+
+    if (document.getStatus() != DocumentStatus.READY_FOR_REVIEW
+        && document.getStatus() != DocumentStatus.UPLOADED
+        && document.getStatus() != DocumentStatus.RETURNED) {
+      throw new DocumentNotReviewableException(
+          "Este documento no se puede revisar en su estado actual. Solo se revisan documentos cargados y pendientes de revisión.");
     }
     switch (latest.getProcessingStatus()) {
       case PROCESSING, QUEUED ->
-          throw new DocumentNotReviewableException("El documento todavía se encuentra en procesamiento.");
-      default -> { /* PROCESSED, QUALITY_FAILED o FAILED sí pueden revisarse manualmente */ }
+          throw new DocumentNotReviewableException("El documento todavía se está procesando; espera unos segundos e intenta de nuevo.");
+      default -> {
+        /* PROCESSED, QUALITY_FAILED o FAILED sí pueden revisarse manualmente */
+      }
     }
 
-    reviewRepository.save(new DocumentReview(latest.getId(), decision, reasonCode, comment, reviewerId, clock.instant()));
-    document.applyReview(decision);
+    String overrideJustification = null;
+    String overriddenIssues = null;
+    String comment = blankToNull(command.comment());
+
+    if (command.decision() == ReviewDecision.ACCEPTED) {
+      List<String> issues = latest.blockingIssues();
+      if (!issues.isEmpty()) {
+        String justification = blankToNull(command.overrideJustification());
+        if (!command.mayOverride()) {
+          throw new UnprocessableException(
+              "DOCUMENT_NEEDS_OVERRIDE",
+              "No se puede aceptar este archivo: "
+                  + String.join("; ", issues)
+                  + ". Devuélvelo al cliente o pide a un director o administrador que autorice la excepción.");
+        }
+        if (justification == null || justification.length() < MIN_JUSTIFICATION_LENGTH) {
+          throw new UnprocessableException(
+              "OVERRIDE_JUSTIFICATION_REQUIRED",
+              "Para aceptar por excepción explica por qué el archivo es válido pese a las alertas (mínimo "
+                  + MIN_JUSTIFICATION_LENGTH
+                  + " caracteres): "
+                  + String.join("; ", issues)
+                  + ".");
+        }
+        overrideJustification = justification;
+        overriddenIssues = String.join("; ", issues);
+      }
+    } else {
+      if (command.reasonCode() == null) {
+        throw new UnprocessableException("REASON_REQUIRED", "Selecciona el motivo; el cliente lo verá para saber qué corregir.");
+      }
+      if (command.reasonCode() == ReturnReasonCode.OTHER && comment == null) {
+        throw new UnprocessableException("COMMENT_REQUIRED", "Describe el motivo en el comentario; el cliente lo verá para saber qué corregir.");
+      }
+    }
+
+    Instant now = clock.instant();
+    reviewRepository.save(
+        new DocumentReview(
+            latest.getId(),
+            command.decision(),
+            command.reasonCode(),
+            comment,
+            command.actor().userId(),
+            now,
+            overrideJustification,
+            overriddenIssues));
+    document.applyReview(command.decision(), command.reasonCode(), comment, now);
 
     // expedientes escucha este evento para decidir su propia transición de
     // estado (UNDER_REVIEW / CORRECTIONS_REQUESTED); documents no lo comanda
     // directamente, para evitar una dependencia cíclica entre módulos.
-    events.publishEvent(new DocumentReviewed(document.getExpedienteId(), documentId, decision, reviewerId));
+    events.publishEvent(
+        new DocumentReviewed(
+            document.getExpedienteId(),
+            document.getId(),
+            document.getType(),
+            command.decision(),
+            command.actor().userId(),
+            command.actor(),
+            command.reasonCode() == null ? null : command.reasonCode().name(),
+            comment,
+            overrideJustification));
 
-    if (decision == ReviewDecision.ACCEPTED && allRequiredAccepted(document.getExpedienteId())) {
+    if (command.decision() == ReviewDecision.ACCEPTED && allRequiredAccepted(document.getExpedienteId())) {
       events.publishEvent(new AllRequiredDocumentsApproved(document.getExpedienteId()));
     }
 
     return document;
+  }
+
+  public Document markNotApplicable(UUID documentId, String justification, Actor actor) {
+    Document document = get(documentId);
+    Completeness before = completenessOf(document.getExpedienteId());
+    String cleaned = blankToNull(justification);
+    if (cleaned == null || cleaned.length() < MIN_JUSTIFICATION_LENGTH) {
+      throw new UnprocessableException(
+          "JUSTIFICATION_REQUIRED",
+          "Explica por qué este documento no aplica a este expediente (mínimo " + MIN_JUSTIFICATION_LENGTH + " caracteres).");
+    }
+    document.markNotApplicable(cleaned, actor.userId(), clock.instant());
+    events.publishEvent(
+        new DocumentApplicabilityChanged(document.getExpedienteId(), documentId, document.getType(), true, cleaned, actor));
+    documentRepository.flush();
+    publishCompletenessChanges(document.getExpedienteId(), before);
+    return document;
+  }
+
+  public Document requestAgain(UUID documentId, Actor actor) {
+    Document document = get(documentId);
+    Completeness before = completenessOf(document.getExpedienteId());
+    document.requestAgain();
+    events.publishEvent(new DocumentApplicabilityChanged(document.getExpedienteId(), documentId, document.getType(), false, null, actor));
+    documentRepository.flush();
+    publishCompletenessChanges(document.getExpedienteId(), before);
+    return document;
+  }
+
+  /** Foto del avance documental, para avisar solo cuando realmente cambia (y no reenviar correos). */
+  private record Completeness(boolean hasRequired, boolean hasPendingRequired, boolean allUploaded, boolean allAccepted) {}
+
+  private Completeness completenessOf(UUID expedienteId) {
+    List<Document> required = documentRepository.findByExpedienteId(expedienteId).stream().filter(Document::isRequired).toList();
+    return new Completeness(
+        !required.isEmpty(),
+        required.stream().anyMatch(d -> d.getStatus() == DocumentStatus.PENDING),
+        !required.isEmpty() && required.stream().allMatch(Document::isSatisfiedForSubmission),
+        !required.isEmpty() && required.stream().allMatch(Document::isSatisfiedForApproval));
+  }
+
+  /**
+   * Publica solo las transiciones: se completó la carga, se completó la
+   * aprobación, o apareció un obligatorio sin cargar (p. ej. tras agregar un
+   * copropietario), en cuyo caso el expediente debe volver a pedir documentos.
+   */
+  private void publishCompletenessChanges(UUID expedienteId, Completeness before) {
+    Completeness after = completenessOf(expedienteId);
+    if (after.hasPendingRequired() && !before.hasPendingRequired() && before.hasRequired()) {
+      events.publishEvent(new RequiredDocumentsReopened(expedienteId));
+    }
+    if (after.allUploaded() && !before.allUploaded()) {
+      events.publishEvent(new AllRequiredDocumentsUploaded(expedienteId));
+    }
+    if (after.allAccepted() && !before.allAccepted()) {
+      events.publishEvent(new AllRequiredDocumentsApproved(expedienteId));
+    }
   }
 
   @Override
@@ -220,34 +413,50 @@ public class DocumentService implements DocumentsApi {
     document.markReadyForReview();
   }
 
+  /**
+   * La versión no pasó la calidad automática: igual queda lista para que el
+   * staff la vea (y la devuelva, o la acepte por excepción justificada), y el
+   * cliente ve el motivo en su liga para volver a tomar la foto.
+   */
   @Override
   public void markQualityFailed(UUID documentVersionId, String reason) {
-    findVersion(documentVersionId).failQuality(reason);
+    DocumentVersion version = findVersion(documentVersionId);
+    version.failQuality(reason);
+    documentRepository.findById(version.getDocumentId()).ifPresent(Document::markReadyForReview);
   }
 
   @Override
   public void markFailed(UUID documentVersionId, String reason) {
-    findVersion(documentVersionId).fail(reason);
+    DocumentVersion version = findVersion(documentVersionId);
+    version.fail(reason);
+    documentRepository.findById(version.getDocumentId()).ifPresent(Document::markReadyForReview);
   }
 
   @Override
   @Transactional(readOnly = true)
   public boolean allRequiredUploaded(UUID expedienteId) {
     List<Document> docs = documentRepository.findByExpedienteId(expedienteId);
-    return docs.stream().filter(Document::isRequired).allMatch(d -> d.getStatus() != DocumentStatus.PENDING);
+    return docs.stream().filter(Document::isRequired).allMatch(Document::isSatisfiedForSubmission);
   }
 
   @Override
   @Transactional(readOnly = true)
   public boolean allRequiredAccepted(UUID expedienteId) {
-    List<Document> docs = documentRepository.findByExpedienteId(expedienteId);
-    List<Document> required = docs.stream().filter(Document::isRequired).toList();
+    List<Document> required = documentRepository.findByExpedienteId(expedienteId).stream().filter(Document::isRequired).toList();
     if (required.isEmpty()) {
       // Los requisitos todavía no se materializan (evento asíncrono) o el
       // expediente no tiene documentos obligatorios: no se considera completo.
       return false;
     }
-    return required.stream().allMatch(d -> d.getStatus() == DocumentStatus.ACCEPTED);
+    return required.stream().allMatch(Document::isSatisfiedForApproval);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<RequirementStatusView> requirementStatusOf(UUID expedienteId) {
+    return documentRepository.findByExpedienteId(expedienteId).stream()
+        .map(d -> new RequirementStatusView(d.getId(), d.getType(), d.getParticipantId(), d.isRequired(), d.getStatus().name()))
+        .toList();
   }
 
   private DocumentVersion findVersion(UUID documentVersionId) {
@@ -255,21 +464,21 @@ public class DocumentService implements DocumentsApi {
   }
 
   /** Confirmación explícita de staff, distinta de "todos aceptados" (ver AGENTS §87). */
-  public void signReception(UUID expedienteId, UUID signedByUserId) {
+  public void signReception(UUID expedienteId, Actor actor) {
     if (!allRequiredAccepted(expedienteId)) {
       throw new ReceptionNotReadyException(expedienteId);
     }
-    events.publishEvent(new ReceptionSigned(expedienteId, signedByUserId));
+    events.publishEvent(new ReceptionSigned(expedienteId, actor.userId(), actor));
   }
 
   @Override
   @Transactional(readOnly = true)
-  public java.util.Optional<String> currentAcceptedPdfStorageKey(UUID documentId) {
+  public Optional<String> currentAcceptedPdfStorageKey(UUID documentId) {
     Document document = get(documentId);
     if (document.getStatus() != DocumentStatus.ACCEPTED) {
-      return java.util.Optional.empty();
+      return Optional.empty();
     }
-    return java.util.Optional.ofNullable(latestVersionOf(documentId).getStorageKeyPdf());
+    return Optional.ofNullable(latestVersionOf(documentId).getStorageKeyPdf());
   }
 
   @Override
@@ -280,13 +489,26 @@ public class DocumentService implements DocumentsApi {
 
   @Override
   @Transactional(readOnly = true)
+  public Optional<UUID> expedienteIdOfDocument(UUID documentId) {
+    return documentRepository.findById(documentId).map(Document::getExpedienteId);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
   public List<AcceptedDocumentView> acceptedDocumentsOf(UUID expedienteId) {
     // pdfStorageKey queda null cuando el staff aceptó manualmente una versión
     // que nunca generó PDF (p. ej. anuló un QUALITY_FAILED): sigue siendo
     // "aceptado" pero no hay archivo que adjuntar todavía.
     return documentRepository.findByExpedienteId(expedienteId).stream()
         .filter(d -> d.getStatus() == DocumentStatus.ACCEPTED)
-        .map(d -> new AcceptedDocumentView(d.getId(), d.getType().name(), currentAcceptedPdfStorageKey(d.getId()).orElse(null)))
+        .map(
+            d ->
+                new AcceptedDocumentView(
+                    d.getId(), d.getType().name(), d.getParticipantId(), currentAcceptedPdfStorageKey(d.getId()).orElse(null)))
         .toList();
+  }
+
+  private static String blankToNull(String value) {
+    return value == null || value.isBlank() ? null : value.strip();
   }
 }

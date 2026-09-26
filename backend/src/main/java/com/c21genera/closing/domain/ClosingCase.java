@@ -33,6 +33,8 @@ public class ClosingCase extends AuditableEntity {
 
   private Instant contractDeliveredAt;
 
+  private UUID signedContractId;
+
   protected ClosingCase() {}
 
   public ClosingCase(UUID expedienteId) {
@@ -40,6 +42,10 @@ public class ClosingCase extends AuditableEntity {
     this.expedienteId = expedienteId;
     this.status = ClosingStatus.OPEN;
     this.contractDelivered = false;
+  }
+
+  public void linkSignedContract(UUID contractId) {
+    this.signedContractId = contractId;
   }
 
   public void changeStatus(ClosingStatus status) {
@@ -69,5 +75,9 @@ public class ClosingCase extends AuditableEntity {
 
   public Instant getContractDeliveredAt() {
     return contractDeliveredAt;
+  }
+
+  public UUID getSignedContractId() {
+    return signedContractId;
   }
 }

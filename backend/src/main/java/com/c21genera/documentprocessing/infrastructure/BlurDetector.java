@@ -46,6 +46,23 @@ final class BlurDetector {
     return (sumSquares / count) - (mean * mean);
   }
 
+  /** Brillo medio (0-255) y desviación estándar del brillo: detecta fotos en blanco, grises o casi negras. */
+  record Luminance(double mean, double standardDeviation) {}
+
+  static Luminance luminance(BufferedImage image) {
+    BufferedImage scaled = downscale(image, MAX_DIMENSION_FOR_ANALYSIS);
+    int[] gray = toGrayscale(scaled);
+    double sum = 0;
+    double sumSquares = 0;
+    for (int value : gray) {
+      sum += value;
+      sumSquares += (double) value * value;
+    }
+    double mean = sum / gray.length;
+    double variance = Math.max(0, (sumSquares / gray.length) - mean * mean);
+    return new Luminance(mean, Math.sqrt(variance));
+  }
+
   private static int[] toGrayscale(BufferedImage image) {
     int width = image.getWidth();
     int height = image.getHeight();

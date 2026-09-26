@@ -38,12 +38,30 @@ public final class ExtractionDtos {
   public record ConfirmFieldRequest(@NotBlank String confirmedValue) {}
 
   public record ConflictResponse(
-      UUID id, String fieldName, String description, boolean resolved, Instant detectedAt, Instant resolvedAt) {
+      UUID id,
+      String fieldName,
+      String description,
+      boolean resolved,
+      boolean resolvedAutomatically,
+      String resolutionNote,
+      UUID resolvedByUserId,
+      Instant detectedAt,
+      Instant resolvedAt) {
 
     public static ConflictResponse from(DataConflict c) {
-      return new ConflictResponse(c.getId(), c.getFieldName(), c.getDescription(), c.isResolved(), c.getDetectedAt(), c.getResolvedAt());
+      return new ConflictResponse(
+          c.getId(),
+          c.getFieldName(),
+          c.getDescription(),
+          c.isResolved(),
+          c.isResolvedAutomatically(),
+          c.getResolutionNote(),
+          c.getResolvedByUserId(),
+          c.getDetectedAt(),
+          c.getResolvedAt());
     }
   }
 
-  public record ResolveConflictRequest(String note) {}
+  /** Resolver una diferencia exige explicar por qué es aceptable (p. ej. "el predial está a nombre del copropietario"). */
+  public record ResolveConflictRequest(@NotBlank String note) {}
 }

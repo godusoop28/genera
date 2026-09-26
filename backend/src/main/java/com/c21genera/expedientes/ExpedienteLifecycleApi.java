@@ -15,7 +15,24 @@ public interface ExpedienteLifecycleApi {
 
   ManualClientDataView getManualData(UUID expedienteId);
 
-  record ManualClientDataView(BigDecimal authorizedPrice, LocalDate contractSignatureDate) {}
+  record ManualClientDataView(
+      BigDecimal authorizedPrice,
+      LocalDate contractSignatureDate,
+      String email,
+      String phone,
+      String notificationAddress,
+      String visitInstructions,
+      Boolean marketingDataAuthorized,
+      Boolean receiveAdsAuthorized,
+      String additionalServicesRequested,
+      Integer bedrooms,
+      Integer bathrooms,
+      Integer parkingSpots,
+      String conservationStatus,
+      String availableServices,
+      String relevantFeatures,
+      BigDecimal landAreaM2,
+      BigDecimal builtAreaM2) {}
 
   /** WAITING_PRIVACY -> WAITING_DOCUMENTS. Idempotente. */
   void recordPrivacyAccepted(UUID expedienteId);
@@ -40,4 +57,10 @@ public interface ExpedienteLifecycleApi {
 
   /** CONTRACT_PREPARATION -> READY_FOR_SIGNATURE. Idempotente. */
   void recordReadyForSignature(UUID expedienteId);
+
+  /** READY_FOR_SIGNATURE -> CONTRACT_SIGNED. Idempotente. */
+  void recordContractSigned(UUID expedienteId);
+
+  /** READY_FOR_SIGNATURE -> CONTRACT_PREPARATION, cuando el contrato pendiente de firma quedó sin efecto. */
+  void recordContractInvalidated(UUID expedienteId);
 }

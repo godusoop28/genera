@@ -77,6 +77,8 @@ app:
       secret: ${JWT_SECRET:}
     public-link:
       base-url: ${PUBLIC_LINK_BASE_URL:https://documentos.c21genera.com/e}
+      # Vigencia de cada liga de cliente; después hay que generar una nueva.
+      ttl: ${PUBLIC_LINK_TTL:P30D}
     cors:
       allowed-origins: ${FRONTEND_URL:http://localhost:3000}
   storage:
@@ -119,10 +121,12 @@ app:
       capacity: 60
       refill-period: PT1M
   contracts:
-    # Requiere LibreOffice instalado (ver backend/Dockerfile). Deshabilitado
-    # por defecto: el DOCX del contrato siempre se genera: el PDF es adicional.
-    pdf-conversion-enabled: ${PDF_CONVERSION_ENABLED:false}
-    soffice-path: ${SOFFICE_PATH:soffice}
+    # El PDF del contrato (el que se firma) lo genera el propio backend con
+    # PDFBox; ya no se necesita LibreOffice.
+    # Liga personal de firma de cada firmante del cliente (frontend /firma/<token>).
+    # Vacío = se deriva de PUBLIC_LINK_BASE_URL (mismo dominio, ruta /firma).
+    signing-base-url: ${SIGNING_BASE_URL:}
+    signing-link-ttl: ${SIGNING_LINK_TTL:P15D}
 
 ---
 spring:

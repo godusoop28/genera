@@ -12,4 +12,6 @@ public interface DataConflictRepository extends JpaRepository<DataConflict, UUID
   boolean existsByExpedienteIdAndFieldNameAndResolvedFalse(UUID expedienteId, String fieldName);
 
   boolean existsByExpedienteIdAndResolvedFalse(UUID expedienteId);
+
+  List<DataConflict> findByExpedienteIdAndResolvedFalse(UUID expedienteId);
 }

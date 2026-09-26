@@ -1,16 +1,17 @@
 package com.c21genera.publicaccess;
 
+import com.c21genera.shared.events.Actor;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
 /** API pública del módulo publicaccess (ver AGENTS §14/§15/§161-162). */
 public interface PublicAccessTokenApi {
 
-  IssuedToken generate(UUID expedienteId);
+  /** Genera una liga nueva con vencimiento; cualquier liga anterior del expediente deja de funcionar. */
+  IssuedToken generate(UUID expedienteId, Actor actor);
 
-  IssuedToken regenerate(UUID expedienteId);
-
-  void revoke(UUID expedienteId);
+  void revoke(UUID expedienteId, Actor actor, String reason);
 
   /**
    * Resuelve un token crudo (tal como llega en la URL) al expediente al que
@@ -20,5 +21,10 @@ public interface PublicAccessTokenApi {
    */
   Optional<UUID> resolve(String rawToken);
 
-  record IssuedToken(String rawToken, java.time.Instant expiresAt) {}
+  /** Estado de la liga más reciente del expediente (sin el token: solo se guarda su hash). */
+  Optional<LinkStatus> statusOf(UUID expedienteId);
+
+  record IssuedToken(String rawToken, Instant expiresAt) {}
+
+  record LinkStatus(Instant createdAt, Instant expiresAt, Instant revokedAt, Instant lastUsedAt, boolean usable) {}
 }

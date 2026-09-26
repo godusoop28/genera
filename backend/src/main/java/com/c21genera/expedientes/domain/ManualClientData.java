@@ -1,5 +1,6 @@
 package com.c21genera.expedientes.domain;
 
+import com.c21genera.expedientes.CivilStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -8,6 +9,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -44,6 +47,12 @@ public class ManualClientData {
   private String relevantFeatures;
   private LocalDate contractSignatureDate;
 
+  @Column(name = "land_area_m2", precision = 12, scale = 2)
+  private BigDecimal landAreaM2;
+
+  @Column(name = "built_area_m2", precision = 12, scale = 2)
+  private BigDecimal builtAreaM2;
+
   protected ManualClientData() {}
 
   public ManualClientData(UUID expedienteId) {
@@ -73,6 +82,39 @@ public class ManualClientData {
     if (update.availableServices() != null) this.availableServices = update.availableServices();
     if (update.relevantFeatures() != null) this.relevantFeatures = update.relevantFeatures();
     if (update.contractSignatureDate() != null) this.contractSignatureDate = update.contractSignatureDate();
+    if (update.landAreaM2() != null) this.landAreaM2 = update.landAreaM2();
+    if (update.builtAreaM2() != null) this.builtAreaM2 = update.builtAreaM2();
+  }
+
+  /** Valores legibles por campo, para registrar el historial de correcciones (antes/después). */
+  public Map<String, String> snapshot() {
+    Map<String, String> values = new LinkedHashMap<>();
+    values.put("Estado civil (propietario principal)", str(civilStatus));
+    values.put("Precio autorizado", str(authorizedPrice));
+    values.put("Correo electrónico", email);
+    values.put("Teléfono", phone);
+    values.put("Domicilio para notificaciones", notificationAddress);
+    values.put("Instrucciones de visita", visitInstructions);
+    values.put("Autoriza ceder datos con fines mercadotécnicos", str(marketingDataAuthorized));
+    values.put("Autoriza recibir publicidad", str(receiveAdsAuthorized));
+    values.put("Servicios adicionales solicitados", additionalServicesRequested);
+    values.put("Recámaras", str(bedrooms));
+    values.put("Baños", str(bathrooms));
+    values.put("Estacionamientos", str(parkingSpots));
+    values.put("Estado de conservación", conservationStatus);
+    values.put("Servicios con los que cuenta", availableServices);
+    values.put("Características relevantes", relevantFeatures);
+    values.put("Fecha de firma del contrato", str(contractSignatureDate));
+    values.put("Superficie de terreno (m²)", str(landAreaM2));
+    values.put("Superficie de construcción (m²)", str(builtAreaM2));
+    return values;
+  }
+
+  private static String str(Object value) {
+    if (value == null) return null;
+    if (value instanceof Boolean b) return b ? "Sí" : "No";
+    if (value instanceof BigDecimal d) return d.stripTrailingZeros().toPlainString();
+    return value.toString();
   }
 
   public UUID getExpedienteId() {
@@ -143,6 +185,14 @@ public class ManualClientData {
     return contractSignatureDate;
   }
 
+  public BigDecimal getLandAreaM2() {
+    return landAreaM2;
+  }
+
+  public BigDecimal getBuiltAreaM2() {
+    return builtAreaM2;
+  }
+
   public record ManualClientDataUpdate(
       CivilStatus civilStatus,
       BigDecimal authorizedPrice,
@@ -159,5 +209,15 @@ public class ManualClientData {
       String conservationStatus,
       String availableServices,
       String relevantFeatures,
-      LocalDate contractSignatureDate) {}
+      LocalDate contractSignatureDate,
+      BigDecimal landAreaM2,
+      BigDecimal builtAreaM2) {
+
+    /** Lo único que el cliente puede modificar desde su liga pública. */
+    public static ManualClientDataUpdate fromClient(String email, String phone, String notificationAddress, CivilStatus civilStatus) {
+      return new ManualClientDataUpdate(
+          civilStatus, null, email, phone, notificationAddress, null, null, null, null, null, null, null, null, null, null, null,
+          null, null);
+    }
+  }
 }

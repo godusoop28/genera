@@ -6,6 +6,6 @@ import java.util.UUID;
 public class UnreadyExpedienteEmailException extends UnprocessableException {
 
   public UnreadyExpedienteEmailException(UUID expedienteId) {
-    super("NO_ACCEPTED_DOCUMENTS", "El expediente " + expedienteId + " todavía no tiene documentos aceptados para enviar por correo.");
+    super("NO_ACCEPTED_DOCUMENTS", "Este expediente todavía no tiene documentos aceptados para enviar por correo.");
   }
 }

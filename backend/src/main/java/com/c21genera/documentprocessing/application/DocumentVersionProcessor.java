@@ -8,6 +8,7 @@ import com.c21genera.documentprocessing.infrastructure.PdfAssembler.PageContent;
 import com.c21genera.documentprocessing.infrastructure.ProcessedStorageKeys;
 import com.c21genera.documents.DocumentsApi;
 import com.c21genera.documents.DocumentsApi.PageView;
+import com.c21genera.shared.events.DocumentEvents.DocumentQualityFailed;
 import com.c21genera.shared.events.DocumentEvents.DocumentVersionProcessed;
 import com.c21genera.shared.storage.FileStorage;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -97,7 +98,10 @@ public class DocumentVersionProcessor {
     }
 
     if (!qualityIssues.isEmpty()) {
-      documentsApi.markQualityFailed(payload.documentVersionId(), String.join("; ", qualityIssues));
+      String reason = String.join("; ", qualityIssues.stream().distinct().toList());
+      documentsApi.markQualityFailed(payload.documentVersionId(), reason);
+      events.publishEvent(
+          new DocumentQualityFailed(payload.expedienteId(), payload.documentId(), payload.documentVersionId(), payload.type(), reason));
       return;
     }
 

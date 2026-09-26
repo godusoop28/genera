@@ -29,10 +29,38 @@ class ExpedienteStateMachineTest {
             ExpedienteStateMachine.isAllowed(
                 ExpedienteStatus.CONTRACT_PREPARATION, ExpedienteStatus.READY_FOR_SIGNATURE))
         .isTrue();
-    assertThat(
-            ExpedienteStateMachine.isAllowed(ExpedienteStatus.READY_FOR_SIGNATURE, ExpedienteStatus.PROPERTY_ACCEPTED))
+    assertThat(ExpedienteStateMachine.isAllowed(ExpedienteStatus.READY_FOR_SIGNATURE, ExpedienteStatus.CONTRACT_SIGNED))
+        .isTrue();
+    assertThat(ExpedienteStateMachine.isAllowed(ExpedienteStatus.CONTRACT_SIGNED, ExpedienteStatus.PROPERTY_ACCEPTED))
         .isTrue();
     assertThat(ExpedienteStateMachine.isAllowed(ExpedienteStatus.PROPERTY_ACCEPTED, ExpedienteStatus.CLOSED)).isTrue();
+  }
+
+  @Test
+  void propertyCanOnlyBeAcceptedWithTheContractSigned() {
+    for (ExpedienteStatus from : ExpedienteStatus.values()) {
+      boolean allowed = ExpedienteStateMachine.isAllowed(from, ExpedienteStatus.PROPERTY_ACCEPTED);
+      assertThat(allowed).as(from.name()).isEqualTo(from == ExpedienteStatus.CONTRACT_SIGNED);
+    }
+  }
+
+  @Test
+  void aCorrectionAfterApprovalReturnsTheExpedienteToCorrections() {
+    for (ExpedienteStatus from :
+        java.util.List.of(
+            ExpedienteStatus.DOCUMENTS_APPROVED,
+            ExpedienteStatus.RECEPTION_SIGNED,
+            ExpedienteStatus.CONTRACT_PREPARATION,
+            ExpedienteStatus.READY_FOR_SIGNATURE)) {
+      assertThat(ExpedienteStateMachine.isAllowed(from, ExpedienteStatus.CORRECTIONS_REQUESTED)).as(from.name()).isTrue();
+    }
+    assertThat(ExpedienteStateMachine.isAllowed(ExpedienteStatus.CONTRACT_SIGNED, ExpedienteStatus.CORRECTIONS_REQUESTED)).isFalse();
+  }
+
+  @Test
+  void anInvalidatedContractGoesBackToPreparation() {
+    assertThat(ExpedienteStateMachine.isAllowed(ExpedienteStatus.READY_FOR_SIGNATURE, ExpedienteStatus.CONTRACT_PREPARATION))
+        .isTrue();
   }
 
   @Test

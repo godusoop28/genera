@@ -17,21 +17,28 @@ public final class DocumentFieldSchemas {
 
   private static final Map<DocumentTypeCode, List<String>> SCHEMAS =
       Map.ofEntries(
-          Map.entry(DocumentTypeCode.INE, List.of("fullName", "curp", "electorKey", "address")),
+          Map.entry(DocumentTypeCode.INE, List.of("fullName", "curp", "electorKey", "address", "expirationYear")),
           Map.entry(DocumentTypeCode.PASSPORT, List.of("fullName", "passportNumber", "birthDate")),
           Map.entry(DocumentTypeCode.CURP, List.of("fullName", "curp")),
           Map.entry(DocumentTypeCode.TAX_STATUS_CERTIFICATE, List.of("fullName", "rfc", "taxRegime", "address")),
-          Map.entry(DocumentTypeCode.DEED, List.of("ownerFullName", "propertyAddress", "publicRegistryFolio")),
+          Map.entry(
+              DocumentTypeCode.DEED,
+              List.of("ownerFullName", "propertyAddress", "publicRegistryFolio", "deedNumber", "notaryNumber", "landArea", "builtArea")),
           Map.entry(DocumentTypeCode.PROOF_OF_ADDRESS, List.of("fullName", "address", "issueDate")),
           Map.entry(DocumentTypeCode.LIEN_CERTIFICATE, List.of("propertyAddress", "hasLiens")),
-          Map.entry(DocumentTypeCode.PROPERTY_TAX, List.of("ownerFullName", "propertyAddress", "cadastralKey")),
+          Map.entry(
+              DocumentTypeCode.PROPERTY_TAX, List.of("ownerFullName", "propertyAddress", "cadastralKey", "landArea", "builtArea")),
           Map.entry(DocumentTypeCode.POWER_OF_ATTORNEY, List.of("grantorFullName", "attorneyFullName", "notaryNumber")),
           Map.entry(DocumentTypeCode.CONDOMINIUM_REGIME, List.of("propertyAddress", "regimeRegistrationFolio")),
           Map.entry(DocumentTypeCode.ELECTRICITY_RECEIPT, List.of("fullName", "address", "issueDate")),
           Map.entry(DocumentTypeCode.WATER_RECEIPT, List.of("fullName", "address", "issueDate")),
-          Map.entry(DocumentTypeCode.CADASTRAL_PLAN, List.of("propertyAddress", "cadastralKey")),
-          Map.entry(DocumentTypeCode.RPP_REGISTRATION_SLIP, List.of("propertyAddress", "publicRegistryFolio")),
-          Map.entry(DocumentTypeCode.MARRIAGE_CERTIFICATE, List.of("spouseFullName", "marriageDate", "maritalRegime")));
+          Map.entry(DocumentTypeCode.CADASTRAL_PLAN, List.of("propertyAddress", "cadastralKey", "landArea")),
+          Map.entry(DocumentTypeCode.RPP_REGISTRATION_SLIP, List.of("ownerFullName", "propertyAddress", "publicRegistryFolio")),
+          Map.entry(DocumentTypeCode.MARRIAGE_CERTIFICATE, List.of("fullName", "spouseFullName", "marriageDate", "maritalRegime")),
+          Map.entry(
+              DocumentTypeCode.PRIVATE_CONTRACT,
+              List.of("buyerFullName", "sellerFullName", "propertyAddress", "contractDate", "publicRegistryFolio", "landArea")),
+          Map.entry(DocumentTypeCode.INCORPORATION_DEED, List.of("companyName", "instrumentNumber", "notaryNumber", "mercantileFolio")));
 
   /** Documentos fuera de esta lista no tienen esquema de extracción todavía: se devuelve vacío. */
   public static List<String> fieldsFor(DocumentTypeCode type) {

@@ -8,6 +8,6 @@ public class ReceptionNotReadyException extends ConflictException {
   public ReceptionNotReadyException(UUID expedienteId) {
     super(
         "RECEPTION_NOT_READY",
-        "El expediente " + expedienteId + " todavía no tiene todos los documentos obligatorios aceptados.");
+        "Todavía hay documentos obligatorios sin aceptar (o sin marcar como \"No aplica\"); no se puede firmar la recepción.");
   }
 }

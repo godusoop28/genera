@@ -70,6 +70,9 @@ public class Expediente extends AuditableEntity {
   @Column(nullable = false)
   private UUID createdByUserId;
 
+  /** Ver {@link com.c21genera.expedientes.LegalDetails}; lo serializa ExpedienteService. */
+  private String legalDetailsJson;
+
   protected Expediente() {}
 
   public Expediente(
@@ -95,6 +98,66 @@ public class Expediente extends AuditableEntity {
     this.declaredLegalStatus = declaredLegalStatus;
     this.propertyAddress = propertyAddress;
     this.createdByUserId = createdByUserId;
+  }
+
+  public record Configuration(
+      String ownerDisplayName,
+      PersonType personType,
+      SignerCharacter signerCharacter,
+      AccreditationType accreditationType,
+      boolean condominiumRegime,
+      PropertyCaseType propertyCaseType,
+      PropertyLegalStatus declaredLegalStatus,
+      String propertyAddress) {}
+
+  public Configuration configuration() {
+    return new Configuration(
+        ownerDisplayName,
+        personType,
+        signerCharacter,
+        accreditationType,
+        condominiumRegime,
+        propertyCaseType,
+        declaredLegalStatus,
+        propertyAddress);
+  }
+
+  /**
+   * Corrección controlada de los datos principales (ver
+   * ExpedienteService#correctConfiguration): el historial y la nueva versión
+   * del contrato los gestiona el servicio; aquí solo se protege que no se
+   * modifique un expediente cuyo contrato ya se firmó o que ya se decidió.
+   */
+  public void reconfigure(Configuration configuration) {
+    ensureCorrectable();
+    this.ownerDisplayName = configuration.ownerDisplayName();
+    this.personType = configuration.personType();
+    this.signerCharacter = configuration.signerCharacter();
+    this.accreditationType = configuration.accreditationType();
+    this.condominiumRegime = configuration.condominiumRegime();
+    this.propertyCaseType = configuration.propertyCaseType();
+    this.declaredLegalStatus = configuration.declaredLegalStatus();
+    this.propertyAddress = configuration.propertyAddress();
+  }
+
+  public void replaceLegalDetailsJson(String json) {
+    ensureCorrectable();
+    this.legalDetailsJson = json;
+  }
+
+  public boolean isCorrectable() {
+    return switch (status) {
+      case CONTRACT_SIGNED, PROPERTY_ACCEPTED, PROPERTY_REJECTED, CLOSED -> false;
+      default -> true;
+    };
+  }
+
+  public void ensureCorrectable() {
+    if (!isCorrectable()) {
+      throw new com.c21genera.shared.domain.ConflictException(
+          "EXPEDIENTE_LOCKED",
+          "Este expediente ya no admite correcciones: el contrato ya se firmó o el inmueble ya fue decidido.");
+    }
   }
 
   public void transitionTo(ExpedienteStatus target) {
@@ -136,6 +199,11 @@ public class Expediente extends AuditableEntity {
 
   public void markAllRequiredDocumentsUploaded() {
     this.allRequiredDocumentsUploaded = true;
+  }
+
+  /** Apareció un documento obligatorio sin cargar (p. ej. tras una corrección). */
+  public void markRequiredDocumentsPending() {
+    this.allRequiredDocumentsUploaded = false;
   }
 
   public boolean isAllRequiredDocumentsUploaded() {
@@ -200,5 +268,9 @@ public class Expediente extends AuditableEntity {
 
   public UUID getCreatedByUserId() {
     return createdByUserId;
+  }
+
+  public String getLegalDetailsJson() {
+    return legalDetailsJson;
   }
 }

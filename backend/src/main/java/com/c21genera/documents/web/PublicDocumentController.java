@@ -4,10 +4,11 @@ import com.c21genera.documents.application.DocumentService;
 import com.c21genera.documents.application.DocumentService.UploadedFileContent;
 import com.c21genera.documents.domain.Document;
 import com.c21genera.documents.domain.UploadedVia;
-import com.c21genera.documents.web.DocumentDtos.DocumentResponse;
 import com.c21genera.documents.web.DocumentDtos.DocumentVersionResponse;
+import com.c21genera.documents.web.DocumentDtos.PublicDocumentResponse;
 import com.c21genera.publicaccess.PublicAccessTokenApi;
 import com.c21genera.publicaccess.PublicLinkRevokedException;
+import com.c21genera.shared.events.Actor;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.List;
@@ -39,16 +40,20 @@ public class PublicDocumentController {
     this.tokenApi = tokenApi;
   }
 
+  /** Los requisitos que no aplican (no obligatorios y sin archivo) no se le muestran al cliente. */
   @GetMapping
-  public List<DocumentResponse> list(@PathVariable String token) {
+  public List<PublicDocumentResponse> list(@PathVariable String token) {
     UUID expedienteId = resolve(token);
-    return documentService.documentsOf(expedienteId).stream().map(DocumentResponse::from).toList();
+    return documentService.documentsOf(expedienteId).stream()
+        .filter(d -> d.isRequired() || d.getCurrentVersionNumber() > 0 || isOptionalButUseful(d))
+        .map(this::toResponse)
+        .toList();
   }
 
   @GetMapping("/{documentId}")
-  public DocumentResponse get(@PathVariable String token, @PathVariable UUID documentId) {
+  public PublicDocumentResponse get(@PathVariable String token, @PathVariable UUID documentId) {
     UUID expedienteId = resolve(token);
-    return DocumentResponse.from(requireOwnedByExpediente(documentId, expedienteId));
+    return toResponse(requireOwnedByExpediente(documentId, expedienteId));
   }
 
   @PostMapping("/{documentId}/versions")
@@ -58,7 +63,22 @@ public class PublicDocumentController {
     UUID expedienteId = resolve(token);
     requireOwnedByExpediente(documentId, expedienteId);
     List<UploadedFileContent> contents = files.stream().map(PublicDocumentController::readFile).toList();
-    return DocumentVersionResponse.from(documentService.uploadVersion(documentId, contents, UploadedVia.PUBLIC_PORTAL));
+    return DocumentVersionResponse.from(documentService.uploadVersion(documentId, contents, UploadedVia.PUBLIC_PORTAL, Actor.client()));
+  }
+
+  /**
+   * Recibos de luz/agua de un terreno: ya no son obligatorios, pero si el
+   * terreno sí tiene servicios el cliente puede cargarlos.
+   */
+  private static boolean isOptionalButUseful(Document d) {
+    return switch (d.getType()) {
+      case ELECTRICITY_RECEIPT, WATER_RECEIPT -> d.getStatus() != com.c21genera.documents.DocumentStatus.NOT_APPLICABLE;
+      default -> false;
+    };
+  }
+
+  private PublicDocumentResponse toResponse(Document document) {
+    return PublicDocumentResponse.from(document, documentService.latestVersion(document.getId()).orElse(null));
   }
 
   private Document requireOwnedByExpediente(UUID documentId, UUID expedienteId) {

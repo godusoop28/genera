@@ -44,15 +44,60 @@ public class DocumentVersion {
 
   private String processingError;
 
+  private UUID uploadedByUserId;
+  private String uploadedByName;
+
+  private Boolean aiTypeMatches;
+  private Boolean aiLegible;
+  private String aiDetectedKind;
+  private String aiObservations;
+  private Instant aiAssessedAt;
+
   protected DocumentVersion() {}
 
-  public DocumentVersion(UUID documentId, int versionNumber, Instant uploadedAt, UploadedVia uploadedVia) {
+  public DocumentVersion(
+      UUID documentId, int versionNumber, Instant uploadedAt, UploadedVia uploadedVia, UUID uploadedByUserId, String uploadedByName) {
     this.id = UUID.randomUUID();
     this.documentId = documentId;
     this.versionNumber = versionNumber;
     this.uploadedAt = uploadedAt;
     this.uploadedVia = uploadedVia;
+    this.uploadedByUserId = uploadedByUserId;
+    this.uploadedByName = uploadedByName;
     this.processingStatus = ProcessingStatus.QUEUED;
+  }
+
+  public void recordAiAssessment(Boolean typeMatches, Boolean legible, String detectedKind, String observations, Instant when) {
+    this.aiTypeMatches = typeMatches;
+    this.aiLegible = legible;
+    this.aiDetectedKind = detectedKind;
+    this.aiObservations = observations;
+    this.aiAssessedAt = when;
+  }
+
+  /**
+   * Alertas que impiden aceptar esta versión sin una autorización de
+   * excepción: calidad automática fallida, archivo sin procesar, o la IA
+   * indicó que no corresponde al documento solicitado o que es ilegible.
+   */
+  public java.util.List<String> blockingIssues() {
+    java.util.List<String> issues = new java.util.ArrayList<>();
+    switch (processingStatus) {
+      case QUALITY_FAILED -> issues.add("No pasó la verificación automática de calidad: " + processingError);
+      case FAILED -> issues.add("El archivo no se pudo procesar: " + processingError);
+      default -> {
+        /* sin alertas de procesamiento */
+      }
+    }
+    if (Boolean.FALSE.equals(aiTypeMatches)) {
+      issues.add(
+          "La revisión automática indica que el archivo no corresponde al documento solicitado"
+              + (aiDetectedKind != null && !aiDetectedKind.isBlank() ? " (parece: " + aiDetectedKind + ")" : ""));
+    }
+    if (Boolean.FALSE.equals(aiLegible)) {
+      issues.add("La revisión automática indica que el documento no es legible");
+    }
+    return issues;
   }
 
   public void startProcessing() {
@@ -109,5 +154,33 @@ public class DocumentVersion {
 
   public String getProcessingError() {
     return processingError;
+  }
+
+  public UUID getUploadedByUserId() {
+    return uploadedByUserId;
+  }
+
+  public String getUploadedByName() {
+    return uploadedByName;
+  }
+
+  public Boolean getAiTypeMatches() {
+    return aiTypeMatches;
+  }
+
+  public Boolean getAiLegible() {
+    return aiLegible;
+  }
+
+  public String getAiDetectedKind() {
+    return aiDetectedKind;
+  }
+
+  public String getAiObservations() {
+    return aiObservations;
+  }
+
+  public Instant getAiAssessedAt() {
+    return aiAssessedAt;
   }
 }

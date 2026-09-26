@@ -29,5 +29,9 @@ public enum DocumentTypeCode {
   LEASE_AGREEMENT,
   RPP_REGISTRATION_SLIP,
   MARRIAGE_CERTIFICATE,
+  /** Contrato privado de compraventa ratificado, cuando la propiedad no se acredita con escritura. */
+  PRIVATE_CONTRACT,
+  /** Acta constitutiva de una persona moral. */
+  INCORPORATION_DEED,
   OTHER
 }

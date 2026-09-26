@@ -11,4 +11,6 @@ public interface PublicAccessTokenRepository extends JpaRepository<PublicAccessT
   Optional<PublicAccessToken> findByTokenHash(String tokenHash);
 
   List<PublicAccessToken> findByExpedienteIdAndActiveTrue(UUID expedienteId);
+
+  Optional<PublicAccessToken> findFirstByExpedienteIdOrderByCreatedAtDesc(UUID expedienteId);
 }
