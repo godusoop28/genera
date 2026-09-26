@@ -19,7 +19,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "CENTURY 21 Genera · Gestión documental",
   description:
-    "Prototipo visual de gestión documental y contratos — CENTURY 21 Genera (Módulo 1).",
+    "Gestión documental y contratos — CENTURY 21 Genera.",
 };
 
 // Aplica el tema/tamaño de fuente guardados antes del primer pintado, para

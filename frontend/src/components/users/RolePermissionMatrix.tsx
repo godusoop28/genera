@@ -25,7 +25,7 @@ export function RolePermissionMatrix() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {roles.map((role) => (
           <div key={role.id} className="rounded-2xl border border-border bg-card p-4">
             <p className="text-sm font-semibold text-obsessed">{role.name}</p>

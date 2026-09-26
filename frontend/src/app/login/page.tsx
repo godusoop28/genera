@@ -31,7 +31,7 @@ export default function LoginPage() {
       if (err instanceof ApiError && (err.status === 401 || err.status === 400)) {
         setError("Correo o contraseña incorrectos.");
       } else if (err instanceof TypeError) {
-        setError("No se pudo conectar con el backend. ¿Está corriendo en localhost:8080?");
+        setError("No se pudo conectar con el servidor. Intenta de nuevo en unos segundos.");
       } else {
         setError("Ocurrió un error inesperado al iniciar sesión.");
       }

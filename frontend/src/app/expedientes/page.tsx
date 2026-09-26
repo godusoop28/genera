@@ -32,6 +32,7 @@ function matchesFilter(status: BackendExpedienteStatus, filter: FilterId): boole
       "RECEPTION_SIGNED",
       "CONTRACT_PREPARATION",
       "READY_FOR_SIGNATURE",
+      "CONTRACT_SIGNED",
       "PROPERTY_ACCEPTED",
       "CLOSED",
     ].includes(status);
@@ -53,7 +54,7 @@ export default function ExpedientesPage() {
         setError(
           err instanceof ApiError
             ? `No se pudo cargar la lista (${err.status}): ${err.message}`
-            : "No se pudo conectar con el backend en localhost:8080.",
+            : "No se pudo conectar con el servidor. Intenta de nuevo.",
         );
       });
   }, []);
@@ -70,7 +71,7 @@ export default function ExpedientesPage() {
   return (
     <PageContainer
       title="Expedientes"
-      subtitle="Consulta y administra los expedientes documentales (datos reales del backend)."
+      subtitle="Consulta y administra los expedientes documentales."
       action={
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="md" onClick={load}>

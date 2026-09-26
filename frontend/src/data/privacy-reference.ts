@@ -75,4 +75,4 @@ export const PRIVACY_RECEIVED_DOCUMENTS_CHECKLIST = [
 ] as const;
 
 export const PRIVACY_SIGNATURE_DISCLAIMER =
-  "Firma simulada para fines del prototipo. No constituye una firma electrónica certificada.";
+  "Tu firma queda registrada con la fecha, la hora y la dirección IP como constancia de tu consentimiento.";

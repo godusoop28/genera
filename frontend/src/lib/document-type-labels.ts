@@ -2,7 +2,7 @@
 // backend/shared/domain/DocumentTypeCode.java). El backend nunca decide
 // nombres de UI, así que este mapeo vive aquí, no allá.
 export const documentTypeLabels: Record<string, string> = {
-  INE: "INE",
+  INE: "Identificación oficial (INE)",
   PASSPORT: "Pasaporte",
   CURP: "CURP",
   TAX_STATUS_CERTIFICATE: "Constancia de Situación Fiscal",
@@ -24,6 +24,8 @@ export const documentTypeLabels: Record<string, string> = {
   LEASE_AGREEMENT: "Contrato de arrendamiento",
   RPP_REGISTRATION_SLIP: "Boleta de inscripción al RPP",
   MARRIAGE_CERTIFICATE: "Acta de matrimonio",
+  PRIVATE_CONTRACT: "Contrato privado de compraventa ratificado",
+  INCORPORATION_DEED: "Acta constitutiva",
   OTHER: "Otro",
 };
 

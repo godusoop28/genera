@@ -3,259 +3,158 @@
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
+import { Modal } from "@/components/ui/Modal";
+import { ReasonModal } from "@/components/ui/ReasonModal";
 import { useToast } from "@/components/ui/Toast";
-import { ApiError } from "@/lib/api/client";
 import {
   acceptDocument,
   getDownloadUrl,
-  getProcessingStatus,
   listDocuments,
-  listVersions,
+  listReviews,
+  markNotApplicable,
   rejectDocument,
+  requestAgain,
   returnDocument,
   uploadVersion,
 } from "@/lib/api/documents";
-import { generateContract, getContractData, listContracts, markContractDelivered, markContractSigned } from "@/lib/api/contracts";
 import { getExtractedFields } from "@/lib/api/extraction";
 import { getDocumentsEmailPreview } from "@/lib/api/notifications";
 import type {
-  ContractCalculationsResponse,
-  ContractGenerationResponse,
   DocumentResponse,
-  DocumentVersionResponse,
   EmailPreviewResponse,
   ExtractedFieldObservationResponse,
   ReturnReasonCode,
+  ReviewHistoryResponse,
 } from "@/lib/api/types";
-import { Modal } from "@/components/ui/Modal";
 import { documentTypeLabel } from "@/lib/document-type-labels";
-import { Download, FileText, Loader2, Mail, Upload } from "lucide-react";
+import { errorText } from "@/lib/errors";
+import { documentStatusLabels, documentStatusTone, extractedFieldLabels, formatDateTime, label, returnReasonLabels } from "@/lib/labels";
+import { useCan } from "@/lib/permissions";
+import { AlertTriangle, Bot, Download, History, Loader2, Mail, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ExpedienteContext } from "./page";
 
-const processingLabels: Record<DocumentVersionResponse["processingStatus"], string> = {
-  QUEUED: "En cola",
+const processingLabels: Record<string, string> = {
+  QUEUED: "En cola para procesar",
   PROCESSING: "Procesando",
-  QUALITY_FAILED: "Calidad insuficiente",
+  QUALITY_FAILED: "No pasó la verificación de calidad",
   PROCESSED: "Procesado",
   FAILED: "Falló el procesamiento",
 };
 
-const processingTone: Record<DocumentVersionResponse["processingStatus"], "neutral" | "info" | "warning" | "success" | "danger"> = {
-  QUEUED: "neutral",
-  PROCESSING: "info",
-  QUALITY_FAILED: "warning",
-  PROCESSED: "success",
-  FAILED: "danger",
-};
-
-const documentStatusLabels: Record<DocumentResponse["status"], string> = {
-  PENDING: "Pendiente",
-  UPLOADED: "Subido",
-  READY_FOR_REVIEW: "Listo para revisión",
-  ACCEPTED: "Aceptado",
-  RETURNED: "Devuelto",
-  REJECTED: "Rechazado",
-  REPLACED: "Reemplazado",
-};
-
-const documentStatusTone: Record<DocumentResponse["status"], "neutral" | "info" | "warning" | "success" | "danger"> = {
-  PENDING: "neutral",
-  UPLOADED: "info",
-  READY_FOR_REVIEW: "info",
-  ACCEPTED: "success",
-  RETURNED: "warning",
-  REJECTED: "danger",
-  REPLACED: "neutral",
-};
-
-const returnReasons: { value: ReturnReasonCode; label: string }[] = [
-  { value: "BLURRY_IMAGE", label: "Imagen borrosa" },
-  { value: "INCOMPLETE_DOCUMENT", label: "Documento incompleto" },
-  { value: "EXPIRED_DOCUMENT", label: "Documento vencido" },
-  { value: "ILLEGIBLE_INFORMATION", label: "Información ilegible" },
-  { value: "WRONG_DOCUMENT", label: "Documento equivocado" },
-  { value: "MISSING_PAGE", label: "Falta una página" },
-  { value: "OTHER", label: "Otro" },
-];
-
-export function DocumentsPanel({ expedienteId }: { expedienteId: string }) {
+export function DocumentsPanel({ expediente, participants, reload }: ExpedienteContext) {
   const { showToast } = useToast();
+  const can = useCan();
   const [documents, setDocuments] = useState<DocumentResponse[] | null>(null);
-  const [contractData, setContractData] = useState<ContractCalculationsResponse | null>(null);
-  const [contracts, setContracts] = useState<ContractGenerationResponse[]>([]);
-  const [generatingContract, setGeneratingContract] = useState(false);
   const [emailPreview, setEmailPreview] = useState<EmailPreviewResponse | null>(null);
-  const [loadingEmailPreview, setLoadingEmailPreview] = useState(false);
+  const [showOptional, setShowOptional] = useState(false);
+  const names = Object.fromEntries(participants.map((p) => [p.id, p.fullName]));
 
-  const loadDocuments = useCallback(() => {
-    listDocuments(expedienteId).then(setDocuments).catch(() => undefined);
-  }, [expedienteId]);
-
-  const loadContracts = useCallback(() => {
-    listContracts(expedienteId).then(setContracts).catch(() => undefined);
-  }, [expedienteId]);
+  const load = useCallback(() => {
+    listDocuments(expediente.id)
+      .then(setDocuments)
+      .catch((err) => showToast(errorText(err)));
+  }, [expediente.id, showToast]);
 
   useEffect(() => {
-    loadDocuments();
-    loadContracts();
-    getContractData(expedienteId)
-      .then(setContractData)
-      .catch(() => undefined);
-  }, [expedienteId, loadDocuments, loadContracts]);
+    load();
+  }, [load]);
 
-  const handleGenerateContract = async () => {
-    setGeneratingContract(true);
-    try {
-      await generateContract(expedienteId);
-      showToast("Contrato generado.");
-      loadContracts();
-    } catch (err) {
-      showToast(err instanceof ApiError ? `No se pudo generar el contrato (${err.status}): ${err.message}` : "Error de conexión.");
-    } finally {
-      setGeneratingContract(false);
-    }
+  // Mientras haya archivos procesándose, se actualiza solo.
+  useEffect(() => {
+    const processing = documents?.some((d) => d.latestVersion && ["QUEUED", "PROCESSING"].includes(d.latestVersion.processingStatus));
+    if (!processing) return;
+    const timer = setTimeout(load, 4000);
+    return () => clearTimeout(timer);
+  }, [documents, load]);
+
+  const onChanged = async (updated?: DocumentResponse) => {
+    if (updated) setDocuments((prev) => prev?.map((d) => (d.id === updated.id ? updated : d)) ?? null);
+    load();
+    await reload();
   };
 
-  const handleMarkSigned = async (contractId: string) => {
-    try {
-      await markContractSigned(contractId);
-      showToast("Contrato marcado como firmado.");
-      loadContracts();
-    } catch (err) {
-      showToast(err instanceof ApiError ? `No se pudo actualizar (${err.status}).` : "Error de conexión.");
-    }
-  };
-
-  const handleMarkDelivered = async (contractId: string) => {
-    try {
-      await markContractDelivered(contractId, "MANUAL");
-      showToast("Contrato marcado como entregado.");
-      loadContracts();
-    } catch (err) {
-      showToast(err instanceof ApiError ? `No se pudo actualizar (${err.status}).` : "Error de conexión.");
-    }
-  };
-
-  const handleOpenEmailPreview = async () => {
-    setLoadingEmailPreview(true);
-    try {
-      const preview = await getDocumentsEmailPreview(expedienteId);
-      setEmailPreview(preview);
-    } catch (err) {
-      showToast(
-        err instanceof ApiError
-          ? `No se pudo armar la vista previa (${err.status}): ${err.message}`
-          : "Error de conexión.",
-      );
-    } finally {
-      setLoadingEmailPreview(false);
-    }
-  };
+  const visible = (documents ?? []).filter((d) => d.required || d.currentVersionNumber > 0 || d.status === "NOT_APPLICABLE" || showOptional);
+  const pendingCount = visible.filter((d) => d.required && d.status !== "ACCEPTED" && d.status !== "NOT_APPLICABLE").length;
 
   return (
     <div className="flex flex-col gap-6">
       <Card>
-        <CardHeader title="Documentos" description="Cada renglón es un requisito del expediente; sube el archivo correspondiente." />
+        <CardHeader
+          title="Documentos"
+          description={
+            pendingCount > 0
+              ? `Faltan ${pendingCount} documento(s) obligatorio(s) por aceptar o marcar como "No aplica".`
+              : "Todos los documentos obligatorios están resueltos."
+          }
+        />
         {documents === null ? (
           <p className="text-sm text-muted">Cargando documentos…</p>
-        ) : documents.length === 0 ? (
-          <p className="text-sm text-muted">Sin documentos requeridos.</p>
         ) : (
           <div className="flex flex-col gap-3">
-            {documents.map((doc) => (
-              <DocumentRow key={doc.id} document={doc} onChanged={loadDocuments} />
+            {visible.map((doc) => (
+              <DocumentRow
+                key={doc.id}
+                document={doc}
+                participantName={doc.participantId ? names[doc.participantId] : undefined}
+                onChanged={onChanged}
+                canUpload={can("DOCUMENT_UPLOAD")}
+                canAccept={can("DOCUMENT_ACCEPT")}
+                canReturn={can("DOCUMENT_RETURN")}
+                canReject={can("DOCUMENT_REJECT")}
+                canOverride={can("DOCUMENT_QUALITY_OVERRIDE")}
+                canMarkNotApplicable={can("DOCUMENT_MARK_NOT_APPLICABLE")}
+              />
             ))}
           </div>
         )}
+        <button type="button" className="mt-3 text-xs text-dark-gold hover:underline" onClick={() => setShowOptional((v) => !v)}>
+          {showOptional ? "Ocultar documentos que no aplican" : "Mostrar también documentos que no aplican a este expediente"}
+        </button>
       </Card>
 
-      <Card>
-        <CardHeader title="Contrato" description="Snapshot inmutable: si el expediente cambia después, los contratos ya generados no cambian." />
-        {contractData ? (
-          <dl className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Field label="Precio" value={contractData.price} />
-            <Field label="Comisión" value={contractData.commission} />
-            <Field label="IVA" value={contractData.vat} />
-            <Field label="Comisión + IVA" value={contractData.totalCommissionWithVat} />
-            <Field label="Pena convencional" value={contractData.penalty} />
-            <Field label="Exclusividad" value={`${contractData.exclusivityDays} días (hasta ${contractData.exclusivityEndDate})`} />
-          </dl>
-        ) : (
-          <p className="mb-4 text-sm text-muted">No se pudieron cargar los cálculos del contrato todavía.</p>
-        )}
-
-        <Button onClick={handleGenerateContract} disabled={generatingContract} size="sm">
-          {generatingContract ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <FileText className="h-4 w-4" aria-hidden />}
-          Generar contrato
-        </Button>
-
-        {contracts.length > 0 ? (
-          <ul className="mt-4 flex flex-col gap-2">
-            {contracts.map((c) => (
-              <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">
-                <div>
-                  <span className="font-medium text-obsessed">Versión {c.versionNumber}</span>
-                  <span className="ml-2 text-xs text-muted">{new Date(c.generatedAt).toLocaleString("es-MX")}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge tone={c.status === "DELIVERED" ? "success" : c.status === "SIGNED" ? "info" : "neutral"}>{c.status}</Badge>
-                  {c.status === "GENERATED" ? (
-                    <Button variant="secondary" size="sm" onClick={() => handleMarkSigned(c.id)}>
-                      Marcar firmado
-                    </Button>
-                  ) : null}
-                  {c.status === "SIGNED" ? (
-                    <Button variant="secondary" size="sm" onClick={() => handleMarkDelivered(c.id)}>
-                      Marcar entregado
-                    </Button>
-                  ) : null}
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </Card>
-
-      <Card>
-        <CardHeader
-          title="Envío a notaría"
-          description="El envío es manual: aquí solo se arma el correo con los documentos aceptados para que lo revises y lo mandes tú mismo."
-        />
-        <Button onClick={handleOpenEmailPreview} disabled={loadingEmailPreview} size="sm">
-          {loadingEmailPreview ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Mail className="h-4 w-4" aria-hidden />}
-          Vista previa de envío
-        </Button>
-      </Card>
+      {can("DOCUMENT_EMAIL_SEND") ? (
+        <Card>
+          <CardHeader
+            title="Envío a notaría"
+            description="Arma el correo con los documentos aceptados para que lo revises y lo envíes tú desde tu correo."
+          />
+          <Button
+            size="sm"
+            onClick={async () => {
+              try {
+                setEmailPreview(await getDocumentsEmailPreview(expediente.id));
+              } catch (err) {
+                showToast(errorText(err));
+              }
+            }}
+          >
+            <Mail className="h-4 w-4" aria-hidden /> Vista previa de envío
+          </Button>
+        </Card>
+      ) : null}
 
       <Modal open={emailPreview !== null} onClose={() => setEmailPreview(null)} title="Vista previa de envío a notaría">
         {emailPreview ? (
-          <div className="flex flex-col gap-4">
-            <p className="text-xs text-muted">
-              Esto no envía nada. Copia el contenido o descarga los documentos y envíalos tú mismo desde tu correo.
+          <div className="flex flex-col gap-4 text-sm">
+            <p className="text-xs text-muted">Esto no envía nada. Descarga los documentos y envíalos tú desde tu correo.</p>
+            <p>
+              <span className="font-medium">Asunto:</span> {emailPreview.subject}
             </p>
-            <Field label="Asunto" value={emailPreview.subject} />
-            <div>
-              <dt className="text-xs font-medium tracking-wide text-muted uppercase">Cuerpo</dt>
-              <dd className="mt-0.5 whitespace-pre-wrap text-sm text-obsessed">{emailPreview.body}</dd>
-            </div>
-            <div>
-              <dt className="mb-2 text-xs font-medium tracking-wide text-muted uppercase">Documentos adjuntos</dt>
-              <ul className="flex flex-col gap-2">
-                {emailPreview.attachments.map((a) => (
-                  <li key={a.fileName} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">
-                    <span className="text-obsessed">{a.fileName}</span>
-                    <a href={a.downloadUrl} target="_blank" rel="noreferrer" className="text-dark-gold hover:underline">
-                      Descargar
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <p className="whitespace-pre-wrap">{emailPreview.body}</p>
+            <ul className="flex flex-col gap-2">
+              {emailPreview.attachments.map((a) => (
+                <li key={a.fileName} className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+                  <span>{a.fileName}</span>
+                  <a href={a.downloadUrl} target="_blank" rel="noreferrer" className="text-dark-gold hover:underline">
+                    Descargar
+                  </a>
+                </li>
+              ))}
+            </ul>
             {emailPreview.documentTypesWithoutFile.length > 0 ? (
-              <p className="rounded-lg bg-warning-bg px-3 py-2 text-sm text-warning-text">
-                {emailPreview.documentTypesWithoutFile.join(", ")} se{" "}
-                {emailPreview.documentTypesWithoutFile.length > 1 ? "marcaron" : "marcó"} como aceptado(s) pero todavía no tiene(n) un
-                archivo generado, así que no se puede adjuntar por ahora.
+              <p className="rounded-lg bg-warning-bg px-3 py-2 text-warning-text">
+                Sin archivo para adjuntar todavía: {emailPreview.documentTypesWithoutFile.join(", ")}.
               </p>
             ) : null}
           </div>
@@ -265,187 +164,227 @@ export function DocumentsPanel({ expedienteId }: { expedienteId: string }) {
   );
 }
 
-function DocumentRow({ document, onChanged }: { document: DocumentResponse; onChanged: () => void }) {
+interface RowProps {
+  document: DocumentResponse;
+  participantName?: string;
+  onChanged: (updated?: DocumentResponse) => Promise<void>;
+  canUpload: boolean;
+  canAccept: boolean;
+  canReturn: boolean;
+  canReject: boolean;
+  canOverride: boolean;
+  canMarkNotApplicable: boolean;
+}
+
+function DocumentRow({
+  document: doc,
+  participantName,
+  onChanged,
+  canUpload,
+  canAccept,
+  canReturn,
+  canReject,
+  canOverride,
+  canMarkNotApplicable,
+}: RowProps) {
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
-  const [latestVersion, setLatestVersion] = useState<DocumentVersionResponse | null>(null);
   const [fields, setFields] = useState<ExtractedFieldObservationResponse[] | null>(null);
-  const [showReviewForm, setShowReviewForm] = useState<"return" | "reject" | null>(null);
-  const [reasonCode, setReasonCode] = useState<ReturnReasonCode>("BLURRY_IMAGE");
-  const [comment, setComment] = useState("");
-  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [history, setHistory] = useState<ReviewHistoryResponse[] | null>(null);
+  const [review, setReview] = useState<"return" | "reject" | null>(null);
+  const [overriding, setOverriding] = useState(false);
+  const [notApplicable, setNotApplicable] = useState(false);
+  const v = doc.latestVersion;
+  const issues = v?.blockingIssues ?? [];
+  const reviewable = ["READY_FOR_REVIEW", "UPLOADED", "RETURNED"].includes(doc.status) && v && !["QUEUED", "PROCESSING"].includes(v.processingStatus);
 
-  const loadLatestVersion = useCallback(() => {
-    if (document.currentVersionNumber === 0) return;
-    listVersions(document.id)
-      .then((versions) => {
-        const latest = versions.find((v) => v.versionNumber === document.currentVersionNumber) ?? versions[0] ?? null;
-        setLatestVersion(latest);
-      })
-      .catch(() => undefined);
-  }, [document.id, document.currentVersionNumber]);
+  const act = async (action: () => Promise<DocumentResponse>, success: string) => {
+    try {
+      const updated = await action();
+      showToast(success);
+      await onChanged(updated);
+    } catch (err) {
+      showToast(errorText(err));
+    }
+  };
 
-  useEffect(() => {
-    loadLatestVersion();
-    return () => {
-      if (pollRef.current) clearTimeout(pollRef.current);
-    };
-  }, [loadLatestVersion]);
-
-  const pollProcessing = useCallback(
-    (versionId: string, attemptsLeft: number) => {
-      function tick(attempts: number) {
-        if (attempts <= 0) return;
-        pollRef.current = setTimeout(() => {
-          getProcessingStatus(versionId)
-            .then((version) => {
-              setLatestVersion(version);
-              if (version.processingStatus === "QUEUED" || version.processingStatus === "PROCESSING") {
-                tick(attempts - 1);
-              } else {
-                onChanged();
-              }
-            })
-            .catch(() => undefined);
-        }, 3000);
+  const handleAccept = () => {
+    if (issues.length > 0) {
+      if (canOverride) {
+        setOverriding(true);
+      } else {
+        showToast("Este archivo tiene alertas: devuélvelo al cliente o pide a un director o administrador que autorice la excepción.");
       }
-      tick(attemptsLeft);
-    },
-    [onChanged],
-  );
+      return;
+    }
+    act(() => acceptDocument(doc.id), "Documento aceptado.");
+  };
 
-  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     setUploading(true);
     try {
-      const version = await uploadVersion(document.id, Array.from(files));
-      setLatestVersion(version);
-      showToast("Archivo subido, procesando…");
-      pollProcessing(version.id, 8);
+      await uploadVersion(doc.id, Array.from(files));
+      showToast("Archivo cargado; se está verificando su calidad.");
+      await onChanged();
     } catch (err) {
-      showToast(err instanceof ApiError ? `No se pudo subir el archivo (${err.status}): ${err.message}` : "Error de conexión.");
+      showToast(errorText(err));
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
-  const handleShowFields = async () => {
-    if (fields !== null) {
-      setFields(null);
-      return;
-    }
-    try {
-      const result = await getExtractedFields(document.id);
-      setFields(result);
-    } catch {
-      showToast("No se pudieron cargar los campos extraídos.");
-    }
-  };
-
   const handleDownload = async () => {
-    if (!latestVersion) return;
-    // Se abre la pestaña de forma síncrona (dentro del gesto de clic) para que el
-    // navegador no la bloquee como popup; se navega a la URL real una vez llega.
-    // No se usa "noopener" aquí: se necesita la referencia para fijar la URL después.
+    if (!v) return;
     const tab = window.open("about:blank", "_blank");
     try {
-      const { url } = await getDownloadUrl(latestVersion.id);
+      const { url } = await getDownloadUrl(v.id);
       if (tab) tab.location.href = url;
     } catch (err) {
       tab?.close();
-      showToast(err instanceof ApiError ? `No se pudo generar la descarga (${err.status}): ${err.message}` : "Error de conexión.");
+      showToast(errorText(err));
     }
   };
-
-  const handleAccept = async () => {
-    try {
-      await acceptDocument(document.id);
-      showToast("Documento aceptado.");
-      onChanged();
-    } catch (err) {
-      showToast(err instanceof ApiError ? `No se pudo aceptar (${err.status}): ${err.message}` : "Error de conexión.");
-    }
-  };
-
-  const handleReviewSubmit = async () => {
-    try {
-      if (showReviewForm === "return") {
-        await returnDocument(document.id, reasonCode, comment);
-        showToast("Documento devuelto para corrección.");
-      } else if (showReviewForm === "reject") {
-        await rejectDocument(document.id, reasonCode, comment);
-        showToast("Documento rechazado.");
-      }
-      setShowReviewForm(null);
-      setComment("");
-      onChanged();
-    } catch (err) {
-      showToast(err instanceof ApiError ? `No se pudo enviar la decisión (${err.status}): ${err.message}` : "Error de conexión.");
-    }
-  };
-
-  const canReview = document.status === "READY_FOR_REVIEW" || document.status === "UPLOADED";
-  const canDownload = latestVersion?.processingStatus === "PROCESSED";
 
   return (
-    <div className="rounded-lg border border-border p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="rounded-xl border border-border p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <span className="text-sm font-medium text-obsessed">{documentTypeLabel(document.type)}</span>
-          {!document.required ? <span className="ml-2 text-xs text-muted">(condicional)</span> : null}
+          <p className="text-sm font-medium text-obsessed">
+            {documentTypeLabel(doc.type)}
+            {participantName ? <span className="text-muted"> — {participantName}</span> : null}
+          </p>
+          <p className="text-xs text-muted">
+            {doc.required ? "Obligatorio" : "Opcional / no aplica en este caso"}
+            {v ? ` · Versión ${v.versionNumber}, cargada ${formatDateTime(v.uploadedAt)} por ${v.uploadedVia === "PUBLIC_PORTAL" ? "el cliente" : v.uploadedByName ?? "el staff"}` : ""}
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          {latestVersion ? (
-            <Badge tone={processingTone[latestVersion.processingStatus]}>{processingLabels[latestVersion.processingStatus]}</Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          {v && v.processingStatus !== "PROCESSED" ? (
+            <Badge tone={v.processingStatus === "QUALITY_FAILED" || v.processingStatus === "FAILED" ? "danger" : "info"}>
+              {processingLabels[v.processingStatus]}
+            </Badge>
           ) : null}
-          <Badge tone={documentStatusTone[document.status]}>{documentStatusLabels[document.status]}</Badge>
+          <Badge tone={documentStatusTone[doc.status]}>{documentStatusLabels[doc.status]}</Badge>
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,application/pdf" className="hidden" onChange={handleFileSelected} />
-        <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-          {uploading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4" aria-hidden />}
-          {document.currentVersionNumber > 0 ? "Subir nueva versión" : "Subir archivo"}
-        </Button>
+      {issues.length > 0 && doc.status !== "ACCEPTED" ? (
+        <div className="mt-3 rounded-lg bg-danger-bg px-3 py-2 text-sm text-danger-text">
+          <p className="flex items-center gap-1.5 font-medium">
+            <AlertTriangle className="h-4 w-4" aria-hidden /> No se puede aceptar sin autorización de excepción
+          </p>
+          <ul className="ml-5 mt-1 list-disc">
+            {issues.map((issue) => (
+              <li key={issue}>{issue}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {v?.aiObservations && (v.aiTypeMatches === false || v.aiLegible === false) ? (
+        <p className="mt-2 flex items-start gap-1.5 text-xs text-muted">
+          <Bot className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden /> Revisión automática: {v.aiObservations}
+        </p>
+      ) : null}
+      {v && v.processingStatus === "PROCESSED" && v.aiTypeMatches === null && v.aiLegible === null ? (
+        <p className="mt-2 text-xs text-muted">La revisión automática del contenido no está disponible para este archivo; revísalo visualmente.</p>
+      ) : null}
+      {doc.status === "RETURNED" || doc.status === "REJECTED" ? (
+        <p className="mt-2 rounded-lg bg-warning-bg px-3 py-2 text-sm text-warning-text">
+          {doc.status === "RETURNED" ? "Devuelto al cliente" : "Rechazado"} el {formatDateTime(doc.lastReviewedAt)}. Motivo que ve el cliente:{" "}
+          <strong>{label(returnReasonLabels, doc.lastReviewReasonCode)}</strong>
+          {doc.lastReviewComment ? ` — "${doc.lastReviewComment}"` : ""}
+        </p>
+      ) : null}
+      {doc.status === "NOT_APPLICABLE" ? (
+        <p className="mt-2 rounded-lg bg-app-bg px-3 py-2 text-sm text-muted">
+          Marcado como &quot;No aplica&quot; el {formatDateTime(doc.notApplicableAt)}: {doc.notApplicableJustification}
+        </p>
+      ) : null}
 
-        {canDownload ? (
-          <Button variant="secondary" size="sm" onClick={handleDownload}>
-            <Download className="h-4 w-4" aria-hidden />
-            Descargar
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,application/pdf" multiple className="hidden" onChange={handleUpload} />
+        {canUpload && doc.status !== "NOT_APPLICABLE" && doc.status !== "ACCEPTED" ? (
+          <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+            {uploading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4" aria-hidden />}
+            {doc.currentVersionNumber > 0 ? "Cargar nueva versión" : "Cargar en nombre del cliente"}
           </Button>
         ) : null}
-
-        <Button variant="ghost" size="sm" onClick={handleShowFields}>
-          {fields ? "Ocultar datos extraídos" : "Ver datos extraídos"}
-        </Button>
-
-        {canReview ? (
-          <>
-            <Button variant="secondary" size="sm" onClick={handleAccept}>
-              Aceptar
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => setShowReviewForm("return")}>
-              Devolver
-            </Button>
-            <Button variant="danger" size="sm" onClick={() => setShowReviewForm("reject")}>
-              Rechazar
-            </Button>
-          </>
+        {v ? (
+          <Button variant="secondary" size="sm" onClick={handleDownload}>
+            <Download className="h-4 w-4" aria-hidden /> Ver archivo
+          </Button>
+        ) : null}
+        {v ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={async () => {
+              if (fields) return setFields(null);
+              try {
+                setFields(await getExtractedFields(doc.id));
+              } catch (err) {
+                showToast(errorText(err));
+              }
+            }}
+          >
+            {fields ? "Ocultar datos leídos" : "Datos leídos del documento"}
+          </Button>
+        ) : null}
+        {reviewable && canAccept ? (
+          <Button size="sm" onClick={handleAccept}>
+            {issues.length > 0 ? "Aceptar por excepción…" : "Aceptar"}
+          </Button>
+        ) : null}
+        {reviewable && canReturn ? (
+          <Button variant="secondary" size="sm" onClick={() => setReview("return")}>
+            Devolver al cliente
+          </Button>
+        ) : null}
+        {reviewable && canReject ? (
+          <Button variant="danger" size="sm" onClick={() => setReview("reject")}>
+            Rechazar
+          </Button>
+        ) : null}
+        {canMarkNotApplicable && doc.status !== "ACCEPTED" && doc.status !== "NOT_APPLICABLE" ? (
+          <Button variant="ghost" size="sm" onClick={() => setNotApplicable(true)}>
+            No aplica…
+          </Button>
+        ) : null}
+        {canMarkNotApplicable && doc.status === "NOT_APPLICABLE" ? (
+          <Button variant="ghost" size="sm" onClick={() => act(() => requestAgain(doc.id), "El documento se volvió a solicitar.")}>
+            Volver a solicitar
+          </Button>
+        ) : null}
+        {v ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={async () => {
+              if (history) return setHistory(null);
+              try {
+                setHistory(await listReviews(doc.id));
+              } catch (err) {
+                showToast(errorText(err));
+              }
+            }}
+          >
+            <History className="h-4 w-4" aria-hidden /> Historial
+          </Button>
         ) : null}
       </div>
 
       {fields ? (
         fields.length === 0 ? (
-          <p className="mt-3 text-xs text-muted">Sin campos extraídos todavía (o el documento no aplica para extracción automática).</p>
+          <p className="mt-3 text-xs text-muted">No se leyeron datos de este archivo (o este tipo de documento no tiene lectura automática).</p>
         ) : (
           <dl className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-app-bg p-3 sm:grid-cols-2">
             {fields.map((f) => (
               <div key={f.id}>
-                <dt className="text-xs font-medium tracking-wide text-muted uppercase">{f.fieldName}</dt>
+                <dt className="text-xs text-muted">{extractedFieldLabels[f.fieldName] ?? f.fieldName}</dt>
                 <dd className="text-sm text-obsessed">{f.confirmedValue ?? f.detectedValue ?? "—"}</dd>
               </div>
             ))}
@@ -453,44 +392,143 @@ function DocumentRow({ document, onChanged }: { document: DocumentResponse; onCh
         )
       ) : null}
 
-      {showReviewForm ? (
-        <div className="mt-3 flex flex-col gap-2 rounded-lg bg-app-bg p-3">
-          <select
-            value={reasonCode}
-            onChange={(e) => setReasonCode(e.target.value as ReturnReasonCode)}
-            className="rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-gold"
-          >
-            {returnReasons.map((r) => (
-              <option key={r.value} value={r.value}>
-                {r.label}
-              </option>
-            ))}
-          </select>
-          <input
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            placeholder="Comentario (opcional)…"
-            className="rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-gold"
-          />
-          <div className="flex gap-2">
-            <Button size="sm" onClick={handleReviewSubmit}>
-              Confirmar
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setShowReviewForm(null)}>
-              Cancelar
-            </Button>
-          </div>
-        </div>
+      {history ? (
+        <ul className="mt-3 flex flex-col gap-1 rounded-lg bg-app-bg p-3 text-xs text-muted">
+          {history.length === 0 ? <li>Sin decisiones todavía.</li> : null}
+          {history.map((h) => (
+            <li key={h.id}>
+              {formatDateTime(h.reviewedAt)} —{" "}
+              {h.decision === "ACCEPTED" ? (h.overrideJustification ? "Aceptado POR EXCEPCIÓN" : "Aceptado") : h.decision === "RETURNED" ? "Devuelto" : "Rechazado"}
+              {h.reasonCode ? `: ${label(returnReasonLabels, h.reasonCode)}` : ""}
+              {h.comment ? ` — "${h.comment}"` : ""}
+              {h.overrideJustification ? ` — Justificación: "${h.overrideJustification}" (alertas: ${h.overriddenIssues})` : ""}
+            </li>
+          ))}
+        </ul>
       ) : null}
+
+      {review ? (
+        <ReviewModal
+          mode={review}
+          documentLabel={documentTypeLabel(doc.type)}
+          onCancel={() => setReview(null)}
+          onConfirm={async (reasonCode, comment) => {
+            await act(
+              () => (review === "return" ? returnDocument(doc.id, reasonCode, comment) : rejectDocument(doc.id, reasonCode, comment)),
+              review === "return" ? "Guardado: el documento se devolvió y el cliente verá el motivo en su liga." : "Documento rechazado; el cliente verá el motivo.",
+            );
+            setReview(null);
+          }}
+        />
+      ) : null}
+
+      <ReasonModal
+        open={overriding}
+        title="Aceptar por excepción"
+        description={
+          <>
+            <p className="mb-2">Este archivo tiene alertas:</p>
+            <ul className="ml-5 list-disc">
+              {issues.map((i) => (
+                <li key={i}>{i}</li>
+              ))}
+            </ul>
+            <p className="mt-2">La aceptación quedará registrada con tu usuario y esta justificación.</p>
+          </>
+        }
+        label="¿Por qué es válido pese a las alertas?"
+        minLength={15}
+        confirmLabel="Aceptar por excepción"
+        onCancel={() => setOverriding(false)}
+        onConfirm={async (justification) => {
+          await act(() => acceptDocument(doc.id, justification), "Documento aceptado por excepción (registrado en la bitácora).");
+          setOverriding(false);
+        }}
+      />
+
+      <ReasonModal
+        open={notApplicable}
+        title={`"${documentTypeLabel(doc.type)}" no aplica`}
+        description="Deja de pedirse al cliente y cuenta como resuelto. Explica por qué no aplica a este expediente."
+        label="Justificación"
+        placeholder="Ej. El terreno no tiene contrato de agua todavía."
+        minLength={15}
+        confirmLabel="Marcar como No aplica"
+        onCancel={() => setNotApplicable(false)}
+        onConfirm={async (justification) => {
+          await act(() => markNotApplicable(doc.id, justification), "Marcado como No aplica.");
+          setNotApplicable(false);
+        }}
+      />
     </div>
   );
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+function ReviewModal({
+  mode,
+  documentLabel,
+  onCancel,
+  onConfirm,
+}: {
+  mode: "return" | "reject";
+  documentLabel: string;
+  onCancel: () => void;
+  onConfirm: (reasonCode: ReturnReasonCode, comment: string) => Promise<void>;
+}) {
+  const [reasonCode, setReasonCode] = useState<ReturnReasonCode>("ILLEGIBLE_INFORMATION");
+  const [comment, setComment] = useState("");
+  const [busy, setBusy] = useState(false);
+  const valid = reasonCode !== "OTHER" || comment.trim().length > 0;
   return (
-    <div>
-      <dt className="text-xs font-medium tracking-wide text-muted uppercase">{label}</dt>
-      <dd className="mt-0.5 text-sm text-obsessed">{value}</dd>
-    </div>
+    <Modal
+      open
+      onClose={onCancel}
+      title={mode === "return" ? `Devolver "${documentLabel}" al cliente` : `Rechazar "${documentLabel}"`}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel}>
+            Cancelar
+          </Button>
+          <Button
+            variant={mode === "reject" ? "danger" : "primary"}
+            disabled={!valid || busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await onConfirm(reasonCode, comment.trim());
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? "Guardando…" : mode === "return" ? "Devolver" : "Rechazar"}
+          </Button>
+        </>
+      }
+    >
+      <label className="mb-1 block text-sm font-medium text-obsessed">Motivo</label>
+      <select
+        value={reasonCode}
+        onChange={(e) => setReasonCode(e.target.value as ReturnReasonCode)}
+        className="mb-3 w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm"
+      >
+        {Object.entries(returnReasonLabels).map(([value, text]) => (
+          <option key={value} value={value}>
+            {text}
+          </option>
+        ))}
+      </select>
+      <label className="mb-1 block text-sm font-medium text-obsessed">
+        Indicación para el cliente {reasonCode === "OTHER" ? "(obligatoria)" : "(recomendada)"}
+      </label>
+      <textarea
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        rows={3}
+        placeholder="Ej. La foto salió cortada; tómala de nuevo mostrando la hoja completa."
+        className="w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm outline-none focus:border-gold"
+      />
+      <p className="mt-2 text-xs text-muted">El cliente verá este motivo en su liga y recibirá un aviso por correo si registró uno.</p>
+    </Modal>
   );
 }

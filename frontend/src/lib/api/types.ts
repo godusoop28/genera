@@ -12,16 +12,20 @@ export type BackendExpedienteStatus =
   | "RECEPTION_SIGNED"
   | "CONTRACT_PREPARATION"
   | "READY_FOR_SIGNATURE"
+  | "CONTRACT_SIGNED"
   | "PROPERTY_ACCEPTED"
   | "PROPERTY_REJECTED"
   | "CLOSED";
 
 export type BackendPersonType = "FISICA" | "MORAL";
-export type BackendSignerCharacter = "PROPIETARIO" | "COPROPIETARIO" | "APODERADO";
+export type BackendSignerCharacter = "PROPIETARIO" | "COPROPIETARIO" | "APODERADO" | "REPRESENTANTE_LEGAL";
 export type BackendAccreditationType = "ESCRITURA_PUBLICA" | "CONTRATO_PRIVADO";
 export type BackendPropertyCaseType = "HOUSING" | "DEPARTMENT" | "RESIDENTIAL_LAND" | "COMMERCIAL";
 export type BackendPropertyLegalStatus = "LIBRE_GRAVAMEN" | "CON_GRAVAMEN" | "EN_REVISION";
 export type BackendParticipantRole = "OWNER" | "CO_OWNER" | "ATTORNEY" | "LEGAL_REPRESENTATIVE";
+export type BackendCivilStatus = "SOLTERO" | "CASADO" | "UNION_LIBRE" | "DIVORCIADO" | "VIUDO";
+export type BackendMaritalRegime = "SOCIEDAD_CONYUGAL" | "SEPARACION_DE_BIENES";
+export type BackendIdDocumentType = "INE" | "PASAPORTE" | "CEDULA_PROFESIONAL" | "FM2_RESIDENTE";
 
 export interface AuthResponse {
   accessToken: string;
@@ -37,11 +41,32 @@ export interface MeResponse {
   permissions: string[];
 }
 
-export interface ParticipantResponse {
+/** Datos individuales de cada propietario / copropietario / representante / apoderado. */
+export interface ParticipantDetails {
+  nationality: string | null;
+  idDocumentType: BackendIdDocumentType | null;
+  idDocumentNumber: string | null;
+  idDocumentIssuer: string | null;
+  birthDate: string | null;
+  civilStatus: BackendCivilStatus | null;
+  maritalRegime: BackendMaritalRegime | null;
+  rfc: string | null;
+  curp: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+}
+
+export interface ParticipantResponse extends ParticipantDetails {
   id: string;
   role: BackendParticipantRole;
   fullName: string;
   ordinal: number;
+}
+
+export interface ParticipantRequest extends Partial<ParticipantDetails> {
+  role: BackendParticipantRole;
+  fullName: string;
 }
 
 export interface ExpedienteResponse {
@@ -51,6 +76,7 @@ export interface ExpedienteResponse {
   status: BackendExpedienteStatus;
   personType: BackendPersonType;
   signerCharacter: BackendSignerCharacter;
+  signedByAttorney: boolean;
   accreditationType: BackendAccreditationType;
   condominiumRegime: boolean;
   propertyCaseType: BackendPropertyCaseType;
@@ -59,6 +85,8 @@ export interface ExpedienteResponse {
   decisionReason: string | null;
   decidedByUserId: string | null;
   decidedAt: string | null;
+  createdByUserId: string;
+  correctable: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -69,6 +97,87 @@ export interface RequirementResponse {
   required: boolean;
   conditional: boolean;
   participantId: string | null;
+}
+
+export interface ChangeResponse {
+  id: string;
+  changedAt: string;
+  actorType: string;
+  actorName: string | null;
+  actorRole: string | null;
+  section: string;
+  field: string;
+  oldValue: string | null;
+  newValue: string | null;
+  reason: string | null;
+}
+
+export interface CompanyData {
+  companyType?: string | null;
+  rfc?: string | null;
+  instrumentNumber?: string | null;
+  instrumentDate?: string | null;
+  notaryTitle?: string | null;
+  notaryNumber?: string | null;
+  notaryPlace?: string | null;
+  notaryName?: string | null;
+  commerceRegistryPlace?: string | null;
+  mercantileFolio?: string | null;
+}
+
+export interface RepresentationData {
+  capacity?: string | null;
+  instrumentNumber?: string | null;
+  instrumentDate?: string | null;
+  notaryTitle?: string | null;
+  notaryNumber?: string | null;
+  notaryPlace?: string | null;
+  notaryName?: string | null;
+  registryPlace?: string | null;
+  registryFolio?: string | null;
+}
+
+export interface DeedData {
+  number?: string | null;
+  date?: string | null;
+  notaryName?: string | null;
+  notaryNumber?: string | null;
+  notaryPlace?: string | null;
+  registryData?: string | null;
+}
+
+export interface PrivateContractData {
+  sellerName?: string | null;
+  buyerName?: string | null;
+  date?: string | null;
+  ratificationDate?: string | null;
+  ratifiedBefore?: string | null;
+  notaryNumber?: string | null;
+  notaryPlace?: string | null;
+  notaryName?: string | null;
+  registryDate?: string | null;
+  registryPlace?: string | null;
+  realFolio?: string | null;
+}
+
+export interface CondominiumData {
+  deedNumber?: string | null;
+  date?: string | null;
+  notaryNumber?: string | null;
+  notaryPlace?: string | null;
+  notaryName?: string | null;
+  registryDate?: string | null;
+  realFolio?: string | null;
+}
+
+export interface LegalDetails {
+  company?: CompanyData | null;
+  representation?: RepresentationData | null;
+  deed?: DeedData | null;
+  privateContract?: PrivateContractData | null;
+  condominium?: CondominiumData | null;
+  propertyChecklist?: Record<string, boolean> | null;
+  advertisingMedia?: string | null;
 }
 
 export interface PageResponse<T> {
@@ -83,7 +192,25 @@ export interface ActivityResponse {
   id: string;
   occurredAt: string;
   category: string;
+  action: string | null;
+  actorType: "CLIENT" | "STAFF" | "SYSTEM" | "UNKNOWN" | null;
+  actorName: string | null;
+  actorRole: string | null;
+  documentId: string | null;
+  documentLabel: string | null;
   message: string;
+}
+
+export interface NotificationResponse {
+  id: string;
+  kind: string;
+  recipient: string;
+  subject: string;
+  status: "QUEUED" | "SENT" | "RETRYING" | "FAILED" | "SKIPPED";
+  attempts: number;
+  lastError: string | null;
+  createdAt: string;
+  sentAt: string | null;
 }
 
 export interface ComplianceCheckItemResponse {
@@ -104,6 +231,18 @@ export interface ClosingCaseResponse {
   status: "OPEN" | "IN_PROGRESS" | "COMPLETED";
   contractDelivered: boolean;
   contractDeliveredAt: string | null;
+  signedContractId: string | null;
+}
+
+export interface ClosingTaskResponse {
+  id: string;
+  code: string;
+  title: string;
+  dueDate: string | null;
+  done: boolean;
+  doneAt: string | null;
+  doneByUserId: string | null;
+  doneNote: string | null;
 }
 
 export interface ClosingNoteResponse {
@@ -127,7 +266,8 @@ export type BackendDocumentStatus =
   | "ACCEPTED"
   | "RETURNED"
   | "REJECTED"
-  | "REPLACED";
+  | "REPLACED"
+  | "NOT_APPLICABLE";
 
 export type BackendProcessingStatus = "QUEUED" | "PROCESSING" | "QUALITY_FAILED" | "PROCESSED" | "FAILED";
 
@@ -140,6 +280,22 @@ export type ReturnReasonCode =
   | "MISSING_PAGE"
   | "OTHER";
 
+export interface LatestVersionSummary {
+  id: string;
+  versionNumber: number;
+  uploadedAt: string;
+  uploadedVia: "PUBLIC_PORTAL" | "INTERNAL";
+  uploadedByName: string | null;
+  processingStatus: BackendProcessingStatus;
+  processingError: string | null;
+  aiTypeMatches: boolean | null;
+  aiLegible: boolean | null;
+  aiDetectedKind: string | null;
+  aiObservations: string | null;
+  aiAssessedAt: string | null;
+  blockingIssues: string[];
+}
+
 export interface DocumentResponse {
   id: string;
   expedienteId: string;
@@ -149,6 +305,27 @@ export interface DocumentResponse {
   required: boolean;
   status: BackendDocumentStatus;
   currentVersionNumber: number;
+  notApplicableJustification: string | null;
+  notApplicableAt: string | null;
+  lastReviewDecision: "ACCEPTED" | "RETURNED" | "REJECTED" | null;
+  lastReviewReasonCode: ReturnReasonCode | null;
+  lastReviewComment: string | null;
+  lastReviewedAt: string | null;
+  latestVersion: LatestVersionSummary | null;
+}
+
+export interface PublicDocumentResponse {
+  id: string;
+  type: string;
+  participantId: string | null;
+  required: boolean;
+  status: BackendDocumentStatus;
+  currentVersionNumber: number;
+  correctionReasonCode: ReturnReasonCode | null;
+  correctionComment: string | null;
+  qualityIssue: string | null;
+  looksLikeWrongDocument: boolean;
+  processing: boolean;
 }
 
 export interface DocumentVersionResponse {
@@ -157,7 +334,21 @@ export interface DocumentVersionResponse {
   versionNumber: number;
   uploadedAt: string;
   uploadedVia: string;
+  uploadedByName: string | null;
   processingStatus: BackendProcessingStatus;
+  processingError: string | null;
+}
+
+export interface ReviewHistoryResponse {
+  id: string;
+  documentVersionId: string;
+  decision: "ACCEPTED" | "RETURNED" | "REJECTED";
+  reasonCode: ReturnReasonCode | null;
+  comment: string | null;
+  reviewedBy: string;
+  reviewedAt: string;
+  overrideJustification: string | null;
+  overriddenIssues: string | null;
 }
 
 export interface DownloadResponse {
@@ -181,25 +372,80 @@ export interface DataConflictResponse {
   fieldName: string;
   description: string;
   resolved: boolean;
+  resolvedAutomatically: boolean;
+  resolutionNote: string | null;
+  resolvedByUserId: string | null;
   detectedAt: string;
   resolvedAt: string | null;
 }
 
-export type ContractGenerationStatus = "GENERATED" | "SIGNED" | "DELIVERED";
+export type ContractGenerationStatus =
+  | "DRAFT_INCOMPLETE"
+  | "GENERATED"
+  | "PARTIALLY_SIGNED"
+  | "SIGNED"
+  | "DELIVERED"
+  | "SUPERSEDED";
+
+export interface ContractSignatureResponse {
+  id: string;
+  party: "CLIENT" | "INTERMEDIARY";
+  participantId: string | null;
+  signerName: string;
+  signerCapacity: string;
+  hasEmail: boolean;
+  status: "PENDING" | "SIGNED" | "VOIDED";
+  method: "ELECTRONIC_SIMPLE" | "AUTOGRAPH_SCAN" | null;
+  requestedAt: string;
+  signedAt: string | null;
+  linkExpiresAt: string | null;
+  documentSha256: string | null;
+  ipAddress: string | null;
+  typedName: string | null;
+  evidenceSha256: string | null;
+  registeredByUserId: string | null;
+  voidedReason: string | null;
+}
 
 export interface ContractGenerationResponse {
   id: string;
   expedienteId: string;
   versionNumber: number;
-  docxStorageKey: string;
-  pdfStorageKey: string;
   generatedAt: string;
   generatedBy: string;
-  sha256: string;
+  documentSha256: string | null;
   status: ContractGenerationStatus;
+  variantSummary: string | null;
+  missingItems: string[];
+  hasPdf: boolean;
+  hasSignedPackage: boolean;
   signedAt: string | null;
   deliveredAt: string | null;
   deliveryMethod: string | null;
+  supersededAt: string | null;
+  supersededReason: string | null;
+  signatures: ContractSignatureResponse[];
+}
+
+export interface SigningLinkResponse {
+  signatureId: string;
+  signerName: string;
+  signerCapacity: string;
+  url: string;
+  expiresAt: string;
+  emailed: boolean;
+}
+
+export interface GenerateContractResponse {
+  contract: ContractGenerationResponse;
+  signingLinks: SigningLinkResponse[];
+}
+
+export interface ContractReadinessResponse {
+  ready: boolean;
+  blockers: string[];
+  missingData: string[];
+  variant: string;
 }
 
 export interface ContractCalculationsResponse {
@@ -213,11 +459,49 @@ export interface ContractCalculationsResponse {
   exclusivityEndDate: string;
 }
 
+export interface SigningViewResponse {
+  folio: string;
+  versionNumber: number;
+  generatedAt: string;
+  signerName: string;
+  signerCapacity: string;
+  documentSha256: string;
+  pdfUrl: string;
+  consentText: string;
+  alreadySigned: boolean;
+}
+
+export interface PublicLinkStatusResponse {
+  createdAt: string;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  lastUsedAt: string | null;
+  usable: boolean;
+}
+
 // --- Portal público del cliente (sin cuenta, autenticado por token en la URL) ---
 
 export interface PublicExpedienteResponse {
   folio: string;
   status: BackendExpedienteStatus;
+  personType: BackendPersonType;
+  maskedOwnerName: string;
+  maskedPropertyAddress: string;
+}
+
+export interface PublicParticipantResponse {
+  id: string;
+  role: BackendParticipantRole;
+  displayName: string;
+  civilStatus: BackendCivilStatus | null;
+  maritalRegime: BackendMaritalRegime | null;
+}
+
+export interface PublicClientDataResponse {
+  email: string | null;
+  phone: string | null;
+  notificationAddress: string | null;
+  civilStatus: BackendCivilStatus | null;
 }
 
 export interface PrivacyNoticeResponse {
@@ -235,11 +519,9 @@ export interface PrivacyConsentResponse {
   hasSignature: boolean;
 }
 
-export type BackendCivilStatus = "SOLTERO" | "CASADO" | "UNION_LIBRE" | "DIVORCIADO" | "VIUDO";
-
 export interface ManualClientDataResponse {
   civilStatus: BackendCivilStatus | null;
-  authorizedPrice: string | null;
+  authorizedPrice: string | number | null;
   email: string | null;
   phone: string | null;
   notificationAddress: string | null;
@@ -254,6 +536,8 @@ export interface ManualClientDataResponse {
   availableServices: string | null;
   relevantFeatures: string | null;
   contractSignatureDate: string | null;
+  landAreaM2: string | number | null;
+  builtAreaM2: string | number | null;
 }
 
 export interface SubmitDocumentsResponse {
@@ -266,7 +550,7 @@ export interface EmailAttachmentPreview {
   downloadUrl: string;
 }
 
-export type BackendRoleCode = "ADMINISTRATOR" | "ADVISOR" | "DOCUMENT_REVIEWER";
+export type BackendRoleCode = "ADMINISTRATOR" | "DIRECTOR" | "ADVISOR" | "DOCUMENT_REVIEWER";
 export type BackendUserStatus = "ACTIVE" | "INACTIVE";
 
 export interface UserResponse {

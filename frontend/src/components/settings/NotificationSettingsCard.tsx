@@ -1,36 +1,45 @@
-"use client";
-
 import { Card, CardHeader } from "@/components/ui/Card";
-import { Toggle } from "@/components/ui/Toggle";
-import { useSettings } from "@/context/SettingsProvider";
+
+const advisorEvents = [
+  "El cliente cargó todos sus documentos obligatorios",
+  "El cliente cargó la corrección de un documento devuelto",
+  "Un archivo no parece ser el documento solicitado o no es legible",
+  "La documentación quedó aprobada",
+  "El contrato quedó firmado por todas las partes",
+  "El inmueble fue aceptado o rechazado",
+];
+
+const clientEvents = [
+  "Un documento fue devuelto o rechazado, con el motivo y qué corregir",
+  "Una foto no se pudo leer y debe tomarse de nuevo",
+  "Su documentación quedó completa",
+  "Su liga personal para firmar el contrato",
+  "El contrato quedó firmado",
+];
 
 export function NotificationSettingsCard() {
-  const { settings, setNotification } = useSettings();
-
   return (
     <Card>
-      <CardHeader title="Notificaciones" description="Simuladas para este prototipo; no se envían correos reales." />
-      <div className="flex flex-col divide-y divide-border">
-        <div className="py-2 first:pt-0 last:pb-0">
-          <Toggle
-            label="Avisarme cuando un cliente envíe documentos"
-            checked={settings.notifications.documentsReceived}
-            onChange={(v) => setNotification("documentsReceived", v)}
-          />
+      <CardHeader
+        title="Notificaciones por correo"
+        description="El sistema envía correos automáticamente cuando ocurre alguno de estos eventos. Cada envío, y cualquier error de entrega, queda registrado en la Bitácora del expediente."
+      />
+      <div className="grid gap-4 text-sm">
+        <div>
+          <p className="mb-1 font-medium text-obsessed">Al asesor del expediente</p>
+          <ul className="ml-5 list-disc text-muted">
+            {advisorEvents.map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
         </div>
-        <div className="py-2 first:pt-0 last:pb-0">
-          <Toggle
-            label="Avisarme sobre correcciones solicitadas"
-            checked={settings.notifications.correctionsRequested}
-            onChange={(v) => setNotification("correctionsRequested", v)}
-          />
-        </div>
-        <div className="py-2 first:pt-0 last:pb-0">
-          <Toggle
-            label="Resumen semanal por correo"
-            checked={settings.notifications.weeklySummary}
-            onChange={(v) => setNotification("weeklySummary", v)}
-          />
+        <div>
+          <p className="mb-1 font-medium text-obsessed">Al cliente</p>
+          <ul className="ml-5 list-disc text-muted">
+            {clientEvents.map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
         </div>
       </div>
     </Card>

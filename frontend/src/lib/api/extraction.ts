@@ -14,3 +14,11 @@ export function confirmField(observationId: string, confirmedValue: string) {
 export function getDataConflicts(expedienteId: string) {
   return apiClient.get<DataConflictResponse[]>(`/internal/expedientes/${expedienteId}/data-conflicts`);
 }
+
+export function runConsistencyCheck(expedienteId: string) {
+  return apiClient.post<DataConflictResponse[]>(`/internal/expedientes/${expedienteId}/consistency-check`);
+}
+
+export function resolveConflict(conflictId: string, note: string) {
+  return apiClient.post<DataConflictResponse>(`/internal/data-conflicts/${conflictId}/resolve`, { note });
+}
