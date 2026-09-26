@@ -24,4 +24,8 @@ RUN apt-get update \
 COPY --from=build /workspace/target/*.jar app.jar
 
 EXPOSE 8080
+# La instancia gratuita de Render tiene 512 MB: sin esto la JVM solo usa el 25%
+# (~128 MB) de heap y el arranque se queda sin memoria. SerialGC y pilas más
+# chicas reducen la memoria fuera del heap.
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70 -XX:+UseSerialGC -Xss512k -XX:MaxMetaspaceSize=192m"
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
