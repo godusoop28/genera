@@ -170,6 +170,19 @@ export interface CondominiumData {
   realFolio?: string | null;
 }
 
+/** Dato detectado por la revisión automática en un documento del expediente. */
+export interface ExpedienteObservationResponse {
+  id: string;
+  documentId: string;
+  documentType: string;
+  participantId: string | null;
+  documentStatus: string;
+  fieldName: string;
+  value: string;
+  confirmed: boolean;
+  confidence: number | null;
+}
+
 export interface LegalDetails {
   company?: CompanyData | null;
   representation?: RepresentationData | null;

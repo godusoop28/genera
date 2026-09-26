@@ -1,8 +1,13 @@
 import { apiClient } from "@/lib/api/client";
-import type { DataConflictResponse, ExtractedFieldObservationResponse } from "@/lib/api/types";
+import type { DataConflictResponse, ExpedienteObservationResponse, ExtractedFieldObservationResponse } from "@/lib/api/types";
 
 export function getExtractedFields(documentId: string) {
   return apiClient.get<ExtractedFieldObservationResponse[]>(`/internal/documents/${documentId}/extracted-fields`);
+}
+
+/** Lo detectado en todos los documentos vigentes del expediente, para prellenar el contrato. */
+export function getExpedienteExtractedFields(expedienteId: string) {
+  return apiClient.get<ExpedienteObservationResponse[]>(`/internal/expedientes/${expedienteId}/extracted-fields`);
 }
 
 export function confirmField(observationId: string, confirmedValue: string) {

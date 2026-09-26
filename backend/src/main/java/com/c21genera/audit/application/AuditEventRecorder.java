@@ -165,7 +165,12 @@ class AuditEventRecorder {
     boolean mismatch = Boolean.FALSE.equals(event.matchesExpectedType());
     boolean illegible = Boolean.FALSE.equals(event.legible());
     record("DocumentContentAssessed", "Document", event.documentId(), Actor.system(),
-        "Revisión automática de contenido: coincide=" + event.matchesExpectedType() + ", legible=" + event.legible());
+        "Revisión automática de contenido: coincide=" + event.matchesExpectedType() + ", legible=" + event.legible()
+            + (event.checkFailed() ? ", sin respuesta de la IA" : ""));
+    if (event.checkFailed()) {
+      activity(event.expedienteId(), ActivityCategory.DOCUMENT, "DOCUMENT_CONTENT_ALERT", Actor.system(), event.documentId(), label,
+          "No se pudo hacer la revisión automática de " + label + ": verifica a mano que sea el documento correcto");
+    }
     if (mismatch || illegible) {
       String detail =
           mismatch

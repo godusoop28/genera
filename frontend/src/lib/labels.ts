@@ -188,6 +188,16 @@ export const extractedFieldLabels: Record<string, string> = {
   companyName: "Razón social",
   instrumentNumber: "Número de instrumento",
   mercantileFolio: "Folio mercantil",
+  nationality: "Nacionalidad",
+  deedDate: "Fecha de la escritura",
+  notaryName: "Notario",
+  notaryPlace: "Lugar de la notaría",
+  notaryTitle: "Notario o corredor",
+  registryDate: "Fecha de inscripción",
+  ratificationDate: "Fecha de ratificación",
+  instrumentDate: "Fecha del instrumento",
+  companyType: "Tipo de sociedad",
+  commerceRegistryPlace: "Registro Público de Comercio",
 };
 
 export function label(map: Record<string, string>, value: string | null | undefined, fallback = "—"): string {

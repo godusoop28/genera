@@ -4,6 +4,7 @@ import com.c21genera.documents.DocumentsApi;
 import com.c21genera.extraction.application.DocumentFieldExtractionService;
 import com.c21genera.extraction.web.ExtractionDtos.ConfirmFieldRequest;
 import com.c21genera.extraction.web.ExtractionDtos.ConflictResponse;
+import com.c21genera.extraction.web.ExtractionDtos.ExpedienteObservationResponse;
 import com.c21genera.extraction.web.ExtractionDtos.ObservationResponse;
 import com.c21genera.extraction.web.ExtractionDtos.ResolveConflictRequest;
 import com.c21genera.identity.CurrentUser;
@@ -49,6 +50,13 @@ public class InternalExtractionController {
       @PathVariable UUID observationId, @Valid @RequestBody ConfirmFieldRequest request, @AuthenticationPrincipal Jwt jwt) {
     requireAccess(service.getObservation(observationId).getExpedienteId(), jwt);
     return ObservationResponse.from(service.confirm(observationId, request.confirmedValue()));
+  }
+
+  /** Todo lo detectado en los documentos vigentes del expediente, para prellenar los datos del contrato. */
+  @GetMapping("/api/v1/internal/expedientes/{expedienteId}/extracted-fields")
+  public List<ExpedienteObservationResponse> observationsOfExpediente(@PathVariable UUID expedienteId, @AuthenticationPrincipal Jwt jwt) {
+    requireAccess(expedienteId, jwt);
+    return service.observationsOfExpediente(expedienteId).stream().map(ExpedienteObservationResponse::from).toList();
   }
 
   @GetMapping("/api/v1/internal/expedientes/{expedienteId}/data-conflicts")

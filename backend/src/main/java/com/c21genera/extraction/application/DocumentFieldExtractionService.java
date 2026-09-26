@@ -41,7 +41,9 @@ import java.util.stream.Collectors;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Orquesta, para cada versión de documento ya procesada: la revisión de
@@ -60,6 +62,7 @@ public class DocumentFieldExtractionService implements ExtractionApi {
   private final ExpedienteLifecycleApi expedienteApi;
   private final ApplicationEventPublisher events;
   private final Clock clock;
+  private final TransactionTemplate transactions;
 
   public DocumentFieldExtractionService(
       ExtractedFieldObservationRepository observationRepository,
@@ -69,7 +72,8 @@ public class DocumentFieldExtractionService implements ExtractionApi {
       DocumentsApi documentsApi,
       ExpedienteLifecycleApi expedienteApi,
       ApplicationEventPublisher events,
-      Clock clock) {
+      Clock clock,
+      PlatformTransactionManager transactionManager) {
     this.observationRepository = observationRepository;
     this.conflictRepository = conflictRepository;
     this.provider = provider;
@@ -78,9 +82,16 @@ public class DocumentFieldExtractionService implements ExtractionApi {
     this.expedienteApi = expedienteApi;
     this.events = events;
     this.clock = clock;
+    this.transactions = new TransactionTemplate(transactionManager);
   }
 
-  @Transactional
+  /**
+   * La llamada a la IA (puede tardar hasta un par de minutos) se hace fuera
+   * de cualquier transacción para no retener una conexión de base de datos;
+   * solo el guardado del resultado es transaccional.
+   *
+   * @throws StructuredExtractionProvider.AiUnavailableException para que el job se reintente
+   */
   public void extract(ExtractDocumentFieldsPayload payload) {
     List<String> fieldNames = DocumentFieldSchemas.fieldsFor(payload.type());
 
@@ -90,6 +101,10 @@ public class DocumentFieldExtractionService implements ExtractionApi {
     // solicitado aplica a todos los tipos.
     ExtractionResult result = provider.extract(payload.type(), pdfBytes, fieldNames);
 
+    transactions.executeWithoutResult(status -> saveResult(payload, result));
+  }
+
+  private void saveResult(ExtractDocumentFieldsPayload payload, ExtractionResult result) {
     Instant now = clock.instant();
     for (FieldResult field : result.fields()) {
       observationRepository.save(
@@ -114,9 +129,30 @@ public class DocumentFieldExtractionService implements ExtractionApi {
             assessment.matchesExpectedType(),
             assessment.legible(),
             assessment.detectedDocumentKind(),
-            assessment.observations()));
+            assessment.observations(),
+            false));
 
     runConsistencyCheck(payload.expedienteId());
+  }
+
+  /**
+   * Se agotaron los reintentos: el archivo queda marcado "sin revisión
+   * automática" (nunca como aprobado), de modo que solo se pueda aceptar
+   * con una autorización de excepción o después de volver a cargarlo.
+   */
+  @Transactional
+  public void recordCheckFailed(ExtractDocumentFieldsPayload payload) {
+    events.publishEvent(
+        new DocumentContentAssessed(
+            payload.expedienteId(),
+            payload.documentId(),
+            payload.documentVersionId(),
+            payload.type(),
+            null,
+            null,
+            null,
+            "No se pudo hacer la revisión automática del contenido: el servicio de inteligencia artificial no respondió.",
+            true));
   }
 
   @Transactional
@@ -135,6 +171,21 @@ public class DocumentFieldExtractionService implements ExtractionApi {
   @Transactional(readOnly = true)
   public List<ExtractedFieldObservation> observationsOfDocument(UUID documentId) {
     return latestVersionOnly(observationRepository.findByDocumentIdOrderByFieldNameAsc(documentId));
+  }
+
+  /** Datos detectados en la versión vigente de cada documento del expediente (sin rechazados ni "No aplica"). */
+  public record DocumentObservation(ExtractedFieldObservation observation, RequirementStatusView document) {}
+
+  @Transactional(readOnly = true)
+  public List<DocumentObservation> observationsOfExpediente(UUID expedienteId) {
+    Map<UUID, RequirementStatusView> documents =
+        documentsApi.requirementStatusOf(expedienteId).stream()
+            .filter(d -> !"NOT_APPLICABLE".equals(d.status()) && !"REJECTED".equals(d.status()))
+            .collect(Collectors.toMap(RequirementStatusView::documentId, d -> d));
+    return latestVersionOnly(observationRepository.findByExpedienteIdOrderByFieldNameAsc(expedienteId)).stream()
+        .filter(o -> documents.containsKey(o.getDocumentId()))
+        .map(o -> new DocumentObservation(o, documents.get(o.getDocumentId())))
+        .toList();
   }
 
   @Transactional(readOnly = true)

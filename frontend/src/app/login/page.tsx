@@ -2,12 +2,10 @@
 
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { BrandFooter } from "@/components/brand/BrandFooter";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useAuth } from "@/context/AuthProvider";
 import { ApiError } from "@/lib/api/client";
-import { PROTOTYPE_BADGE_TEXT } from "@/data/organization";
 import { FileLock2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -45,7 +43,6 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <div className="mb-8 flex flex-col items-center gap-3">
           <BrandLogo tone="light" size="lg" />
-          <Badge tone="neutral">{PROTOTYPE_BADGE_TEXT}</Badge>
         </div>
 
         <div className="rounded-2xl border border-border bg-card p-8 shadow-sm">

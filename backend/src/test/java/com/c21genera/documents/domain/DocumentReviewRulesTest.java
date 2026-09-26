@@ -20,7 +20,7 @@ class DocumentReviewRulesTest {
   void aProcessedLegibleMatchingFileHasNoBlockingIssues() {
     DocumentVersion v = version();
     v.completeProcessing("doc.pdf", "manifest.json");
-    v.recordAiAssessment(true, true, "credencial INE", null, Instant.now());
+    v.recordAiAssessment(true, true, "credencial INE", null, false, Instant.now());
 
     assertThat(v.blockingIssues()).isEmpty();
   }
@@ -33,12 +33,12 @@ class DocumentReviewRulesTest {
 
     DocumentVersion shoppingList = version();
     shoppingList.completeProcessing("doc.pdf", "m.json");
-    shoppingList.recordAiAssessment(false, true, "lista de compras", "No es una credencial", Instant.now());
+    shoppingList.recordAiAssessment(false, true, "lista de compras", "No es una credencial", false, Instant.now());
     assertThat(shoppingList.blockingIssues()).singleElement().asString().contains("lista de compras");
 
     DocumentVersion illegible = version();
     illegible.completeProcessing("doc.pdf", "m.json");
-    illegible.recordAiAssessment(null, false, null, null, Instant.now());
+    illegible.recordAiAssessment(null, false, null, null, false, Instant.now());
     assertThat(illegible.blockingIssues()).singleElement().asString().contains("no es legible");
   }
 
@@ -46,9 +46,18 @@ class DocumentReviewRulesTest {
   void unknownAiResultIsNotTreatedAsApprovalNorAsBlocking() {
     DocumentVersion v = version();
     v.completeProcessing("doc.pdf", "m.json");
-    v.recordAiAssessment(null, null, null, null, Instant.now());
+    v.recordAiAssessment(null, null, null, null, false, Instant.now());
 
     assertThat(v.blockingIssues()).isEmpty();
+  }
+
+  @Test
+  void aFileTheAiCouldNotCheckNeedsAnOverride() {
+    DocumentVersion v = version();
+    v.completeProcessing("doc.pdf", "m.json");
+    v.recordAiAssessment(null, null, null, "El servicio no respondió", true, Instant.now());
+
+    assertThat(v.blockingIssues()).singleElement().asString().contains("No se pudo hacer la revisión automática");
   }
 
   @Test

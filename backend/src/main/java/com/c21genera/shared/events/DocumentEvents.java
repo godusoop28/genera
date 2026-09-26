@@ -79,7 +79,9 @@ public final class DocumentEvents {
       Boolean matchesExpectedType,
       Boolean legible,
       String detectedDocumentKind,
-      String observations) {}
+      String observations,
+      /* La IA no respondió después de todos los reintentos: el contenido quedó sin verificar. */
+      boolean checkFailed) {}
 
   /** Confirmación explícita de staff (ver AGENTS §87); expedientes escucha para transicionar a RECEPTION_SIGNED. */
   public record ReceptionSigned(UUID expedienteId, UUID signedByUserId, Actor actor) {}

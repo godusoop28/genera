@@ -129,7 +129,7 @@ export default function ExpedientesPage() {
 
               <div className="flex flex-1 flex-col gap-4 p-5 pl-6">
                 <div className="flex items-start justify-between gap-3">
-                  <span className="rounded-lg bg-app-bg px-2.5 py-1 font-mono text-xs font-medium tracking-wide text-obsessed/70">
+                  <span className="shrink-0 whitespace-nowrap rounded-lg bg-app-bg px-2.5 py-1 font-mono text-xs font-medium tracking-wide text-obsessed/70">
                     {expediente.folio}
                   </span>
                   <Badge tone={backendStatusTone[expediente.status]}>{backendStatusLabels[expediente.status]}</Badge>

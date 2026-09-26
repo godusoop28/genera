@@ -161,9 +161,26 @@ public class PdfContractRenderer {
           continue;
         }
         if (currentWidth + word.width() > width && !current.isEmpty() && !word.text().equals(" ")) {
+          // Las palabras pegadas sin espacio (p. ej. un nombre en negritas seguido de ",") pasan
+          // juntas al siguiente renglón: nunca se empieza un renglón con la coma suelta.
+          int lastSpace = -1;
+          for (int i = current.size() - 1; i >= 0; i--) {
+            if (current.get(i).text().equals(" ")) {
+              lastSpace = i;
+              break;
+            }
+          }
+          List<Word> carried = new ArrayList<>();
+          if (lastSpace >= 0 && lastSpace < current.size() - 1) {
+            carried.addAll(current.subList(lastSpace + 1, current.size()));
+            current = new ArrayList<>(current.subList(0, lastSpace));
+          }
           lines.add(new Line(trim(current), false));
-          current = new ArrayList<>();
+          current = carried;
           currentWidth = 0;
+          for (Word w : carried) {
+            currentWidth += w.width();
+          }
         }
         if (word.width() > width) {
           // Palabra más larga que la línea (p. ej. una URL): se corta por caracteres.

@@ -405,7 +405,8 @@ public class ContractSignatureService {
         + ", huella SHA-256 "
         + contract.getDocumentSha256()
         + ") y que lo firmo electrónicamente en mi carácter de "
-        + signature.getSignerCapacity()
+        // Sin punto final propio: "…S. de R.L. de C.V." no debe terminar en "C.V..".
+        + signature.getSignerCapacity().replaceAll("\\.+$", "")
         + ". Acepto que esta firma electrónica me obliga en los mismos términos que mi firma autógrafa.";
   }
 

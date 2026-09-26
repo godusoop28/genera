@@ -13,7 +13,6 @@ export const ORG_LEGAL_REPRESENTATIVE_ROLE = "Administrador · Representante leg
 export const INDEPENDENT_OFFICE_NOTICE =
   "Cada Oficina es de Propiedad y Operación Independiente.";
 
-export const PROTOTYPE_BADGE_TEXT = "Prototipo visual";
 
 // Contacto genérico de interfaz (demo). No se usa para representar documentos legales.
 export const ORG_DEMO_EMAIL = "ventas@c21genera.com";

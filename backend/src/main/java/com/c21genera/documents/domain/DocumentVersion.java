@@ -53,6 +53,9 @@ public class DocumentVersion {
   private String aiObservations;
   private Instant aiAssessedAt;
 
+  @Column(nullable = false)
+  private boolean aiCheckFailed;
+
   protected DocumentVersion() {}
 
   public DocumentVersion(
@@ -67,7 +70,9 @@ public class DocumentVersion {
     this.processingStatus = ProcessingStatus.QUEUED;
   }
 
-  public void recordAiAssessment(Boolean typeMatches, Boolean legible, String detectedKind, String observations, Instant when) {
+  public void recordAiAssessment(
+      Boolean typeMatches, Boolean legible, String detectedKind, String observations, boolean checkFailed, Instant when) {
+    this.aiCheckFailed = checkFailed;
     this.aiTypeMatches = typeMatches;
     this.aiLegible = legible;
     this.aiDetectedKind = detectedKind;
@@ -96,6 +101,9 @@ public class DocumentVersion {
     }
     if (Boolean.FALSE.equals(aiLegible)) {
       issues.add("La revisión automática indica que el documento no es legible");
+    }
+    if (aiCheckFailed) {
+      issues.add("No se pudo hacer la revisión automática del contenido (el servicio de IA no respondió); verifica a mano que sea el documento correcto");
     }
     return issues;
   }
@@ -178,6 +186,10 @@ public class DocumentVersion {
 
   public String getAiObservations() {
     return aiObservations;
+  }
+
+  public boolean isAiCheckFailed() {
+    return aiCheckFailed;
   }
 
   public Instant getAiAssessedAt() {

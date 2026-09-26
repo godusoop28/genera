@@ -87,6 +87,20 @@ class NotificationTriggers {
 
   @ApplicationModuleListener
   void on(DocumentContentAssessed event) {
+    if (event.checkFailed()) {
+      ExpedienteSummary e = expedientes.getSummary(event.expedienteId());
+      String label = DocumentTypeLabels.of(event.type());
+      toAdvisor(
+          e,
+          "Documento sin revisión automática",
+          "Expediente " + e.folio() + ": verifica a mano el archivo de " + label,
+          "No se pudo hacer la revisión automática del archivo cargado como \""
+              + label
+              + "\" porque el servicio de inteligencia artificial no respondió.\n\n"
+              + "Verifica a mano que sea el documento correcto y legible. Solo se podrá aceptar con una autorización de excepción,"
+              + " o puedes devolverlo al cliente para que lo vuelva a cargar (la nueva carga se revisa de nuevo).");
+      return;
+    }
     if (!Boolean.FALSE.equals(event.matchesExpectedType()) && !Boolean.FALSE.equals(event.legible())) {
       return;
     }

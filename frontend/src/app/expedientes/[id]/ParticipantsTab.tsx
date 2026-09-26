@@ -8,7 +8,9 @@ import { Modal } from "@/components/ui/Modal";
 import { ReasonModal } from "@/components/ui/ReasonModal";
 import { useToast } from "@/components/ui/Toast";
 import { addParticipant, getRequirements, removeParticipant, updateParticipant } from "@/lib/api/expedientes";
-import type { BackendParticipantRole, ParticipantRequest, ParticipantResponse, RequirementResponse } from "@/lib/api/types";
+import { getExpedienteExtractedFields } from "@/lib/api/extraction";
+import type { BackendParticipantRole, ParticipantDetails, ParticipantRequest, ParticipantResponse, RequirementResponse } from "@/lib/api/types";
+import { buildDetectedData, type Detected, type DetectedData } from "@/lib/detected-data";
 import { documentTypeLabel } from "@/lib/document-type-labels";
 import { errorText } from "@/lib/errors";
 import { civilStatusLabels, companyOwnerLabel, formatDate, idDocumentLabels, label, participantRoleLabels } from "@/lib/labels";
@@ -48,10 +50,15 @@ export function ParticipantsTab({ expediente, participants, reload }: Expediente
   const [requirements, setRequirements] = useState<RequirementResponse[]>([]);
   const [editing, setEditing] = useState<{ id: string | null; value: ParticipantRequest } | null>(null);
   const [removing, setRemoving] = useState<ParticipantResponse | null>(null);
+  const [detected, setDetected] = useState<DetectedData | null>(null);
+  const ownerId = participants.find((p) => p.role === "OWNER")?.id ?? null;
 
   useEffect(() => {
     getRequirements(expediente.id).then(setRequirements).catch(() => undefined);
-  }, [expediente.id]);
+    getExpedienteExtractedFields(expediente.id)
+      .then((obs) => setDetected(buildDetectedData(obs, ownerId)))
+      .catch(() => undefined);
+  }, [expediente.id, ownerId]);
 
   const names = Object.fromEntries(participants.map((p) => [p.id, p.fullName]));
   const moral = expediente.personType === "MORAL";
@@ -158,6 +165,7 @@ export function ParticipantsTab({ expediente, participants, reload }: Expediente
           title={editing.id ? "Editar participante" : "Agregar participante"}
           value={editing.value}
           personType={expediente.personType}
+          detected={editing.id ? detected?.participants[editing.id] : undefined}
           onChange={(value) => setEditing({ ...editing, value })}
           onCancel={() => setEditing(null)}
           onSave={save}
@@ -192,6 +200,7 @@ function ParticipantModal({
   title,
   value,
   personType,
+  detected,
   onChange,
   onCancel,
   onSave,
@@ -199,6 +208,7 @@ function ParticipantModal({
   title: string;
   value: ParticipantRequest;
   personType: ExpedienteContext["expediente"]["personType"];
+  detected?: Partial<Record<keyof ParticipantDetails, Detected>>;
   onChange: (v: ParticipantRequest) => void;
   onCancel: () => void;
   onSave: (reason: string) => Promise<void>;
@@ -232,6 +242,7 @@ function ParticipantModal({
         </>
       }
     >
+      <DetectedParticipantData value={value} detected={detected} onChange={onChange} />
       <ParticipantFields value={value} onChange={onChange} personType={personType} detailed />
       <label className="mb-1 mt-4 block text-sm font-medium text-obsessed">Motivo del cambio (queda en la bitácora)</label>
       <input
@@ -241,6 +252,61 @@ function ParticipantModal({
         className="w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm outline-none focus:border-gold"
       />
     </Modal>
+  );
+}
+
+const participantFieldLabels: Partial<Record<keyof ParticipantDetails, string>> = {
+  idDocumentType: "Identificación",
+  idDocumentNumber: "Número de identificación",
+  idDocumentIssuer: "Emitida por",
+  nationality: "Nacionalidad",
+  birthDate: "Fecha de nacimiento",
+  curp: "CURP",
+  rfc: "RFC",
+  address: "Domicilio",
+};
+
+/** Lo que la revisión automática leyó en las identificaciones y constancias de este participante. */
+function DetectedParticipantData({
+  value,
+  detected,
+  onChange,
+}: {
+  value: ParticipantRequest;
+  detected?: Partial<Record<keyof ParticipantDetails, Detected>>;
+  onChange: (v: ParticipantRequest) => void;
+}) {
+  const rows = (Object.entries(detected ?? {}) as [keyof ParticipantDetails, Detected][]).filter(
+    ([key, d]) => participantFieldLabels[key] && (value[key] ?? "") !== d.value,
+  );
+  if (rows.length === 0) return null;
+  const apply = (entries: [keyof ParticipantDetails, Detected][]) =>
+    onChange(entries.reduce((acc, [key, d]) => ({ ...acc, [key]: d.value }), value));
+  const empty = rows.filter(([key]) => !value[key]);
+  return (
+    <div className="mb-4 rounded-xl bg-app-bg p-3 text-sm">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <p className="font-medium text-obsessed">Datos detectados en sus documentos</p>
+        {empty.length > 0 ? (
+          <Button variant="secondary" size="sm" onClick={() => apply(empty)}>
+            Llenar campos vacíos
+          </Button>
+        ) : null}
+      </div>
+      <ul className="flex flex-col gap-1">
+        {rows.map(([key, d]) => (
+          <li key={key} className="flex flex-wrap items-center gap-x-2 text-xs text-muted">
+            <span>
+              {participantFieldLabels[key]} ({d.source}): <span className="font-medium text-obsessed">{key === "idDocumentType" ? label(idDocumentLabels, d.value) : d.value}</span>
+            </span>
+            <button type="button" className="font-medium text-dark-gold hover:underline" onClick={() => apply([[key, d]])}>
+              Usar
+            </button>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-xs text-muted">Revísalos contra el documento antes de guardar.</p>
+    </div>
   );
 }
 

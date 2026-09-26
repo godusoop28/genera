@@ -1,5 +1,6 @@
 package com.c21genera.extraction.web;
 
+import com.c21genera.extraction.application.DocumentFieldExtractionService.DocumentObservation;
 import com.c21genera.extraction.domain.DataConflict;
 import com.c21genera.extraction.domain.ExtractedFieldObservation;
 import jakarta.validation.constraints.NotBlank;
@@ -32,6 +33,33 @@ public final class ExtractionDtos {
           o.getOrigin().name(),
           o.getConfidence(),
           o.getUpdatedAt());
+    }
+  }
+
+  /** Dato detectado junto con el documento del que salió (para prellenar el contrato). */
+  public record ExpedienteObservationResponse(
+      UUID id,
+      UUID documentId,
+      String documentType,
+      UUID participantId,
+      String documentStatus,
+      String fieldName,
+      String value,
+      boolean confirmed,
+      Double confidence) {
+
+    public static ExpedienteObservationResponse from(DocumentObservation d) {
+      ExtractedFieldObservation o = d.observation();
+      return new ExpedienteObservationResponse(
+          o.getId(),
+          o.getDocumentId(),
+          d.document().type().name(),
+          d.document().participantId(),
+          d.document().status(),
+          o.getFieldName(),
+          o.getConfirmedValue() != null ? o.getConfirmedValue() : o.getDetectedValue(),
+          o.getConfirmedValue() != null,
+          o.getConfidence());
     }
   }
 

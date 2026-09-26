@@ -11,7 +11,19 @@ import java.util.List;
  */
 public interface StructuredExtractionProvider {
 
+  /**
+   * @throws AiUnavailableException si el servicio no respondió (caída, tiempo
+   *     de espera, límite de uso): quien llama decide reintentar o marcar el
+   *     documento como "sin revisión automática", nunca como aprobado.
+   */
   ExtractionResult extract(DocumentTypeCode type, byte[] pdfBytes, List<String> fieldNames);
+
+  /** El proveedor de IA no respondió o respondió algo inutilizable. */
+  class AiUnavailableException extends RuntimeException {
+    public AiUnavailableException(String message, Throwable cause) {
+      super(message, cause);
+    }
+  }
 
   record FieldResult(String fieldName, String value, double confidence) {}
 

@@ -106,6 +106,17 @@ hace nada si la variable está vacía, y nunca corre en `prod`).
   instruye explícitamente a ignorar cualquier instrucción embebida en el
   documento. Nunca se registran en logs el contenido de la imagen ni el
   texto extraído.
+- Cada llamada tiene tiempo máximo (`AI_TIMEOUT`, 120 s por defecto) y
+  reintentos ante errores temporales (5xx, 429, red); después el job se
+  reintenta con espera. Si la IA nunca responde, la versión queda marcada
+  "sin revisión automática" (`ai_check_failed`) y solo se acepta con
+  autorización de excepción; mientras la revisión sigue en curso (hasta 20
+  minutos después de la carga) no se puede aceptar.
+- En escrituras, contratos privados, actas, poderes y régimen de condominio
+  se envían hasta 12 páginas (los datos suelen estar en páginas interiores).
+- `GET /internal/expedientes/{id}/extracted-fields` junta lo detectado en
+  todos los documentos vigentes; el frontend lo usa para prellenar los datos
+  del contrato y de cada participante (el usuario revisa y guarda).
 - Los valores "detectados" por IA nunca sobreescriben el dato canónico: se
   guardan aparte (`ExtractedFieldObservation`) hasta que un humano los
   confirma. Los conflictos entre documentos (`DataConflict`) se reportan,

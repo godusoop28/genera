@@ -2,6 +2,7 @@ package com.c21genera.extraction.application;
 
 import com.c21genera.shared.jobs.BackgroundJob;
 import com.c21genera.shared.jobs.BackgroundJobQueue;
+import com.c21genera.shared.jobs.JobStatus;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,7 +45,9 @@ public class ExtractionWorker {
       queue.markDone(job);
     } catch (Exception e) {
       log.error("Fallo extrayendo campos para documentVersionId={}", payload.documentVersionId(), e);
-      queue.markFailedOrRetry(job, e.getMessage());
+      if (queue.markFailedOrRetry(job, e.getMessage()) == JobStatus.FAILED) {
+        service.recordCheckFailed(payload);
+      }
     }
   }
 }

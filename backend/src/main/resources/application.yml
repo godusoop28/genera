@@ -108,7 +108,8 @@ app:
     api-key: ${AI_API_KEY:}
     model: ${AI_MODEL:}
     base-url: ${AI_BASE_URL:https://api.openai.com/v1}
-    timeout: PT30S
+    # Los modelos de razonamiento con varias páginas de imagen pueden tardar más de 30 s.
+    timeout: ${AI_TIMEOUT:PT120S}
     max-retries: 2
   rate-limit:
     login:

@@ -2,6 +2,7 @@ package com.c21genera.documents.application;
 
 import com.c21genera.documents.DocumentStatus;
 import com.c21genera.documents.DocumentsApi;
+import com.c21genera.documents.ProcessingStatus;
 import com.c21genera.documents.domain.Document;
 import com.c21genera.documents.domain.DocumentNotReviewableException;
 import com.c21genera.documents.domain.DocumentPage;
@@ -17,6 +18,7 @@ import com.c21genera.documents.infrastructure.DocumentVersionRepository;
 import com.c21genera.documents.infrastructure.FileValidator;
 import com.c21genera.documents.infrastructure.FileValidator.ValidatedFile;
 import com.c21genera.documents.infrastructure.StorageKeys;
+import com.c21genera.shared.config.AiProperties;
 import com.c21genera.shared.domain.ConflictException;
 import com.c21genera.shared.domain.NotFoundException;
 import com.c21genera.shared.domain.RequiredDocumentSpec;
@@ -64,6 +66,15 @@ public class DocumentService implements DocumentsApi {
   private final ApplicationEventPublisher events;
   private final Clock clock;
 
+  /**
+   * Tiempo máximo que se espera la revisión automática antes de permitir
+   * revisar a mano (cubre los reintentos del job de extracción); después, si
+   * la IA no respondió, la versión queda marcada con aiCheckFailed.
+   */
+  private static final java.time.Duration AI_CHECK_GRACE = java.time.Duration.ofMinutes(20);
+
+  private final boolean aiEnabled;
+
   public DocumentService(
       DocumentRepository documentRepository,
       DocumentVersionRepository versionRepository,
@@ -72,7 +83,8 @@ public class DocumentService implements DocumentsApi {
       FileStorage fileStorage,
       FileValidator fileValidator,
       ApplicationEventPublisher events,
-      Clock clock) {
+      Clock clock,
+      AiProperties aiProperties) {
     this.documentRepository = documentRepository;
     this.versionRepository = versionRepository;
     this.pageRepository = pageRepository;
@@ -81,6 +93,7 @@ public class DocumentService implements DocumentsApi {
     this.fileValidator = fileValidator;
     this.events = events;
     this.clock = clock;
+    this.aiEnabled = aiProperties.enabled();
   }
 
   /**
@@ -124,7 +137,12 @@ public class DocumentService implements DocumentsApi {
         .ifPresent(
             v ->
                 v.recordAiAssessment(
-                    event.matchesExpectedType(), event.legible(), event.detectedDocumentKind(), event.observations(), clock.instant()));
+                    event.matchesExpectedType(),
+                    event.legible(),
+                    event.detectedDocumentKind(),
+                    event.observations(),
+                    event.checkFailed(),
+                    clock.instant()));
   }
 
   @Transactional(readOnly = true)
@@ -262,6 +280,14 @@ public class DocumentService implements DocumentsApi {
       default -> {
         /* PROCESSED, QUALITY_FAILED o FAILED sí pueden revisarse manualmente */
       }
+    }
+    if (command.decision() == ReviewDecision.ACCEPTED
+        && aiEnabled
+        && latest.getProcessingStatus() == ProcessingStatus.PROCESSED
+        && latest.getAiAssessedAt() == null
+        && latest.getUploadedAt().isAfter(clock.instant().minus(AI_CHECK_GRACE))) {
+      throw new DocumentNotReviewableException(
+          "La revisión automática del contenido todavía está en curso; espera unos segundos y actualiza antes de aceptarlo.");
     }
 
     String overrideJustification = null;
