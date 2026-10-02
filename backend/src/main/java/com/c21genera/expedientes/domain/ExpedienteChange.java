@@ -36,7 +36,7 @@ public class ExpedienteChange {
   @Column(length = 32)
   private String actorRole;
 
-  @Column(nullable = false, length = 48)
+  @Column(nullable = false, length = 200)
   private String section;
 
   @Column(nullable = false, length = 96)
@@ -57,14 +57,15 @@ public class ExpedienteChange {
     this.actorUserId = actor.userId();
     this.actorName = actor.name();
     this.actorRole = actor.role();
-    this.section = section;
+    // La sección incluye el nombre del participante: nunca debe impedir guardar el cambio (E2E 02/10).
+    this.section = truncate(section, 200);
     this.field = truncate(field, 96);
     this.oldValue = oldValue;
     this.newValue = newValue;
     this.reason = reason;
   }
 
-  private static String truncate(String value, int max) {
+  static String truncate(String value, int max) {
     return value.length() <= max ? value : value.substring(0, max);
   }
 
