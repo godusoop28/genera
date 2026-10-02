@@ -29,5 +29,7 @@ EXPOSE 8080
 # chicas reducen la memoria fuera del heap.
 # Heap al 55% de los 512 MB de Render: con 70% el heap + metaspace + memoria nativa (decodificación de
 # imágenes) superaba el límite del contenedor y Render lo reiniciaba (502) en vez de lanzar un OutOfMemoryError.
+# glibc crea un arena de malloc por hilo y infla la memoria nativa del JVM en contenedores chicos.
+ENV MALLOC_ARENA_MAX=2
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=55 -XX:+UseSerialGC -Xss512k -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=48m"
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
