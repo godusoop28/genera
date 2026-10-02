@@ -206,6 +206,24 @@ class OpenAiExtractionStrategyTest {
   }
 
   @Test
+  void aFrameAroundTheImageDoesNotPreventCroppingToTheText() {
+    var page = new java.awt.image.BufferedImage(1400, 900, java.awt.image.BufferedImage.TYPE_INT_RGB);
+    var g = page.createGraphics();
+    g.setColor(java.awt.Color.WHITE);
+    g.fillRect(0, 0, 1400, 900);
+    g.setColor(java.awt.Color.BLACK);
+    g.setStroke(new java.awt.BasicStroke(4));
+    g.drawRect(30, 30, 1340, 840); // marco de la credencial
+    g.fillRect(100, 180, 400, 300); // bloque de texto
+    g.dispose();
+
+    var cropped = OpenAiStructuredExtractionProvider.cropToContent(page);
+
+    assertThat(cropped.getWidth()).isLessThan(500);
+    assertThat(cropped.getHeight()).isLessThan(380);
+  }
+
+  @Test
   void aPageAlreadyFullOfContentIsNotCropped() {
     var page = new java.awt.image.BufferedImage(1000, 1400, java.awt.image.BufferedImage.TYPE_INT_RGB);
     var g = page.createGraphics();

@@ -500,17 +500,38 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
     int w = source.getWidth();
     int h = source.getHeight();
     int step = Math.max(1, Math.min(w, h) / 600);
-    int minX = w, minY = h, maxX = -1, maxY = -1;
-    for (int y = 0; y < h; y += step) {
-      for (int x = 0; x < w; x += step) {
-        int rgb = source.getRGB(x, y);
-        int lum = (((rgb >> 16) & 0xFF) + ((rgb >> 8) & 0xFF) + (rgb & 0xFF)) / 3;
-        if (lum < INK_THRESHOLD) {
-          if (x < minX) minX = x;
-          if (x > maxX) maxX = x;
-          if (y < minY) minY = y;
-          if (y > maxY) maxY = y;
+    int sw = (w + step - 1) / step;
+    int sh = (h + step - 1) / step;
+    boolean[][] ink = new boolean[sh][sw];
+    int[] rowInk = new int[sh];
+    int[] colInk = new int[sw];
+    for (int yi = 0; yi < sh; yi++) {
+      for (int xi = 0; xi < sw; xi++) {
+        int rgb = source.getRGB(xi * step, yi * step);
+        if ((((rgb >> 16) & 0xFF) + ((rgb >> 8) & 0xFF) + (rgb & 0xFF)) / 3 < INK_THRESHOLD) {
+          ink[yi][xi] = true;
+          rowInk[yi]++;
+          colInk[xi]++;
         }
+      }
+    }
+    // Las líneas largas (marco de una credencial, bordes de la foto) no son contenido: con ellas el
+    // recorte abarcaba toda la imagen y el texto seguía siendo diminuto (E2E 02/10).
+    int minX = w, minY = h, maxX = -1, maxY = -1;
+    for (int yi = 0; yi < sh; yi++) {
+      if (rowInk[yi] > sw / 2) {
+        continue;
+      }
+      for (int xi = 0; xi < sw; xi++) {
+        if (!ink[yi][xi] || colInk[xi] > sh / 2) {
+          continue;
+        }
+        int x = xi * step;
+        int y = yi * step;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
       }
     }
     if (maxX < 0) {
