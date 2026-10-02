@@ -17,6 +17,7 @@ import com.c21genera.documents.infrastructure.DocumentPageRepository;
 import com.c21genera.documents.infrastructure.DocumentRepository;
 import com.c21genera.documents.infrastructure.DocumentReviewRepository;
 import com.c21genera.documents.infrastructure.DocumentVersionRepository;
+import com.c21genera.documents.infrastructure.ExpedienteDocumentsLock;
 import com.c21genera.documents.infrastructure.FileValidator;
 import com.c21genera.documents.infrastructure.FileValidator.ValidatedFile;
 import com.c21genera.documents.infrastructure.StorageKeys;
@@ -67,6 +68,7 @@ public class DocumentService implements DocumentsApi {
   private final FileValidator fileValidator;
   private final ApplicationEventPublisher events;
   private final Clock clock;
+  private final ExpedienteDocumentsLock documentsLock;
 
   /**
    * Tiempo máximo que se espera la revisión automática antes de permitir
@@ -86,7 +88,8 @@ public class DocumentService implements DocumentsApi {
       FileValidator fileValidator,
       ApplicationEventPublisher events,
       Clock clock,
-      AiProperties aiProperties) {
+      AiProperties aiProperties,
+      ExpedienteDocumentsLock documentsLock) {
     this.documentRepository = documentRepository;
     this.versionRepository = versionRepository;
     this.pageRepository = pageRepository;
@@ -96,6 +99,7 @@ public class DocumentService implements DocumentsApi {
     this.events = events;
     this.clock = clock;
     this.aiEnabled = aiProperties.enabled();
+    this.documentsLock = documentsLock;
   }
 
   /**
@@ -504,6 +508,8 @@ public class DocumentService implements DocumentsApi {
   private record Completeness(boolean hasRequired, boolean hasPendingRequired, boolean allUploaded, boolean allAccepted) {}
 
   private Completeness completenessOf(UUID expedienteId) {
+    // Serializa por expediente el cálculo antes/después: ver ExpedienteDocumentsLock.
+    documentsLock.lock(expedienteId);
     List<Document> required = documentRepository.findByExpedienteId(expedienteId).stream().filter(Document::isRequired).toList();
     return new Completeness(
         !required.isEmpty(),

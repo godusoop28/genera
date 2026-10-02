@@ -16,6 +16,7 @@ import com.c21genera.documents.infrastructure.DocumentPageRepository;
 import com.c21genera.documents.infrastructure.DocumentRepository;
 import com.c21genera.documents.infrastructure.DocumentReviewRepository;
 import com.c21genera.documents.infrastructure.DocumentVersionRepository;
+import com.c21genera.documents.infrastructure.ExpedienteDocumentsLock;
 import com.c21genera.documents.infrastructure.FileValidator;
 import com.c21genera.shared.config.AiProperties;
 import com.c21genera.shared.domain.ConflictException;
@@ -47,6 +48,7 @@ class DocumentReprocessTest {
   private DocumentService service;
   private final UUID expedienteId = UUID.randomUUID();
   private final Actor staff = mock(Actor.class);
+  private final ExpedienteDocumentsLock documentsLock = mock(ExpedienteDocumentsLock.class);
 
   @BeforeEach
   void setUp() {
@@ -55,7 +57,8 @@ class DocumentReprocessTest {
         new DocumentService(
             documents, versions, pages, mock(DocumentReviewRepository.class), mock(FileStorage.class), mock(FileValidator.class), events,
             Clock.fixed(Instant.parse("2026-10-01T12:00:00Z"), ZoneOffset.UTC),
-            new AiProperties(false, "openai", "", "", "", Duration.ofSeconds(30), 0, 0, 0));
+            new AiProperties(false, "openai", "", "", "", Duration.ofSeconds(30), 0, 0, 0),
+            documentsLock);
   }
 
   private Document documentWithVersion(DocumentTypeCode type, DocumentVersion version) {
@@ -102,6 +105,23 @@ class DocumentReprocessTest {
     Document deed = documentWithVersion(DocumentTypeCode.DEED, version);
 
     assertThatThrownBy(() -> service.reprocess(deed.getId(), false, staff)).isInstanceOf(ConflictException.class);
+  }
+
+  @Test
+  void completenessIsEvaluatedUnderThePerExpedienteLock() {
+    DocumentVersion version = new DocumentVersion(UUID.randomUUID(), 1, Instant.now(), UploadedVia.PUBLIC_PORTAL, null, null);
+    version.completeProcessing("doc.pdf", "m.json");
+    Document marriage = documentWithVersion(DocumentTypeCode.MARRIAGE_CERTIFICATE, version);
+    Document predial = new Document(expedienteId, "predial", DocumentTypeCode.PROPERTY_TAX, null, true);
+    when(documents.findById(predial.getId())).thenReturn(Optional.of(predial));
+    when(documents.findByExpedienteId(expedienteId)).thenReturn(List.of(marriage, predial));
+    when(pages.findByDocumentVersionIdOrderByPageNumberAsc(version.getId())).thenReturn(List.of());
+    when(versions.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+    service.moveCurrentFile(marriage.getId(), predial.getId(), staff);
+
+    // Sin el candado, cargas simultáneas no veían las otras y nunca se publicaba "todos cargados" (E2E 02/10).
+    org.mockito.Mockito.verify(documentsLock, org.mockito.Mockito.atLeastOnce()).lock(expedienteId);
   }
 
   @Test

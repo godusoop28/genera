@@ -1,5 +1,6 @@
 package com.c21genera.expedientes.web;
 
+import com.c21genera.documents.DocumentsApi;
 import com.c21genera.expedientes.CivilStatus;
 import com.c21genera.expedientes.ExpedienteStatus;
 import com.c21genera.expedientes.MaritalRegime;
@@ -50,8 +51,10 @@ public class PublicExpedienteController {
 
   private final PublicAccessTokenApi tokenApi;
   private final ExpedienteService expedienteService;
+  private final DocumentsApi documentsApi;
 
-  public PublicExpedienteController(PublicAccessTokenApi tokenApi, ExpedienteService expedienteService) {
+  public PublicExpedienteController(PublicAccessTokenApi tokenApi, ExpedienteService expedienteService, DocumentsApi documentsApi) {
+    this.documentsApi = documentsApi;
     this.tokenApi = tokenApi;
     this.expedienteService = expedienteService;
   }
@@ -145,8 +148,13 @@ public class PublicExpedienteController {
       }
     }
 
-    if (!expediente.isAllRequiredDocumentsUploaded()) {
+    // La fuente de verdad son los documentos mismos, no la bandera que mantiene un evento
+    // (podía quedar desfasada si el cliente subía varios archivos a la vez; E2E 02/10).
+    if (!documentsApi.allRequiredUploaded(expedienteId)) {
       throw new RequiredDocumentsPendingException("Todavía faltan documentos obligatorios por cargar.");
+    }
+    if (!expediente.isAllRequiredDocumentsUploaded()) {
+      expedienteService.markAllRequiredDocumentsUploaded(expedienteId);
     }
 
     expedienteService.recordDocumentsSubmitted(expedienteId);

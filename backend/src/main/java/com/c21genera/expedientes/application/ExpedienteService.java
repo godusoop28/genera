@@ -441,7 +441,13 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
 
   @ApplicationModuleListener
   void on(AllRequiredDocumentsUploaded event) {
-    get(event.expedienteId()).markAllRequiredDocumentsUploaded();
+    markAllRequiredDocumentsUploaded(event.expedienteId());
+  }
+
+  /** Corrige la bandera si quedó desfasada (ver PublicExpedienteController#submit). */
+  @Transactional
+  public void markAllRequiredDocumentsUploaded(UUID expedienteId) {
+    get(expedienteId).markAllRequiredDocumentsUploaded();
   }
 
   /** Una corrección agregó un documento obligatorio que todavía no está aceptado. */
