@@ -147,9 +147,9 @@ class OpenAiExtractionStrategyTest {
     ExtractionResult result = provider.extract(DocumentTypeCode.INE, pdf(2, null), DocumentFieldSchemas.fieldsFor(DocumentTypeCode.INE));
 
     assertThat(requests).hasSize(1);
-    // Dos páginas verticales de una credencial: cada una va también girada ±90° (foto con el celular vertical).
-    assertThat(count(requests.getFirst(), "\"type\":\"image_url\"")).isEqualTo(6);
-    assertThat(requests.getFirst()).contains("Página 1:").contains("Página 2:").contains("Página 1 girada 90° a la derecha");
+    // Páginas en blanco (sin texto de lado): se mandan tal cual, una imagen por página.
+    assertThat(count(requests.getFirst(), "\"type\":\"image_url\"")).isEqualTo(2);
+    assertThat(requests.getFirst()).contains("Página 1:").contains("Página 2:");
     assertThat(find(result, "birthDate").page()).isEqualTo(2);
   }
 
@@ -186,7 +186,7 @@ class OpenAiExtractionStrategyTest {
 
     provider.extract(DocumentTypeCode.DEED, pdf(1, null), List.of("deedNumber"));
 
-    assertThat(requests.getFirst()).doesNotContain("girada 90°");
+    assertThat(requests.getFirst()).doesNotContain("venía de lado");
   }
 
   @Test
@@ -225,6 +225,38 @@ class OpenAiExtractionStrategyTest {
 
     assertThat(enlarged.getWidth()).isEqualTo(800); // tope 2x
     assertThat(new String(encoded, 1, 3, java.nio.charset.StandardCharsets.US_ASCII)).isEqualTo("PNG");
+  }
+
+  @Test
+  void sidewaysTextIsDetectedFromTheInkProfile() throws Exception {
+    var upright = new java.awt.image.BufferedImage(1400, 900, java.awt.image.BufferedImage.TYPE_INT_RGB);
+    var g = upright.createGraphics();
+    g.setColor(java.awt.Color.WHITE);
+    g.fillRect(0, 0, 1400, 900);
+    g.setColor(java.awt.Color.BLACK);
+    g.setFont(new java.awt.Font("SansSerif", java.awt.Font.PLAIN, 22));
+    for (int i = 0; i < 6; i++) {
+      g.drawString("CLAVE: RDCACL85031417H900  CURP: ROCC850314HMSDLR07", 120, 180 + i * 100);
+    }
+    g.dispose();
+
+    assertThat(OpenAiStructuredExtractionProvider.textLooksVertical(upright)).isFalse();
+    assertThat(OpenAiStructuredExtractionProvider.textLooksVertical(OpenAiStructuredExtractionProvider.rotate(upright, false))).isTrue();
+  }
+
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.CsvSource({
+    "INE_FOTO_HORIZONTAL_LEGIBLE.jpg, false",
+    "INE_FOTO_VERTICAL_LEGIBLE.jpg, true",
+    "INE_INCLINADA_LEGIBLE.jpg, false",
+    "INE_LIGERAMENTE_BORROSA_PERO_LEGIBLE.jpg, false"
+  })
+  void qaFixtureOrientationIsDetected(String file, boolean vertical) throws Exception {
+    try (var in = getClass().getResourceAsStream("/qa-fixtures/" + file)) {
+      var image = javax.imageio.ImageIO.read(in);
+      var prepared = OpenAiStructuredExtractionProvider.enlargeSmall(OpenAiStructuredExtractionProvider.cropToContent(image));
+      assertThat(OpenAiStructuredExtractionProvider.textLooksVertical(prepared)).as(file).isEqualTo(vertical);
+    }
   }
 
   @Test

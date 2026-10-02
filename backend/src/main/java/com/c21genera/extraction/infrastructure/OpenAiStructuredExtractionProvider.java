@@ -117,8 +117,6 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
   /** Tope de caracteres de texto nativo por petición (documentos con texto). */
   private static final int TEXT_CHAR_BUDGET = 120_000;
   private static final int MAX_EXTRA_FIELDS = 20;
-  /** Documentos tipo tarjeta: naturalmente horizontales aunque la foto se tome vertical. */
-  private static final Set<DocumentTypeCode> CARD_TYPES = Set.of(DocumentTypeCode.INE, DocumentTypeCode.PASSPORT);
 
   private final RestClient restClient;
   private final AiProperties properties;
@@ -184,15 +182,17 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       content.add(text(userPrompt(type, wanted, fieldNames, pages, plan.pagesTotal(), i > 0)));
       for (int page : pages) {
         BufferedImage rendered = enlargeSmall(cropToContent(renderImage(renderer, page, dpi)));
-        content.add(text("Página " + page + ":"));
-        content.add(image(encode(rendered)));
-        if (CARD_TYPES.contains(type) && rendered.getHeight() > rendered.getWidth() * 1.15) {
-          // Credencial fotografiada con el celular vertical: queda acostada dentro de la imagen y el
-          // texto pequeño de lado costaba leerlo (E2E 02/10: la clave de elector no se transcribía).
-          content.add(text("Página " + page + " girada 90° a la derecha (misma imagen, para leer el texto derecho):"));
+        if (textLooksVertical(rendered)) {
+          // Documento acostado (p. ej. credencial fotografiada con el celular vertical): se mandan solo las
+          // dos versiones giradas, una de ellas derecha. Con la original de lado también, la IA mezclaba
+          // lecturas y cambiaba caracteres de la clave de elector (E2E 02/10).
+          content.add(text("Página " + page + " (venía de lado; aquí girada 90° a la derecha):"));
           content.add(image(encode(rotate(rendered, true))));
-          content.add(text("Página " + page + " girada 90° a la izquierda (misma imagen):"));
+          content.add(text("Página " + page + " (la misma, girada 90° a la izquierda):"));
           content.add(image(encode(rotate(rendered, false))));
+        } else {
+          content.add(text("Página " + page + ":"));
+          content.add(image(encode(rendered)));
         }
       }
       try {
@@ -530,6 +530,55 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
     g.drawImage(source, 0, 0, x1 - x0, y1 - y0, x0, y0, x1, y1, null);
     g.dispose();
     return cropped;
+  }
+
+  /**
+   * ¿El texto corre de arriba a abajo? Los renglones de texto horizontal hacen
+   * que la cantidad de tinta por FILA varíe mucho (renglón / espacio); si la que
+   * varía es la de las COLUMNAS, el documento está de lado. Se ignora un 6% de
+   * cada borde para que el marco de la credencial no pese. Calibrado con los
+   * fixtures de QA: horizontal 3.9 vs 2.2, vertical 2.2 vs 3.9, inclinada y
+   * borrosa se quedan horizontales.
+   */
+  static boolean textLooksVertical(BufferedImage image) {
+    int w = image.getWidth();
+    int h = image.getHeight();
+    int x0 = (int) (w * 0.06), x1 = (int) (w * 0.94), y0 = (int) (h * 0.06), y1 = (int) (h * 0.94);
+    if (x1 - x0 < 20 || y1 - y0 < 20) {
+      return false;
+    }
+    double[] rows = new double[y1 - y0];
+    double[] cols = new double[x1 - x0];
+    int step = Math.max(1, Math.min(w, h) / 800);
+    for (int y = y0; y < y1; y += step) {
+      for (int x = x0; x < x1; x += step) {
+        int rgb = image.getRGB(x, y);
+        if ((((rgb >> 16) & 0xFF) + ((rgb >> 8) & 0xFF) + (rgb & 0xFF)) / 3 < INK_THRESHOLD) {
+          rows[y - y0]++;
+          cols[x - x0]++;
+        }
+      }
+    }
+    double rowScore = variation(rows, step);
+    double colScore = variation(cols, step);
+    return rowScore > 0 && colScore > rowScore * 1.3;
+  }
+
+  /** Coeficiente de variación del perfil (solo las posiciones muestreadas). */
+  private static double variation(double[] profile, int step) {
+    double sum = 0;
+    double sumSq = 0;
+    int n = 0;
+    for (int i = 0; i < profile.length; i += step) {
+      sum += profile[i];
+      sumSq += profile[i] * profile[i];
+      n++;
+    }
+    if (n == 0 || sum == 0) {
+      return 0;
+    }
+    double mean = sum / n;
+    return Math.sqrt(Math.max(0, sumSq / n - mean * mean)) / mean;
   }
 
   static BufferedImage rotate(BufferedImage source, boolean clockwise) {
