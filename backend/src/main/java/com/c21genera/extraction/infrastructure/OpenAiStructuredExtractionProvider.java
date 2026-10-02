@@ -183,7 +183,7 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       List<Map<String, Object>> content = new ArrayList<>();
       content.add(text(userPrompt(type, wanted, fieldNames, pages, plan.pagesTotal(), i > 0)));
       for (int page : pages) {
-        BufferedImage rendered = cropToContent(renderImage(renderer, page, dpi));
+        BufferedImage rendered = enlargeSmall(cropToContent(renderImage(renderer, page, dpi)));
         content.add(text("Página " + page + ":"));
         content.add(image(encode(rendered)));
         if (CARD_TYPES.contains(type) && rendered.getHeight() > rendered.getWidth() * 1.15) {
@@ -429,11 +429,60 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
     return renderer.renderImageWithDPI(page - 1, dpi, ImageType.RGB);
   }
 
+  /** Imágenes hasta este tamaño van en PNG (sin pérdida); más grandes, en JPEG de alta calidad. */
+  private static final long PNG_MAX_PIXELS = 3_000_000L;
+
   private static String encode(BufferedImage image) throws Exception {
+    return Base64.getEncoder().encodeToString(encodeBytes(image));
+  }
+
+  /** "png" o "jpeg", según cómo se codificó (ver {@link #encodeBytes}). */
+  private static String formatOf(BufferedImage image) {
+    return (long) image.getWidth() * image.getHeight() <= PNG_MAX_PIXELS ? "png" : "jpeg";
+  }
+
+  /**
+   * El archivo ya pasó por varias compresiones JPEG (foto, normalización, PDF):
+   * el JPEG por defecto de ImageIO (calidad 0.75) borraba caracteres pequeños
+   * (E2E 02/10). Una página recortada suele caber en PNG sin pérdida; si no,
+   * JPEG con calidad 0.92.
+   */
+  static byte[] encodeBytes(BufferedImage image) throws Exception {
     var out = new ByteArrayOutputStream();
-    // JPEG en vez de PNG: una página escaneada pesa ~10 veces menos y la IA la lee igual.
-    ImageIO.write(image, "jpg", out);
-    return Base64.getEncoder().encodeToString(out.toByteArray());
+    if ("png".equals(formatOf(image))) {
+      ImageIO.write(image, "png", out);
+      return out.toByteArray();
+    }
+    var writer = ImageIO.getImageWritersByFormatName("jpg").next();
+    var params = writer.getDefaultWriteParam();
+    params.setCompressionMode(javax.imageio.ImageWriteParam.MODE_EXPLICIT);
+    params.setCompressionQuality(0.92f);
+    try (var ios = ImageIO.createImageOutputStream(out)) {
+      writer.setOutput(ios);
+      writer.write(null, new javax.imageio.IIOImage(image, null, null), params);
+    } finally {
+      writer.dispose();
+    }
+    return out.toByteArray();
+  }
+
+  /** Lado corto mínimo de lo que se le manda a la IA: el texto pequeño recortado se amplía hasta aquí (máx. 2x). */
+  private static final int MIN_SHORT_SIDE = 1000;
+
+  static BufferedImage enlargeSmall(BufferedImage source) {
+    int shortSide = Math.min(source.getWidth(), source.getHeight());
+    if (shortSide >= MIN_SHORT_SIDE) {
+      return source;
+    }
+    double scale = Math.min(2.0, (double) MIN_SHORT_SIDE / shortSide);
+    int w = (int) Math.round(source.getWidth() * scale);
+    int h = (int) Math.round(source.getHeight() * scale);
+    BufferedImage enlarged = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+    Graphics2D g = enlarged.createGraphics();
+    g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+    g.drawImage(source, 0, 0, w, h, null);
+    g.dispose();
+    return enlarged;
   }
 
   /** Brillo por debajo del cual un píxel cuenta como tinta/contenido (no papel ni fondo blanco). */
@@ -500,7 +549,9 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
   }
 
   private static Map<String, Object> image(String base64) {
-    return Map.of("type", "image_url", "image_url", Map.of("url", "data:image/jpeg;base64," + base64, "detail", "high"));
+    // Los PNG empiezan con 0x89 'PNG' -> "iVBORw0KGgo" en base64.
+    String mime = base64.startsWith("iVBORw0KGgo") ? "image/png" : "image/jpeg";
+    return Map.of("type", "image_url", "image_url", Map.of("url", "data:" + mime + ";base64," + base64, "detail", "high"));
   }
 
   static String describePages(List<Integer> pages) {

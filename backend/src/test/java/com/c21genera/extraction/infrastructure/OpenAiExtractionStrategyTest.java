@@ -217,6 +217,17 @@ class OpenAiExtractionStrategyTest {
   }
 
   @Test
+  void smallCroppedContentIsEnlargedAndSentLossless() throws Exception {
+    var small = new java.awt.image.BufferedImage(400, 600, java.awt.image.BufferedImage.TYPE_INT_RGB);
+
+    var enlarged = OpenAiStructuredExtractionProvider.enlargeSmall(small);
+    byte[] encoded = OpenAiStructuredExtractionProvider.encodeBytes(enlarged);
+
+    assertThat(enlarged.getWidth()).isEqualTo(800); // tope 2x
+    assertThat(new String(encoded, 1, 3, java.nio.charset.StandardCharsets.US_ASCII)).isEqualTo("PNG");
+  }
+
+  @Test
   void rotatingSwapsWidthAndHeight() {
     var image = new java.awt.image.BufferedImage(90, 140, java.awt.image.BufferedImage.TYPE_INT_RGB);
 
