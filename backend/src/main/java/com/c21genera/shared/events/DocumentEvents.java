@@ -81,7 +81,30 @@ public final class DocumentEvents {
       String detectedDocumentKind,
       String observations,
       /* La IA no respondió después de todos los reintentos: el contenido quedó sin verificar. */
-      boolean checkFailed) {}
+      boolean checkFailed,
+      /* Avisos para el revisor (p. ej. "solo se ve el frente"); nunca bloquean. */
+      List<String> warnings,
+      Integer pagesAnalyzed,
+      Integer pagesTotal,
+      Integer fieldsExpected,
+      Integer fieldsFound) {
+
+    public DocumentContentAssessed {
+      warnings = warnings == null ? List.of() : List.copyOf(warnings);
+    }
+  }
+
+  /**
+   * El staff pidió volver a procesar una versión ya cargada sin que el cliente
+   * la suba de nuevo. pdfStorageKey null = desde los archivos originales
+   * (calidad, PDF y extracción); con PDF = solo repetir la extracción con IA.
+   */
+  public record DocumentReprocessRequested(
+      UUID expedienteId, UUID documentId, UUID documentVersionId, DocumentTypeCode type, String pdfStorageKey, Actor actor) {}
+
+  /** El staff movió el archivo cargado en un requisito a otro (p. ej. un predial cargado como acta de matrimonio). */
+  public record DocumentFileMoved(
+      UUID expedienteId, UUID fromDocumentId, DocumentTypeCode fromType, UUID toDocumentId, DocumentTypeCode toType, Actor actor) {}
 
   /** Confirmación explícita de staff (ver AGENTS §87); expedientes escucha para transicionar a RECEPTION_SIGNED. */
   public record ReceptionSigned(UUID expedienteId, UUID signedByUserId, Actor actor) {}

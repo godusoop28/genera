@@ -11,7 +11,8 @@ public interface DocumentsApi {
 
   void markProcessing(UUID documentVersionId);
 
-  void markProcessed(UUID documentVersionId, String pdfStorageKey, String normalizedStorageKey);
+  /** qualityLevel: ACCEPTED o ACCEPTED_WITH_WARNINGS; las advertencias se muestran al revisor y nunca bloquean. */
+  void markProcessed(UUID documentVersionId, String pdfStorageKey, String normalizedStorageKey, String qualityLevel, List<String> qualityWarnings);
 
   void markQualityFailed(UUID documentVersionId, String reason);
 

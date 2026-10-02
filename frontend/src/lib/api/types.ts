@@ -306,8 +306,28 @@ export interface LatestVersionSummary {
   aiDetectedKind: string | null;
   aiObservations: string | null;
   aiAssessedAt: string | null;
+  /** Lo único que impide aceptar sin excepción: que no se pueda leer. */
   blockingIssues: string[];
+  /** Avisos para el revisor que NO impiden aceptar. */
+  warnings: string[];
+  qualityLevel: "ACCEPTED" | "ACCEPTED_WITH_WARNINGS" | "UNREADABLE" | null;
+  aiPagesAnalyzed: number | null;
+  aiPagesTotal: number | null;
+  aiFieldsExpected: number | null;
+  aiFieldsFound: number | null;
+  /** La IA no respondió tras los reintentos: verificar visualmente o reprocesar. */
+  aiCheckFailed: boolean;
 }
+
+/** Estado de punta a punta del documento (procesamiento + extracción + revisión). */
+export type DocumentPipelineStatus =
+  | "UPLOADED"
+  | "PROCESSING"
+  | "EXTRACTION_COMPLETE"
+  | "EXTRACTION_PARTIAL"
+  | "REQUIRES_REVIEW"
+  | "ACCEPTED"
+  | "ERROR";
 
 export interface DocumentResponse {
   id: string;
@@ -325,6 +345,7 @@ export interface DocumentResponse {
   lastReviewComment: string | null;
   lastReviewedAt: string | null;
   latestVersion: LatestVersionSummary | null;
+  pipelineStatus: DocumentPipelineStatus | null;
 }
 
 export interface PublicDocumentResponse {
@@ -378,7 +399,13 @@ export interface ExtractedFieldObservationResponse {
   origin: string;
   confidence: number | null;
   updatedAt: string;
+  /** Página del documento donde se leyó el dato (1 = primera). */
+  sourcePage: number | null;
+  /** Dato útil fuera del esquema del tipo: fieldName = "extra.<etiqueta>". */
+  extra: boolean;
 }
+
+export type ConflictSeverity = "INFO" | "WARNING" | "CRITICAL";
 
 export interface DataConflictResponse {
   id: string;
@@ -390,6 +417,7 @@ export interface DataConflictResponse {
   resolvedByUserId: string | null;
   detectedAt: string;
   resolvedAt: string | null;
+  severity: ConflictSeverity;
 }
 
 export type ContractGenerationStatus =
@@ -455,10 +483,29 @@ export interface GenerateContractResponse {
 }
 
 export interface ContractReadinessResponse {
+  /** Se puede enviar a firma: no falta nada indispensable. Un borrador se puede generar siempre. */
   ready: boolean;
+  /** Indispensable del proceso (documentos, recepción, privacidad, firmantes, inconsistencias críticas). */
   blockers: string[];
+  /** Datos indispensables del contrato. */
   missingData: string[];
+  /** Datos secundarios: quedan en blanco para llenarse a mano; no bloquean. */
+  reviewItems: string[];
+  /** Posibles inconsistencias no críticas entre documentos. */
+  inconsistencies: string[];
   variant: string;
+}
+
+export interface UploadLimitsResponse {
+  maxFileSizeBytes: number;
+  maxFilesPerRequest: number;
+  allowedMimeTypes: string[];
+}
+
+export interface DraftResponse {
+  formKey: string;
+  payload: string;
+  updatedAt: string;
 }
 
 export interface ContractCalculationsResponse {

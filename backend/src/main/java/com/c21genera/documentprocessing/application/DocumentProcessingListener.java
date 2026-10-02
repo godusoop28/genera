@@ -1,5 +1,6 @@
 package com.c21genera.documentprocessing.application;
 
+import com.c21genera.shared.events.DocumentEvents.DocumentReprocessRequested;
 import com.c21genera.shared.events.DocumentEvents.DocumentVersionUploaded;
 import com.c21genera.shared.jobs.BackgroundJobQueue;
 import org.springframework.modulith.events.ApplicationModuleListener;
@@ -23,5 +24,16 @@ class DocumentProcessingListener {
         JOB_TYPE,
         new ProcessDocumentVersionPayload(
             event.expedienteId(), event.documentId(), event.documentVersionId(), event.type()));
+  }
+
+  /** Reproceso completo (p. ej. una versión que antes no pasó la calidad): desde los archivos originales. */
+  @ApplicationModuleListener
+  void on(DocumentReprocessRequested event) {
+    if (event.pdfStorageKey() != null) {
+      return; // Solo extracción: lo atiende extraction.
+    }
+    queue.enqueue(
+        JOB_TYPE,
+        new ProcessDocumentVersionPayload(event.expedienteId(), event.documentId(), event.documentVersionId(), event.type()));
   }
 }

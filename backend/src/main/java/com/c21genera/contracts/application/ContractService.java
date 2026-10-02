@@ -109,12 +109,25 @@ public class ContractService {
   }
 
   /**
-   * blockers: requisitos del proceso (documentos, recepción, privacidad,
-   * diferencias entre documentos). missingData: datos que el contrato
-   * necesita y no se han capturado. Solo con ambas listas vacías se puede
-   * generar un contrato para firma.
+   * Tres grupos, para no bloquear por lo que no es indispensable:
+   * <ul>
+   *   <li>blockers + missingData: lo jurídicamente indispensable (documentos
+   *       obligatorios, recepción, aviso de privacidad, firmantes, datos del
+   *       contrato e inconsistencias CRÍTICAS). Solo esto impide enviar a firma.</li>
+   *   <li>reviewItems: datos secundarios sin capturar; quedan en blanco en el
+   *       contrato para llenarse a mano.</li>
+   *   <li>inconsistencies: posibles inconsistencias no críticas entre
+   *       documentos (INFO/WARNING): ayuda para el revisor.</li>
+   * </ul>
+   * Un BORRADOR se puede generar siempre.
    */
-  public record Readiness(boolean ready, List<String> blockers, List<String> missingData, String variant) {}
+  public record Readiness(
+      boolean ready, List<String> blockers, List<String> missingData, List<String> reviewItems, List<String> inconsistencies, String variant) {
+
+    public Readiness(boolean ready, List<String> blockers, List<String> missingData, String variant) {
+      this(ready, blockers, missingData, List.of(), List.of(), variant);
+    }
+  }
 
   @Transactional(readOnly = true)
   public ContractCalculator.Result calculationsOf(UUID expedienteId) {
@@ -128,7 +141,18 @@ public class ContractService {
     ExpedienteSummary summary = expedienteApi.getSummary(expedienteId);
     ContractDocument document = ContractTemplate.build(inputFor(summary, 0), false);
     List<String> blockers = processBlockers(summary);
-    return new Readiness(blockers.isEmpty() && document.missingItems().isEmpty(), blockers, document.missingItems(), variantOf(summary));
+    List<String> inconsistencies =
+        extractionApi.unresolvedConflicts(expedienteId).stream()
+            .filter(c -> !"CRITICAL".equals(c.severity()))
+            .map(c -> ("INFO".equals(c.severity()) ? "Probablemente igual: " : "Revisar: ") + c.description())
+            .toList();
+    return new Readiness(
+        blockers.isEmpty() && document.missingItems().isEmpty(),
+        blockers,
+        document.missingItems(),
+        document.reviewItems(),
+        inconsistencies,
+        variantOf(summary));
   }
 
   public record Generated(ContractGeneration contract, List<ContractSignatureService.IssuedSigningLink> signingLinks) {}
@@ -158,7 +182,7 @@ public class ContractService {
     List<String> missingForRecord = new ArrayList<>(blockers);
     missingForRecord.addAll(preview.missingItems());
     ContractDocument document =
-        new ContractDocument(preview.title(), isDraft, isDraft ? missingForRecord : List.of(), preview.blocks());
+        new ContractDocument(preview.title(), isDraft, isDraft ? missingForRecord : List.of(), preview.reviewItems(), preview.blocks());
 
     byte[] docx = docxRenderer.render(document);
     byte[] pdf = pdfRenderer.render(document);
@@ -297,8 +321,9 @@ public class ContractService {
       blockers.add("El cliente no ha aceptado y firmado el aviso de privacidad");
     }
 
+    // Solo las inconsistencias CRÍTICAS (otra persona u otro inmueble) bloquean; el resto se lista para revisión.
     for (String conflict : extractionApi.unresolvedConflictDescriptions(summary.id())) {
-      blockers.add("Diferencia entre documentos sin resolver: " + conflict);
+      blockers.add("Inconsistencia crítica sin resolver: " + conflict);
     }
 
     if (ContractTemplate.clientSignersOf(summary).isEmpty()) {

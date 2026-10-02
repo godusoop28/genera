@@ -96,7 +96,7 @@ export function ContractTab({ expediente, reload, freshSigningLinks: links, setF
       <Card>
         <CardHeader
           title="Generar contrato"
-          description="Se genera con el texto del modelo registrado ante PROFECO, llenado con los datos del expediente. Solo se puede enviar a firma si no falta nada; si faltan datos puedes generar un borrador para revisarlo, marcado como INCOMPLETO y bloqueado para firma."
+          description="Se genera con el texto del modelo registrado ante PROFECO, llenado con los datos del expediente. Solo lo jurídicamente indispensable impide enviarlo a firma; un borrador para revisión se puede generar siempre."
         />
         {calc && Number(calc.price) > 0 ? (
           <dl className="mb-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
@@ -111,13 +111,43 @@ export function ContractTab({ expediente, reload, freshSigningLinks: links, setF
         )}
         {readiness && !readiness.ready ? (
           <div className="mb-4 rounded-lg bg-warning-bg px-3 py-2 text-sm text-warning-text">
-            <p className="font-medium">Todavía no se puede enviar a firma. Falta:</p>
+            <p className="font-medium">Para enviar a firma falta lo indispensable:</p>
             <ul className="ml-5 mt-1 max-h-48 list-disc overflow-y-auto">
               {[...readiness.blockers, ...readiness.missingData].map((item) => (
                 <li key={item}>{item}</li>
               ))}
             </ul>
+            <p className="mt-1 text-xs">Mientras tanto puedes generar un borrador para revisarlo.</p>
           </div>
+        ) : null}
+        {readiness && readiness.ready ? (
+          <p className="mb-4 rounded-lg bg-success-bg px-3 py-2 text-sm text-success-text">
+            No falta nada indispensable: el contrato se puede enviar a firma.
+          </p>
+        ) : null}
+        {readiness && (readiness.reviewItems?.length ?? 0) > 0 ? (
+          <details className="mb-3 rounded-lg bg-app-bg px-3 py-2 text-sm">
+            <summary className="cursor-pointer font-medium text-obsessed">
+              Conviene revisar ({readiness.reviewItems.length}): no bloquea; en el contrato queda en blanco para llenarse a mano
+            </summary>
+            <ul className="ml-5 mt-1 max-h-48 list-disc overflow-y-auto text-xs text-muted">
+              {readiness.reviewItems.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+        {readiness && (readiness.inconsistencies?.length ?? 0) > 0 ? (
+          <details className="mb-4 rounded-lg bg-app-bg px-3 py-2 text-sm">
+            <summary className="cursor-pointer font-medium text-obsessed">
+              Posibles inconsistencias entre documentos ({readiness.inconsistencies.length}): ayuda para el revisor, no bloquean
+            </summary>
+            <ul className="ml-5 mt-1 max-h-48 list-disc overflow-y-auto text-xs text-muted">
+              {readiness.inconsistencies.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </details>
         ) : null}
         {can("CONTRACT_GENERATE") && expediente.correctable ? (
           <div className="flex flex-wrap gap-2">

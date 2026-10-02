@@ -50,6 +50,7 @@ public final class StorageKeys {
     return switch (mimeType) {
       case "image/jpeg" -> "jpg";
       case "image/png" -> "png";
+      case "image/webp" -> "webp";
       case "application/pdf" -> "pdf";
       default -> "bin";
     };

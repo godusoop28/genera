@@ -35,8 +35,21 @@ import java.util.regex.Pattern;
  * </ul>
  * Nunca decide cuál valor es el correcto: solo reporta la diferencia para
  * que una persona la revise. Las comparaciones son tolerantes a acentos,
- * mayúsculas, orden de nombre/apellidos, abreviaturas de domicilio y
- * formato de números, para no llenar el expediente de falsas alarmas.
+ * mayúsculas, orden de nombre/apellidos, abreviaturas de domicilio
+ * ("Av." = "Avenida", "Col." = "Colonia", "#120" = "No. 120") y formato de
+ * números, para no llenar el expediente de falsas alarmas.
+ *
+ * <p>Cada hallazgo es una POSIBLE inconsistencia con severidad:
+ * <ul>
+ *   <li>INFO: diferencia de forma; casi seguro es el mismo dato (p. ej. una
+ *       letra distinta en un folio, probable error de lectura).</li>
+ *   <li>WARNING: conviene revisarla (domicilio escrito distinto, superficie
+ *       que no cuadra, un copropietario que no aparece).</li>
+ *   <li>CRITICAL: evidencia fuerte de que se trata de otra persona u otro
+ *       inmueble (CURP totalmente distinta, nombre sin ninguna coincidencia,
+ *       escritura donde no aparece ningún propietario). Es la única
+ *       severidad que bloquea el envío del contrato a firma.</li>
+ * </ul>
  */
 public final class DocumentConsistencyChecker {
 
@@ -56,7 +69,12 @@ public final class DocumentConsistencyChecker {
   public record DeclaredData(List<DeclaredParticipant> participants, String propertyAddress, BigDecimal landArea, BigDecimal builtArea) {}
 
   /** key identifica el tipo de hallazgo (para no duplicarlo y para cerrarlo si deja de existir). */
-  public record Finding(String key, String description) {}
+  public record Finding(String key, String description, DataConflict.Severity severity) {
+
+    public Finding(String key, String description) {
+      this(key, description, DataConflict.Severity.WARNING);
+    }
+  }
 
   private static final double AREA_TOLERANCE = 0.02;
 
@@ -64,11 +82,12 @@ public final class DocumentConsistencyChecker {
       Set.of(DocumentTypeCode.INE, DocumentTypeCode.PASSPORT, DocumentTypeCode.CURP, DocumentTypeCode.TAX_STATUS_CERTIFICATE);
 
   private static final Set<String> ADDRESS_STOPWORDS =
-      Set.of(
+      Set.copyOf(List.of(
           "CALLE", "C", "AV", "AVE", "AVENIDA", "BLVD", "BOULEVARD", "PRIV", "PRIVADA", "CERRADA", "CDA", "COL", "COLONIA", "FRACC",
           "FRACCIONAMIENTO", "NO", "NUM", "NUMERO", "EXT", "EXTERIOR", "INT", "INTERIOR", "CP", "CODIGO", "POSTAL", "MZ", "MZA",
           "MANZANA", "LT", "LOTE", "DE", "DEL", "LA", "LAS", "EL", "LOS", "Y", "EN", "S", "N", "SN", "MUNICIPIO", "MPIO", "ESTADO",
-          "EDO", "MEXICO", "MOR", "MORELOS", "CUERNAVACA");
+          "EDO", "MEXICO", "MOR", "MORELOS", "CUERNAVACA", "ESQ", "ESQUINA", "ENTRE", "NUM", "NO", "SIN", "NUMERO", "INTERIOR",
+          "DEPTO", "DEPARTAMENTO", "TORRE", "EDIFICIO", "PISO", "ANDADOR", "RETORNO", "CALZADA", "CALZ", "CARRETERA", "CARR", "KM"));
 
   public static List<Finding> check(List<DocumentFacts> documents, DeclaredData declared) {
     List<Finding> findings = new ArrayList<>();
@@ -105,26 +124,32 @@ public final class DocumentConsistencyChecker {
       String label = DocumentTypeLabels.of(doc.type());
       String name = doc.get("fullName");
       if (name != null && !namesMatch(name, participant.fullName())) {
+        // Sin ningún nombre o apellido en común es otra persona; con alguno, probablemente un nombre incompleto.
+        boolean nothingInCommon = commonNameTokens(name, participant.fullName()) == 0;
         findings.add(
             new Finding(
                 "identity-name:" + participant.id() + ":" + doc.type(),
-                "El nombre en %s (\"%s\") no coincide con el registrado para %s.".formatted(label, name, participant.fullName())));
+                "Posible inconsistencia: el nombre en %s (\"%s\") no coincide del todo con el registrado para %s."
+                    .formatted(label, name, participant.fullName()),
+                nothingInCommon ? DataConflict.Severity.CRITICAL : DataConflict.Severity.WARNING));
       }
       String curp = doc.get("curp");
       if (curp != null && participant.curp() != null && !alnum(curp).equals(alnum(participant.curp()))) {
         findings.add(
             new Finding(
                 "identity-curp:" + participant.id() + ":" + doc.type(),
-                "La CURP en %s (%s) no coincide con la registrada para %s (%s)."
-                    .formatted(label, curp, participant.fullName(), participant.curp())));
+                "Posible inconsistencia: la CURP en %s (%s) no coincide con la registrada para %s (%s)."
+                    .formatted(label, curp, participant.fullName(), participant.curp()),
+                codeSeverity(curp, participant.curp())));
       }
       String rfc = doc.get("rfc");
       if (rfc != null && participant.rfc() != null && !alnum(rfc).equals(alnum(participant.rfc()))) {
         findings.add(
             new Finding(
                 "identity-rfc:" + participant.id(),
-                "El RFC en %s (%s) no coincide con el registrado para %s (%s)."
-                    .formatted(label, rfc, participant.fullName(), participant.rfc())));
+                "Posible inconsistencia: el RFC en %s (%s) no coincide con el registrado para %s (%s)."
+                    .formatted(label, rfc, participant.fullName(), participant.rfc()),
+                codeSeverity(rfc, participant.rfc())));
       }
     }
   }
@@ -137,7 +162,7 @@ public final class DocumentConsistencyChecker {
     for (DocumentFacts doc : documents) {
       String field =
           switch (doc.type()) {
-            case DEED, RPP_REGISTRATION_SLIP, PROPERTY_TAX -> "ownerFullName";
+            case DEED, RPP_REGISTRATION_SLIP, PROPERTY_TAX, ADJUDICATION -> "ownerFullName";
             case PRIVATE_CONTRACT -> "buyerFullName";
             default -> null;
           };
@@ -152,19 +177,24 @@ public final class DocumentConsistencyChecker {
       List<String> missing = owners.stream().filter(o -> !nameContainedIn(o.fullName(), ownersText)).map(DeclaredParticipant::fullName).toList();
 
       if (doc.type() == DocumentTypeCode.PROPERTY_TAX) {
-        // El predial suele estar a nombre de uno solo de los copropietarios.
+        // El predial suele estar a nombre de uno solo de los copropietarios (o de un dueño anterior).
         if (missing.size() == owners.size()) {
           findings.add(
               new Finding(
                   "owners:" + doc.type(),
-                  "El %s está a nombre de \"%s\", que no coincide con ningún propietario registrado.".formatted(label, ownersText)));
+                  "Posible inconsistencia: el %s está a nombre de \"%s\", que no coincide con ningún propietario registrado (puede ser un dueño anterior)."
+                      .formatted(label, ownersText),
+                  DataConflict.Severity.WARNING));
         }
       } else if (!missing.isEmpty()) {
+        // Ningún propietario registrado aparece en la escritura: probablemente es otro inmueble o la escritura equivocada.
+        boolean noneFound = missing.size() == owners.size();
         findings.add(
             new Finding(
                 "owners:" + doc.type(),
-                "En %s el propietario aparece como \"%s\"; no se encontró a: %s."
-                    .formatted(label, ownersText, String.join(", ", missing))));
+                "Posible inconsistencia: en %s el propietario aparece como \"%s\"; no se encontró a: %s."
+                    .formatted(label, ownersText, String.join(", ", missing)),
+                noneFound ? DataConflict.Severity.CRITICAL : DataConflict.Severity.WARNING));
       }
     }
   }
@@ -178,11 +208,13 @@ public final class DocumentConsistencyChecker {
         case DEED, PROPERTY_TAX, CADASTRAL_PLAN, RPP_REGISTRATION_SLIP, CONDOMINIUM_REGIME, PRIVATE_CONTRACT -> {
           String address = doc.get("propertyAddress");
           if (address != null && !addressesMatch(address, declared.propertyAddress())) {
+            // Nunca CRITICAL: las escrituras suelen describir el inmueble por lote y manzana, no por calle y número.
             findings.add(
                 new Finding(
                     "address:" + doc.type(),
-                    "El domicilio del inmueble en %s (\"%s\") no coincide con el registrado (\"%s\")."
-                        .formatted(DocumentTypeLabels.of(doc.type()), address, declared.propertyAddress())));
+                    "Posible inconsistencia: el domicilio del inmueble en %s (\"%s\") está escrito distinto al registrado (\"%s\")."
+                        .formatted(DocumentTypeLabels.of(doc.type()), address, declared.propertyAddress()),
+                    addressOverlap(address, declared.propertyAddress()) >= 0.4 ? DataConflict.Severity.INFO : DataConflict.Severity.WARNING));
           }
         }
         default -> {
@@ -200,10 +232,18 @@ public final class DocumentConsistencyChecker {
         byDocument.put(DocumentTypeLabels.of(doc.type()), doc.get(field));
       }
     }
-    Set<String> normalized = new HashSet<>();
-    byDocument.values().forEach(v -> normalized.add(alnum(v)));
+    List<String> normalized = byDocument.values().stream().map(DocumentConsistencyChecker::alnum).distinct().toList();
     if (normalized.size() > 1) {
-      findings.add(new Finding(key, "%s distinta entre documentos: %s.".formatted(label, describe(byDocument))));
+      // Una o dos letras distintas suelen ser un error de lectura; más, un dato realmente distinto.
+      boolean nearlyEqual = true;
+      for (int i = 1; i < normalized.size(); i++) {
+        nearlyEqual &= editDistance(normalized.getFirst(), normalized.get(i)) <= 2;
+      }
+      findings.add(
+          new Finding(
+              key,
+              "Posible inconsistencia: %s distinta entre documentos: %s.".formatted(label, describe(byDocument)),
+              nearlyEqual ? DataConflict.Severity.INFO : DataConflict.Severity.WARNING));
     }
   }
 
@@ -230,7 +270,7 @@ public final class DocumentConsistencyChecker {
     BigDecimal max = values.values().stream().max(BigDecimal::compareTo).orElseThrow();
     double difference = max.subtract(min).doubleValue();
     if (difference > 1.0 && difference / max.doubleValue() > AREA_TOLERANCE) {
-      findings.add(new Finding(key, "%s distinta: %s.".formatted(label, describe(raw))));
+      findings.add(new Finding(key, "Posible inconsistencia: %s distinta: %s.".formatted(label, describe(raw)), DataConflict.Severity.WARNING));
     }
   }
 
@@ -248,6 +288,48 @@ public final class DocumentConsistencyChecker {
     common.retainAll(tb);
     int smaller = Math.min(ta.size(), tb.size());
     return common.size() >= Math.min(2, smaller) && (double) common.size() / smaller >= 0.8;
+  }
+
+  static int commonNameTokens(String a, String b) {
+    Set<String> common = new HashSet<>(nameTokens(a));
+    common.retainAll(nameTokens(b));
+    return common.size();
+  }
+
+  /** CURP/RFC: hasta 2 caracteres distintos es probable error de lectura (WARNING); más, otra persona (CRITICAL). */
+  static DataConflict.Severity codeSeverity(String a, String b) {
+    return editDistance(alnum(a), alnum(b)) <= 2 ? DataConflict.Severity.WARNING : DataConflict.Severity.CRITICAL;
+  }
+
+  /** Proporción de palabras significativas del domicilio en común (0 a 1). */
+  static double addressOverlap(String a, String b) {
+    Set<String> ta = addressTokens(a);
+    Set<String> tb = addressTokens(b);
+    if (ta.isEmpty() || tb.isEmpty()) {
+      return 0;
+    }
+    Set<String> common = new HashSet<>(ta);
+    common.retainAll(tb);
+    return (double) common.size() / Math.min(ta.size(), tb.size());
+  }
+
+  static int editDistance(String a, String b) {
+    int[] previous = new int[b.length() + 1];
+    int[] current = new int[b.length() + 1];
+    for (int j = 0; j <= b.length(); j++) {
+      previous[j] = j;
+    }
+    for (int i = 1; i <= a.length(); i++) {
+      current[0] = i;
+      for (int j = 1; j <= b.length(); j++) {
+        int cost = a.charAt(i - 1) == b.charAt(j - 1) ? 0 : 1;
+        current[j] = Math.min(Math.min(current[j - 1] + 1, previous[j] + 1), previous[j - 1] + cost);
+      }
+      int[] swap = previous;
+      previous = current;
+      current = swap;
+    }
+    return previous[b.length()];
   }
 
   /** ¿El nombre de la persona aparece dentro de un texto que puede listar a varios propietarios? */

@@ -12,12 +12,15 @@ import {
   listDocuments,
   listReviews,
   markNotApplicable,
+  moveDocumentFile,
   rejectDocument,
+  reprocessAllDocuments,
+  reprocessDocument,
   requestAgain,
   returnDocument,
   uploadVersion,
 } from "@/lib/api/documents";
-import { getExtractedFields } from "@/lib/api/extraction";
+import { confirmField, getExtractedFields } from "@/lib/api/extraction";
 import { getDocumentsEmailPreview } from "@/lib/api/notifications";
 import type {
   DocumentResponse,
@@ -28,19 +31,23 @@ import type {
 } from "@/lib/api/types";
 import { documentTypeLabel } from "@/lib/document-type-labels";
 import { errorText } from "@/lib/errors";
-import { documentStatusLabels, documentStatusTone, extractedFieldLabels, formatDateTime, label, returnReasonLabels } from "@/lib/labels";
+import {
+  documentStatusLabels,
+  documentStatusTone,
+  extractedFieldLabel,
+  formatDateTime,
+  label,
+  pipelineStatusLabels,
+  pipelineStatusTone,
+  returnReasonLabels,
+} from "@/lib/labels";
 import { useCan } from "@/lib/permissions";
-import { AlertTriangle, Bot, Download, History, Loader2, Mail, Upload } from "lucide-react";
+import { ACCEPTED_FILE_TYPES, UploadValidationError } from "@/lib/upload-limits";
+import { AlertTriangle, ArrowRightLeft, Bot, Check, Download, History, Info, Loader2, Mail, Pencil, RefreshCw, Upload, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ExpedienteContext } from "./page";
 
-const processingLabels: Record<string, string> = {
-  QUEUED: "En cola para procesar",
-  PROCESSING: "Procesando",
-  QUALITY_FAILED: "No pasó la verificación de calidad",
-  PROCESSED: "Procesado",
-  FAILED: "Falló el procesamiento",
-};
+const IN_PROGRESS = ["UPLOADED", "PROCESSING"];
 
 export function DocumentsPanel({ expediente, participants, reload }: ExpedienteContext) {
   const { showToast } = useToast();
@@ -48,7 +55,9 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
   const [documents, setDocuments] = useState<DocumentResponse[] | null>(null);
   const [emailPreview, setEmailPreview] = useState<EmailPreviewResponse | null>(null);
   const [showOptional, setShowOptional] = useState(false);
+  const [reprocessingAll, setReprocessingAll] = useState(false);
   const names = Object.fromEntries(participants.map((p) => [p.id, p.fullName]));
+  const canReprocess = can("DOCUMENT_ACCEPT") || can("EXTRACTED_DATA_EDIT") || can("DOCUMENT_UPLOAD");
 
   const load = useCallback(() => {
     listDocuments(expediente.id)
@@ -60,13 +69,13 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
     load();
   }, [load]);
 
-  // Mientras haya archivos procesándose, se actualiza solo.
+  // Mientras haya archivos procesándose o en extracción, se actualiza solo (sin volver a subir nada).
+  const processing = documents?.some((d) => d.pipelineStatus && IN_PROGRESS.includes(d.pipelineStatus)) ?? false;
   useEffect(() => {
-    const processing = documents?.some((d) => d.latestVersion && ["QUEUED", "PROCESSING"].includes(d.latestVersion.processingStatus));
     if (!processing) return;
     const timer = setTimeout(load, 4000);
     return () => clearTimeout(timer);
-  }, [documents, load]);
+  }, [documents, processing, load]);
 
   const onChanged = async (updated?: DocumentResponse) => {
     if (updated) setDocuments((prev) => prev?.map((d) => (d.id === updated.id ? updated : d)) ?? null);
@@ -76,6 +85,7 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
 
   const visible = (documents ?? []).filter((d) => d.required || d.currentVersionNumber > 0 || d.status === "NOT_APPLICABLE" || showOptional);
   const pendingCount = visible.filter((d) => d.required && d.status !== "ACCEPTED" && d.status !== "NOT_APPLICABLE").length;
+  const withFiles = (documents ?? []).filter((d) => d.currentVersionNumber > 0 && d.status !== "NOT_APPLICABLE");
 
   return (
     <div className="flex flex-col gap-6">
@@ -88,6 +98,35 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
               : "Todos los documentos obligatorios están resueltos."
           }
         />
+        {processing ? (
+          <p className="mb-3 flex items-center gap-2 rounded-lg bg-app-bg px-3 py-2 text-xs text-muted">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> La extracción automática continúa. Puedes seguir trabajando; la
+            información se actualiza sola.
+          </p>
+        ) : null}
+        {canReprocess && withFiles.length > 0 ? (
+          <div className="mb-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={reprocessingAll}
+              onClick={async () => {
+                setReprocessingAll(true);
+                try {
+                  const { reprocessed } = await reprocessAllDocuments(expediente.id);
+                  showToast(`Se volvieron a procesar ${reprocessed} archivo(s) con las reglas actuales; los datos se actualizan solos.`);
+                  load();
+                } catch (err) {
+                  showToast(errorText(err));
+                } finally {
+                  setReprocessingAll(false);
+                }
+              }}
+            >
+              <RefreshCw className={`h-4 w-4 ${reprocessingAll ? "animate-spin" : ""}`} aria-hidden /> Reprocesar todos con IA
+            </Button>
+          </div>
+        ) : null}
         {documents === null ? (
           <p className="text-sm text-muted">Cargando documentos…</p>
         ) : (
@@ -96,6 +135,8 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
               <DocumentRow
                 key={doc.id}
                 document={doc}
+                allDocuments={documents}
+                names={names}
                 participantName={doc.participantId ? names[doc.participantId] : undefined}
                 onChanged={onChanged}
                 canUpload={can("DOCUMENT_UPLOAD")}
@@ -104,6 +145,8 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
                 canReject={can("DOCUMENT_REJECT")}
                 canOverride={can("DOCUMENT_QUALITY_OVERRIDE")}
                 canMarkNotApplicable={can("DOCUMENT_MARK_NOT_APPLICABLE")}
+                canEditData={can("EXTRACTED_DATA_EDIT")}
+                canReprocess={canReprocess}
               />
             ))}
           </div>
@@ -166,6 +209,8 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
 
 interface RowProps {
   document: DocumentResponse;
+  allDocuments: DocumentResponse[];
+  names: Record<string, string>;
   participantName?: string;
   onChanged: (updated?: DocumentResponse) => Promise<void>;
   canUpload: boolean;
@@ -174,10 +219,14 @@ interface RowProps {
   canReject: boolean;
   canOverride: boolean;
   canMarkNotApplicable: boolean;
+  canEditData: boolean;
+  canReprocess: boolean;
 }
 
 function DocumentRow({
   document: doc,
+  allDocuments,
+  names,
   participantName,
   onChanged,
   canUpload,
@@ -186,18 +235,42 @@ function DocumentRow({
   canReject,
   canOverride,
   canMarkNotApplicable,
+  canEditData,
+  canReprocess,
 }: RowProps) {
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
   const [fields, setFields] = useState<ExtractedFieldObservationResponse[] | null>(null);
+  const [showData, setShowData] = useState(false);
   const [history, setHistory] = useState<ReviewHistoryResponse[] | null>(null);
   const [review, setReview] = useState<"return" | "reject" | null>(null);
   const [overriding, setOverriding] = useState(false);
+  const [confirmingMismatch, setConfirmingMismatch] = useState(false);
+  const [moving, setMoving] = useState(false);
   const [notApplicable, setNotApplicable] = useState(false);
+  const [reprocessing, setReprocessing] = useState(false);
   const v = doc.latestVersion;
   const issues = v?.blockingIssues ?? [];
+  const warnings = v?.warnings ?? [];
+  const inProgress = doc.pipelineStatus ? IN_PROGRESS.includes(doc.pipelineStatus) : false;
   const reviewable = ["READY_FOR_REVIEW", "UPLOADED", "RETURNED"].includes(doc.status) && v && !["QUEUED", "PROCESSING"].includes(v.processingStatus);
+  const mismatch = v?.aiTypeMatches === false;
+  const docLabel = documentTypeLabel(doc.type);
+
+  // Al abrir el panel de datos (y cada vez que termina una extracción) se cargan los datos leídos.
+  const assessedAt = v?.aiAssessedAt ?? null;
+  useEffect(() => {
+    if (!showData) return;
+    let active = true;
+    getExtractedFields(doc.id)
+      .then((result) => active && setFields(result))
+      .catch((err) => active && showToast(errorText(err)));
+    return () => {
+      active = false;
+    };
+  }, [showData, assessedAt, doc.id, showToast]);
 
   const act = async (action: () => Promise<DocumentResponse>, success: string) => {
     try {
@@ -214,26 +287,45 @@ function DocumentRow({
       if (canOverride) {
         setOverriding(true);
       } else {
-        showToast("Este archivo tiene alertas: devuélvelo al cliente o pide a un director o administrador que autorice la excepción.");
+        showToast("Este archivo no se puede leer: devuélvelo al cliente o pide a un director o administrador que autorice la excepción.");
       }
       return;
     }
-    act(() => acceptDocument(doc.id), "Documento aceptado.");
+    if (mismatch) {
+      setConfirmingMismatch(true);
+      return;
+    }
+    act(() => acceptDocument(doc.id), warnings.length > 0 ? "Documento aceptado (las advertencias quedaron registradas)." : "Documento aceptado.");
   };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     setUploading(true);
+    setProgress(null);
     try {
-      await uploadVersion(doc.id, Array.from(files));
-      showToast("Archivo cargado; se está verificando su calidad.");
+      await uploadVersion(doc.id, Array.from(files), (p) => setProgress(p.percent));
+      showToast("Archivo cargado. El procesamiento y la extracción siguen en segundo plano: puedes seguir trabajando.");
       await onChanged();
+    } catch (err) {
+      showToast(err instanceof UploadValidationError ? err.message : errorText(err));
+    } finally {
+      setUploading(false);
+      setProgress(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleReprocess = async () => {
+    setReprocessing(true);
+    try {
+      const updated = await reprocessDocument(doc.id);
+      showToast("Se está volviendo a procesar con IA. Los datos se actualizan solos al terminar; puedes seguir trabajando.");
+      await onChanged(updated);
     } catch (err) {
       showToast(errorText(err));
     } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      setReprocessing(false);
     }
   };
 
@@ -249,12 +341,14 @@ function DocumentRow({
     }
   };
 
+  const moveTargets = allDocuments.filter((d) => d.id !== doc.id && d.status !== "ACCEPTED");
+
   return (
     <div className="rounded-xl border border-border p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="text-sm font-medium text-obsessed">
-            {documentTypeLabel(doc.type)}
+            {docLabel}
             {participantName ? <span className="text-muted"> — {participantName}</span> : null}
           </p>
           <p className="text-xs text-muted">
@@ -263,9 +357,10 @@ function DocumentRow({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {v && v.processingStatus !== "PROCESSED" ? (
-            <Badge tone={v.processingStatus === "QUALITY_FAILED" || v.processingStatus === "FAILED" ? "danger" : "info"}>
-              {processingLabels[v.processingStatus]}
+          {doc.pipelineStatus && doc.pipelineStatus !== "ACCEPTED" ? (
+            <Badge tone={pipelineStatusTone[doc.pipelineStatus]}>
+              {inProgress ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> : null}
+              {pipelineStatusLabels[doc.pipelineStatus]}
             </Badge>
           ) : null}
           <Badge tone={documentStatusTone[doc.status]}>{documentStatusLabels[doc.status]}</Badge>
@@ -275,7 +370,7 @@ function DocumentRow({
       {issues.length > 0 && doc.status !== "ACCEPTED" ? (
         <div className="mt-3 rounded-lg bg-danger-bg px-3 py-2 text-sm text-danger-text">
           <p className="flex items-center gap-1.5 font-medium">
-            <AlertTriangle className="h-4 w-4" aria-hidden /> No se puede aceptar sin autorización de excepción
+            <AlertTriangle className="h-4 w-4" aria-hidden /> No se puede leer: solo se acepta con autorización de excepción
           </p>
           <ul className="ml-5 mt-1 list-disc">
             {issues.map((issue) => (
@@ -284,13 +379,35 @@ function DocumentRow({
           </ul>
         </div>
       ) : null}
-      {v?.aiObservations && (v.aiTypeMatches === false || v.aiLegible === false) ? (
-        <p className="mt-2 flex items-start gap-1.5 text-xs text-muted">
-          <Bot className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden /> Revisión automática: {v.aiObservations}
-        </p>
+
+      {mismatch && doc.status !== "ACCEPTED" ? (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-warning-bg px-3 py-2 text-sm text-warning-text">
+          <p className="flex items-start gap-1.5">
+            <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            El archivo parece ser {v?.aiDetectedKind ? `un(a) ${v.aiDetectedKind}` : "otro documento"} aunque fue cargado como {docLabel}. Los datos
+            que se leyeron se conservaron.
+          </p>
+          {canUpload && moveTargets.length > 0 ? (
+            <Button variant="secondary" size="sm" onClick={() => setMoving(true)}>
+              <ArrowRightLeft className="h-4 w-4" aria-hidden /> Cambiar tipo de documento
+            </Button>
+          ) : null}
+        </div>
       ) : null}
-      {v && v.processingStatus === "PROCESSED" && v.aiTypeMatches === null && v.aiLegible === null ? (
-        <p className="mt-2 text-xs text-muted">La revisión automática del contenido no está disponible para este archivo; revísalo visualmente.</p>
+
+      {warnings.length > 0 && doc.status !== "ACCEPTED" ? (
+        <div className="mt-3 rounded-lg bg-app-bg px-3 py-2 text-xs text-muted">
+          <p className="font-medium text-obsessed">Advertencias (no impiden aceptarlo):</p>
+          <ul className="ml-5 mt-1 list-disc">
+            {warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {inProgress ? (
+        <p className="mt-2 text-xs text-muted">La extracción automática continúa. Puedes seguir trabajando; este documento se actualiza solo.</p>
       ) : null}
       {doc.status === "RETURNED" || doc.status === "REJECTED" ? (
         <p className="mt-2 rounded-lg bg-warning-bg px-3 py-2 text-sm text-warning-text">
@@ -306,11 +423,15 @@ function DocumentRow({
       ) : null}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,application/pdf" multiple className="hidden" onChange={handleUpload} />
-        {canUpload && doc.status !== "NOT_APPLICABLE" && doc.status !== "ACCEPTED" ? (
-          <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-            {uploading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4" aria-hidden />}
-            {doc.currentVersionNumber > 0 ? "Cargar nueva versión" : "Cargar en nombre del cliente"}
+        <input ref={fileInputRef} type="file" accept={ACCEPTED_FILE_TYPES} multiple className="hidden" onChange={handleUpload} />
+        {reviewable && canAccept ? (
+          <Button size="sm" onClick={handleAccept}>
+            <Check className="h-4 w-4" aria-hidden /> {issues.length > 0 ? "Aceptar por excepción…" : "Aceptar"}
+          </Button>
+        ) : null}
+        {v ? (
+          <Button variant="secondary" size="sm" onClick={() => setShowData((s) => !s)}>
+            <Bot className="h-4 w-4" aria-hidden /> {showData ? "Ocultar datos leídos" : "Datos leídos del documento"}
           </Button>
         ) : null}
         {v ? (
@@ -318,25 +439,14 @@ function DocumentRow({
             <Download className="h-4 w-4" aria-hidden /> Ver archivo
           </Button>
         ) : null}
-        {v ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={async () => {
-              if (fields) return setFields(null);
-              try {
-                setFields(await getExtractedFields(doc.id));
-              } catch (err) {
-                showToast(errorText(err));
-              }
-            }}
-          >
-            {fields ? "Ocultar datos leídos" : "Datos leídos del documento"}
+        {v && canReprocess ? (
+          <Button variant="ghost" size="sm" onClick={handleReprocess} disabled={reprocessing || inProgress}>
+            <RefreshCw className={`h-4 w-4 ${reprocessing ? "animate-spin" : ""}`} aria-hidden /> Reprocesar con IA
           </Button>
         ) : null}
-        {reviewable && canAccept ? (
-          <Button size="sm" onClick={handleAccept}>
-            {issues.length > 0 ? "Aceptar por excepción…" : "Aceptar"}
+        {v && canUpload && doc.status !== "ACCEPTED" && moveTargets.length > 0 ? (
+          <Button variant="ghost" size="sm" onClick={() => setMoving(true)}>
+            <ArrowRightLeft className="h-4 w-4" aria-hidden /> Cambiar tipo de documento
           </Button>
         ) : null}
         {reviewable && canReturn ? (
@@ -347,6 +457,18 @@ function DocumentRow({
         {reviewable && canReject ? (
           <Button variant="danger" size="sm" onClick={() => setReview("reject")}>
             Rechazar
+          </Button>
+        ) : null}
+        {canUpload && doc.status !== "NOT_APPLICABLE" && doc.status !== "ACCEPTED" ? (
+          <Button variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+            {uploading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4" aria-hidden />}
+            {uploading
+              ? progress !== null && progress < 100
+                ? `Subiendo ${progress}%`
+                : "Preparando…"
+              : doc.currentVersionNumber > 0
+                ? "Cargar nueva versión"
+                : "Cargar en nombre del cliente"}
           </Button>
         ) : null}
         {canMarkNotApplicable && doc.status !== "ACCEPTED" && doc.status !== "NOT_APPLICABLE" ? (
@@ -376,20 +498,19 @@ function DocumentRow({
           </Button>
         ) : null}
       </div>
+      {uploading && progress !== null ? (
+        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-app-bg" aria-hidden>
+          <div className="h-full bg-gold transition-all" style={{ width: `${progress}%` }} />
+        </div>
+      ) : null}
 
-      {fields ? (
-        fields.length === 0 ? (
-          <p className="mt-3 text-xs text-muted">No se leyeron datos de este archivo (o este tipo de documento no tiene lectura automática).</p>
-        ) : (
-          <dl className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-app-bg p-3 sm:grid-cols-2">
-            {fields.map((f) => (
-              <div key={f.id}>
-                <dt className="text-xs text-muted">{extractedFieldLabels[f.fieldName] ?? f.fieldName}</dt>
-                <dd className="text-sm text-obsessed">{f.confirmedValue ?? f.detectedValue ?? "—"}</dd>
-              </div>
-            ))}
-          </dl>
-        )
+      {showData && v ? (
+        <ExtractedDataPanel
+          document={doc}
+          fields={fields}
+          canEdit={canEditData}
+          onEdited={(updated) => setFields((prev) => prev?.map((f) => (f.id === updated.id ? updated : f)) ?? null)}
+        />
       ) : null}
 
       {history ? (
@@ -410,7 +531,7 @@ function DocumentRow({
       {review ? (
         <ReviewModal
           mode={review}
-          documentLabel={documentTypeLabel(doc.type)}
+          documentLabel={docLabel}
           onCancel={() => setReview(null)}
           onConfirm={async (reasonCode, comment) => {
             await act(
@@ -422,12 +543,48 @@ function DocumentRow({
         />
       ) : null}
 
+      {moving ? (
+        <MoveModal
+          document={doc}
+          targets={moveTargets}
+          names={names}
+          onCancel={() => setMoving(false)}
+          onConfirm={async (targetId) => {
+            const target = allDocuments.find((d) => d.id === targetId);
+            await act(
+              () => moveDocumentFile(doc.id, targetId),
+              `El archivo se movió a ${target ? documentTypeLabel(target.type) : "otro documento"} y se está leyendo con su tipo correcto.`,
+            );
+            setMoving(false);
+          }}
+        />
+      ) : null}
+
+      <ReasonModal
+        open={confirmingMismatch}
+        title={`¿Aceptar como ${docLabel}?`}
+        description={
+          <p>
+            La revisión automática indica que el archivo parece ser {v?.aiDetectedKind ? `un(a) ${v.aiDetectedKind}` : "otro documento"}. Si
+            revisaste el archivo y sí es {docLabel}, acéptalo; si es otro documento, usa &quot;Cambiar tipo de documento&quot;.
+          </p>
+        }
+        label="Nota (opcional)"
+        minLength={0}
+        confirmLabel="Sí, aceptarlo"
+        onCancel={() => setConfirmingMismatch(false)}
+        onConfirm={async () => {
+          await act(() => acceptDocument(doc.id), "Documento aceptado.");
+          setConfirmingMismatch(false);
+        }}
+      />
+
       <ReasonModal
         open={overriding}
         title="Aceptar por excepción"
         description={
           <>
-            <p className="mb-2">Este archivo tiene alertas:</p>
+            <p className="mb-2">La revisión automática indica que este archivo no se puede leer:</p>
             <ul className="ml-5 list-disc">
               {issues.map((i) => (
                 <li key={i}>{i}</li>
@@ -448,7 +605,7 @@ function DocumentRow({
 
       <ReasonModal
         open={notApplicable}
-        title={`"${documentTypeLabel(doc.type)}" no aplica`}
+        title={`"${docLabel}" no aplica`}
         description="Deja de pedirse al cliente y cuenta como resuelto. Explica por qué no aplica a este expediente."
         label="Justificación"
         placeholder="Ej. El terreno no tiene contrato de agua todavía."
@@ -461,6 +618,223 @@ function DocumentRow({
         }}
       />
     </div>
+  );
+}
+
+function confidenceBadge(confidence: number | null): { text: string; tone: "success" | "info" | "warning" | "neutral" } {
+  if (confidence === null) return { text: "sin dato de confianza", tone: "neutral" };
+  if (confidence >= 0.8) return { text: `confianza alta (${Math.round(confidence * 100)}%)`, tone: "success" };
+  if (confidence >= 0.5) return { text: `confianza media (${Math.round(confidence * 100)}%)`, tone: "info" };
+  return { text: `confianza baja (${Math.round(confidence * 100)}%): revisar`, tone: "warning" };
+}
+
+/** "Datos leídos del documento": qué detectó la IA, si se lee, cada dato con su confianza y página, y advertencias. */
+function ExtractedDataPanel({
+  document: doc,
+  fields,
+  canEdit,
+  onEdited,
+}: {
+  document: DocumentResponse;
+  fields: ExtractedFieldObservationResponse[] | null;
+  canEdit: boolean;
+  onEdited: (updated: ExtractedFieldObservationResponse) => void;
+}) {
+  const v = doc.latestVersion;
+  if (!v) return null;
+  const inProgress = doc.pipelineStatus ? IN_PROGRESS.includes(doc.pipelineStatus) : false;
+  const legibility =
+    v.qualityLevel === "UNREADABLE" || v.aiLegible === false
+      ? "No legible"
+      : v.aiLegible === true
+        ? v.qualityLevel === "ACCEPTED_WITH_WARNINGS"
+          ? "Legible (con advertencias de calidad)"
+          : "Legible"
+        : v.aiCheckFailed
+          ? "Sin revisión automática: verifícalo visualmente"
+          : inProgress
+            ? "En revisión…"
+            : "Sin determinar";
+  const schemaFields = (fields ?? []).filter((f) => !f.extra);
+  const extraFields = (fields ?? []).filter((f) => f.extra);
+
+  return (
+    <div className="mt-3 rounded-lg bg-app-bg p-3">
+      <dl className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
+        <div>
+          <dt className="text-muted">Documento detectado</dt>
+          <dd className="text-sm text-obsessed">{v.aiDetectedKind ?? (inProgress ? "En revisión…" : "—")}</dd>
+        </div>
+        <div>
+          <dt className="text-muted">Legibilidad</dt>
+          <dd className="text-sm text-obsessed">{legibility}</dd>
+        </div>
+        <div>
+          <dt className="text-muted">Cobertura</dt>
+          <dd className="text-sm text-obsessed">
+            {v.aiFieldsExpected != null && v.aiFieldsFound != null ? `${v.aiFieldsFound} de ${v.aiFieldsExpected} datos` : "—"}
+            {v.aiPagesTotal ? ` · ${v.aiPagesAnalyzed ?? "?"} de ${v.aiPagesTotal} páginas revisadas` : ""}
+          </dd>
+        </div>
+      </dl>
+      {v.aiObservations ? <p className="mt-2 text-xs text-muted">Observaciones: {v.aiObservations}</p> : null}
+
+      {fields === null ? (
+        <p className="mt-3 text-xs text-muted">Cargando datos leídos…</p>
+      ) : fields.length === 0 ? (
+        <p className="mt-3 text-xs text-muted">
+          {inProgress ? "La extracción automática continúa; los datos aparecerán aquí al terminar." : "No se leyeron datos de este archivo. Puedes reprocesarlo con IA o capturarlos a mano."}
+        </p>
+      ) : (
+        <>
+          <ul className="mt-3 flex flex-col divide-y divide-border">
+            {schemaFields.map((f) => (
+              <FieldRow key={f.id} field={f} canEdit={canEdit} onEdited={onEdited} />
+            ))}
+          </ul>
+          {extraFields.length > 0 ? (
+            <>
+              <p className="mt-3 text-xs font-medium text-obsessed">Otros datos encontrados</p>
+              <ul className="mt-1 flex flex-col divide-y divide-border">
+                {extraFields.map((f) => (
+                  <FieldRow key={f.id} field={f} canEdit={canEdit} onEdited={onEdited} />
+                ))}
+              </ul>
+            </>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+function FieldRow({
+  field: f,
+  canEdit,
+  onEdited,
+}: {
+  field: ExtractedFieldObservationResponse;
+  canEdit: boolean;
+  onEdited: (updated: ExtractedFieldObservationResponse) => void;
+}) {
+  const { showToast } = useToast();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(f.confirmedValue ?? f.detectedValue ?? "");
+  const [saving, setSaving] = useState(false);
+  const confidence = confidenceBadge(f.confirmedValue !== null ? 1 : f.confidence);
+
+  const save = async () => {
+    if (!value.trim()) return;
+    setSaving(true);
+    try {
+      onEdited(await confirmField(f.id, value.trim()));
+      setEditing(false);
+      showToast("Dato confirmado.");
+    } catch (err) {
+      showToast(errorText(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <li className="flex flex-wrap items-start justify-between gap-2 py-2">
+      <div className="min-w-0 flex-1">
+        <p className="text-xs text-muted">
+          {extractedFieldLabel(f.fieldName)}
+          {f.sourcePage ? ` · página ${f.sourcePage}` : ""}
+        </p>
+        {editing ? (
+          <div className="mt-1 flex items-center gap-2">
+            <input
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              className="min-w-0 flex-1 rounded-lg border border-border bg-card px-2 py-1 text-sm outline-none focus:border-gold"
+              autoFocus
+            />
+            <button type="button" aria-label="Guardar dato" onClick={save} disabled={saving} className="text-success-text">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
+            </button>
+            <button type="button" aria-label="Cancelar" onClick={() => setEditing(false)} className="text-muted">
+              <X className="h-4 w-4" aria-hidden />
+            </button>
+          </div>
+        ) : (
+          <p className="text-sm break-words text-obsessed">{f.confirmedValue ?? f.detectedValue ?? "—"}</p>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <Badge tone={f.confirmedValue !== null ? "success" : confidence.tone}>{f.confirmedValue !== null ? "confirmado por el staff" : confidence.text}</Badge>
+        {canEdit && !editing ? (
+          <button type="button" aria-label="Editar dato" onClick={() => setEditing(true)} className="text-muted hover:text-obsessed">
+            <Pencil className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
+function MoveModal({
+  document: doc,
+  targets,
+  names,
+  onCancel,
+  onConfirm,
+}: {
+  document: DocumentResponse;
+  targets: DocumentResponse[];
+  names: Record<string, string>;
+  onCancel: () => void;
+  onConfirm: (targetId: string) => Promise<void>;
+}) {
+  const [target, setTarget] = useState(targets[0]?.id ?? "");
+  const [busy, setBusy] = useState(false);
+  return (
+    <Modal
+      open
+      onClose={onCancel}
+      title="Cambiar tipo de documento"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel}>
+            Cancelar
+          </Button>
+          <Button
+            disabled={!target || busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await onConfirm(target);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? "Moviendo…" : "Mover archivo"}
+          </Button>
+        </>
+      }
+    >
+      <p className="mb-3 text-sm text-muted">
+        El archivo cargado como <strong>{documentTypeLabel(doc.type)}</strong> pasa al documento que elijas (sin que el cliente lo vuelva a subir) y se
+        lee otra vez con ese tipo. {documentTypeLabel(doc.type)} vuelve a quedar pendiente.
+      </p>
+      <label className="mb-1 block text-sm font-medium text-obsessed">¿A qué documento corresponde?</label>
+      <select
+        value={target}
+        onChange={(e) => setTarget(e.target.value)}
+        className="w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm"
+      >
+        {targets.map((d) => (
+          <option key={d.id} value={d.id}>
+            {documentTypeLabel(d.type)}
+            {d.participantId && names[d.participantId] ? ` — ${names[d.participantId]}` : ""}
+            {d.currentVersionNumber > 0 ? " (ya tiene archivo: se agrega como versión nueva)" : ""}
+          </option>
+        ))}
+      </select>
+    </Modal>
   );
 }
 

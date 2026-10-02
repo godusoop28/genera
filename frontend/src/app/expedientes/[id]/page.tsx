@@ -12,7 +12,7 @@ import type { ExpedienteResponse, ParticipantResponse, SigningLinkResponse } fro
 import { readDraft, writeDraft } from "@/lib/drafts";
 import { cn } from "@/lib/utils";
 import { ArrowRight, RefreshCw } from "lucide-react";
-import { use, useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { use, useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { ConsistencyTab } from "./ConsistencyTab";
 import { ContractDataTab } from "./ContractDataTab";
 import { ContractTab } from "./ContractTab";
@@ -70,6 +70,7 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
   const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [version, setVersion] = useState(0);
+  const loadedOnce = useRef(false);
   const [freshPublicLink, setFreshPublicLink] = useState<string | null>(null);
   const [freshSigningLinks, setFreshSigningLinks] = useState<SigningLinkResponse[]>([]);
 
@@ -77,6 +78,7 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
     () =>
       Promise.all([getExpediente(id), getParticipants(id)])
         .then(([e, p]) => {
+          loadedOnce.current = true;
           setExpediente(e);
           setParticipants(p);
           setLoadError(null);
@@ -85,11 +87,14 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
         .catch((err) => {
           if (err instanceof ApiError && err.status === 404) {
             setNotFound(true);
+          } else if (loadedOnce.current) {
+            // Ya hay datos en pantalla: un error temporal de red no debe sacar al usuario ni perder lo que capturaba.
+            showToast("No se pudo actualizar la información (revisa tu conexión). Lo que tienes en pantalla se conserva.");
           } else {
             setLoadError("No se pudo cargar el expediente. Revisa tu conexión e intenta de nuevo.");
           }
         }),
-    [id],
+    [id, showToast],
   );
 
   useEffect(() => {
@@ -113,10 +118,21 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
       </PageContainer>
     );
   }
-  if (loadError) {
+  if (loadError && !expediente) {
     return (
       <PageContainer title="Error">
         <p className="text-sm text-danger-text">{loadError}</p>
+        <Button
+          variant="secondary"
+          size="sm"
+          className="mt-3"
+          onClick={() => {
+            setLoadError(null);
+            void reload();
+          }}
+        >
+          <RefreshCw className="h-4 w-4" aria-hidden /> Reintentar
+        </Button>
       </PageContainer>
     );
   }

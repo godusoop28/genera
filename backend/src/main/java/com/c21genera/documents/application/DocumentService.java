@@ -1,5 +1,7 @@
 package com.c21genera.documents.application;
 
+import com.c21genera.shared.events.DocumentEvents.DocumentFileMoved;
+import com.c21genera.shared.events.DocumentEvents.DocumentReprocessRequested;
 import com.c21genera.documents.DocumentStatus;
 import com.c21genera.documents.DocumentsApi;
 import com.c21genera.documents.ProcessingStatus;
@@ -142,7 +144,9 @@ public class DocumentService implements DocumentsApi {
                     event.detectedDocumentKind(),
                     event.observations(),
                     event.checkFailed(),
-                    clock.instant()));
+                    clock.instant(),
+                    new DocumentVersion.AiDetails(
+                        event.warnings(), event.pagesAnalyzed(), event.pagesTotal(), event.fieldsExpected(), event.fieldsFound())));
   }
 
   @Transactional(readOnly = true)
@@ -245,6 +249,114 @@ public class DocumentService implements DocumentsApi {
     documentRepository.flush();
     publishCompletenessChanges(document.getExpedienteId(), before);
     return version;
+  }
+
+  /**
+   * "Reprocesar con IA": vuelve a ejecutar el procesamiento de la versión
+   * vigente sin que el cliente la suba de nuevo. Si ya tiene PDF solo se repite
+   * la extracción (o todo, con full=true); si antes no pasó la calidad o
+   * falló, se reprocesa desde los archivos originales con las reglas actuales.
+   * El estado del documento (p. ej. ACEPTADO) no cambia.
+   */
+  public DocumentVersion reprocess(UUID documentId, boolean full, Actor actor) {
+    Document document = get(documentId);
+    DocumentVersion latest =
+        latestVersion(documentId).orElseThrow(() -> new UnprocessableException("NO_FILE", "Este documento todavía no tiene un archivo cargado."));
+    if (latest.getProcessingStatus() == ProcessingStatus.QUEUED || latest.getProcessingStatus() == ProcessingStatus.PROCESSING) {
+      throw new ConflictException("ALREADY_PROCESSING", "Este archivo ya se está procesando; espera a que termine.");
+    }
+    String pdfKey = null;
+    if (!full && latest.getProcessingStatus() == ProcessingStatus.PROCESSED && latest.getStorageKeyPdf() != null) {
+      latest.clearAiAssessment();
+      pdfKey = latest.getStorageKeyPdf();
+    } else {
+      latest.resetForReprocessing();
+    }
+    events.publishEvent(
+        new DocumentReprocessRequested(document.getExpedienteId(), documentId, latest.getId(), document.getType(), pdfKey, actor));
+    return latest;
+  }
+
+  /** Reprocesa todos los archivos del expediente que no se estén procesando ya (p. ej. tras un cambio de reglas). */
+  public int reprocessAll(UUID expedienteId, Actor actor) {
+    int count = 0;
+    for (Document document : documentRepository.findByExpedienteId(expedienteId)) {
+      if (document.getCurrentVersionNumber() == 0 || document.getStatus() == DocumentStatus.NOT_APPLICABLE) {
+        continue;
+      }
+      DocumentVersion latest = latestVersion(document.getId()).orElse(null);
+      if (latest == null
+          || latest.getProcessingStatus() == ProcessingStatus.QUEUED
+          || latest.getProcessingStatus() == ProcessingStatus.PROCESSING) {
+        continue;
+      }
+      reprocess(document.getId(), false, actor);
+      count++;
+    }
+    return count;
+  }
+
+  /**
+   * "Cambiar tipo de documento": el archivo vigente de un requisito se mueve a
+   * otro requisito del mismo expediente (p. ej. un predial que se cargó como
+   * acta de matrimonio). Las páginas originales se reutilizan (no se vuelve a
+   * subir nada), el destino recibe una versión nueva que se procesa y extrae
+   * con su tipo correcto, y el origen vuelve a pendiente.
+   */
+  public Document moveCurrentFile(UUID sourceDocumentId, UUID targetDocumentId, Actor actor) {
+    if (sourceDocumentId.equals(targetDocumentId)) {
+      throw new UnprocessableException("SAME_DOCUMENT", "Elige un documento distinto.");
+    }
+    Document source = get(sourceDocumentId);
+    Document target = get(targetDocumentId);
+    if (!source.getExpedienteId().equals(target.getExpedienteId())) {
+      throw new UnprocessableException("DIFFERENT_EXPEDIENTE", "Solo se puede mover a un documento del mismo expediente.");
+    }
+    if (target.getStatus() == DocumentStatus.ACCEPTED) {
+      throw new ConflictException("DOCUMENT_ALREADY_ACCEPTED", "El documento destino ya está aceptado.");
+    }
+    if (target.getStatus() == DocumentStatus.NOT_APPLICABLE) {
+      target.requestAgain();
+    }
+    DocumentVersion latest =
+        latestVersion(sourceDocumentId).orElseThrow(() -> new UnprocessableException("NO_FILE", "Este documento no tiene archivo que mover."));
+    List<DocumentPage> pages = pageRepository.findByDocumentVersionIdOrderByPageNumberAsc(latest.getId());
+
+    Completeness before = completenessOf(source.getExpedienteId());
+    String previousStatus = target.getStatus().name();
+    int versionNumber = target.startNewVersion();
+    DocumentVersion moved =
+        new DocumentVersion(
+            targetDocumentId,
+            versionNumber,
+            clock.instant(),
+            latest.getUploadedVia(),
+            latest.getUploadedByUserId(),
+            latest.getUploadedByName());
+    versionRepository.save(moved);
+    List<PageRef> pageRefs = new ArrayList<>();
+    for (DocumentPage page : pages) {
+      pageRepository.save(
+          new DocumentPage(
+              moved.getId(),
+              page.getPageNumber(),
+              page.getStorageKeyOriginal(),
+              page.getOriginalFilename(),
+              page.getMimeType(),
+              page.getSize(),
+              page.getSha256()));
+      pageRefs.add(new PageRef(page.getPageNumber(), page.getStorageKeyOriginal(), page.getMimeType()));
+    }
+    source.detachCurrentFile();
+
+    events.publishEvent(
+        new DocumentFileMoved(source.getExpedienteId(), sourceDocumentId, source.getType(), targetDocumentId, target.getType(), actor));
+    events.publishEvent(
+        new DocumentVersionUploaded(
+            target.getExpedienteId(), targetDocumentId, moved.getId(), target.getType(), pageRefs, target.getParticipantId(), actor, previousStatus));
+    documentRepository.flush();
+    publishCompletenessChanges(source.getExpedienteId(), before);
+    return target;
   }
 
   public record ReviewCommand(
@@ -432,9 +544,10 @@ public class DocumentService implements DocumentsApi {
   }
 
   @Override
-  public void markProcessed(UUID documentVersionId, String pdfStorageKey, String normalizedStorageKey) {
+  public void markProcessed(
+      UUID documentVersionId, String pdfStorageKey, String normalizedStorageKey, String qualityLevel, List<String> qualityWarnings) {
     DocumentVersion version = findVersion(documentVersionId);
-    version.completeProcessing(pdfStorageKey, normalizedStorageKey);
+    version.completeProcessing(pdfStorageKey, normalizedStorageKey, qualityLevel, qualityWarnings);
     Document document = documentRepository.findById(version.getDocumentId()).orElseThrow();
     document.markReadyForReview();
   }

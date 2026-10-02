@@ -12,4 +12,7 @@ public interface ExtractedFieldObservationRepository extends JpaRepository<Extra
   List<ExtractedFieldObservation> findByExpedienteIdOrderByFieldNameAsc(UUID expedienteId);
 
   List<ExtractedFieldObservation> findByDocumentVersionId(UUID documentVersionId);
+
+  /** Antes de reprocesar una versión: se descarta lo detectado antes, pero nunca lo que el staff confirmó. */
+  void deleteByDocumentVersionIdAndConfirmedValueIsNull(UUID documentVersionId);
 }

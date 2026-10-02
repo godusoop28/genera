@@ -97,8 +97,8 @@ class NotificationTriggers {
           "No se pudo hacer la revisión automática del archivo cargado como \""
               + label
               + "\" porque el servicio de inteligencia artificial no respondió.\n\n"
-              + "Verifica a mano que sea el documento correcto y legible. Solo se podrá aceptar con una autorización de excepción,"
-              + " o puedes devolverlo al cliente para que lo vuelva a cargar (la nueva carga se revisa de nuevo).");
+              + "Verifica a mano que sea el documento correcto y legible; si lo es, puedes aceptarlo. También puedes usar"
+              + " \"Reprocesar con IA\" más tarde, sin que el cliente lo vuelva a subir.");
       return;
     }
     if (!Boolean.FALSE.equals(event.matchesExpectedType()) && !Boolean.FALSE.equals(event.legible())) {
@@ -113,12 +113,14 @@ class NotificationTriggers {
         "La revisión automática detectó que el archivo cargado como \""
             + label
             + "\" "
-            + (Boolean.FALSE.equals(event.matchesExpectedType())
-                ? "no parece corresponder a ese documento" + (event.detectedDocumentKind() != null ? " (parece: " + event.detectedDocumentKind() + ")" : "")
-                : "no es legible")
+            + (Boolean.FALSE.equals(event.legible())
+                ? "no es legible"
+                : "parece ser otro documento" + (event.detectedDocumentKind() != null ? " (" + event.detectedDocumentKind() + ")" : ""))
             + ".\n\n"
             + (event.observations() != null ? "Observaciones: " + event.observations() + "\n\n" : "")
-            + "No se podrá aceptar sin una autorización de excepción; lo recomendable es devolverlo al cliente con el motivo.");
+            + (Boolean.FALSE.equals(event.legible())
+                ? "Un archivo ilegible solo se acepta con una autorización de excepción; lo recomendable es devolverlo al cliente."
+                : "Los datos que se leyeron se conservaron. Si el archivo corresponde a otro requisito, usa \"Cambiar tipo de documento\"; si es correcto, acéptalo."));
   }
 
   /**

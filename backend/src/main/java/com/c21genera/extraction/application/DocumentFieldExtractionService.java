@@ -6,6 +6,7 @@ import com.c21genera.expedientes.ExpedienteLifecycleApi;
 import com.c21genera.expedientes.ExpedienteLifecycleApi.ManualClientDataView;
 import com.c21genera.expedientes.ExpedienteSummary;
 import com.c21genera.extraction.ExtractionApi;
+import com.c21genera.extraction.ExtractionApi.ConflictView;
 import com.c21genera.extraction.domain.DataConflict;
 import com.c21genera.extraction.domain.DocumentConsistencyChecker;
 import com.c21genera.extraction.domain.DocumentConsistencyChecker.DeclaredData;
@@ -104,20 +105,43 @@ public class DocumentFieldExtractionService implements ExtractionApi {
     transactions.executeWithoutResult(status -> saveResult(payload, result));
   }
 
-  private void saveResult(ExtractDocumentFieldsPayload payload, ExtractionResult result) {
+  /**
+   * Guarda TODO lo leído (también si el archivo parece otro documento, o si
+   * solo se leyó una parte): una extracción parcial es válida y una confianza
+   * baja significa "revisar", no "descartar". Si la versión ya se había
+   * procesado antes (reproceso), lo detectado antes se reemplaza, pero un dato
+   * que el staff confirmó o corrigió nunca se pisa.
+   */
+  void saveResult(ExtractDocumentFieldsPayload payload, ExtractionResult result) {
     Instant now = clock.instant();
+    observationRepository.deleteByDocumentVersionIdAndConfirmedValueIsNull(payload.documentVersionId());
+    observationRepository.flush();
+    Set<String> confirmed =
+        observationRepository.findByDocumentVersionId(payload.documentVersionId()).stream()
+            .map(ExtractedFieldObservation::getFieldName)
+            .collect(Collectors.toSet());
+
     for (FieldResult field : result.fields()) {
+      if (field.value() == null || field.value().isBlank() || confirmed.contains(field.fieldName())) {
+        continue;
+      }
       observationRepository.save(
           new ExtractedFieldObservation(
               payload.expedienteId(),
               payload.documentId(),
               payload.documentVersionId(),
-              field.fieldName(),
+              truncate(field.fieldName(), 160),
               field.value(),
               FieldOrigin.AI_EXTRACTED,
               field.confidence(),
-              now));
+              now,
+              field.page()));
     }
+
+    List<String> schema = DocumentFieldSchemas.fieldsFor(payload.type());
+    Set<String> found = result.fields().stream().map(FieldResult::fieldName).collect(Collectors.toSet());
+    found.addAll(confirmed);
+    int fieldsFound = (int) schema.stream().filter(found::contains).count();
 
     ContentAssessment assessment = result.assessment() != null ? result.assessment() : ContentAssessment.unknown();
     events.publishEvent(
@@ -130,15 +154,24 @@ public class DocumentFieldExtractionService implements ExtractionApi {
             assessment.legible(),
             assessment.detectedDocumentKind(),
             assessment.observations(),
-            false));
+            false,
+            result.warnings(),
+            result.pagesAnalyzed(),
+            result.pagesTotal(),
+            schema.size(),
+            fieldsFound));
 
     runConsistencyCheck(payload.expedienteId());
   }
 
+  private static String truncate(String value, int max) {
+    return value.length() <= max ? value : value.substring(0, max);
+  }
+
   /**
    * Se agotaron los reintentos: el archivo queda marcado "sin revisión
-   * automática" (nunca como aprobado), de modo que solo se pueda aceptar
-   * con una autorización de excepción o después de volver a cargarlo.
+   * automática" (nunca como aprobado). Es una advertencia para el revisor,
+   * que puede verificarlo visualmente o reprocesarlo con IA más tarde.
    */
   @Transactional
   public void recordCheckFailed(ExtractDocumentFieldsPayload payload) {
@@ -152,7 +185,12 @@ public class DocumentFieldExtractionService implements ExtractionApi {
             null,
             null,
             "No se pudo hacer la revisión automática del contenido: el servicio de inteligencia artificial no respondió.",
-            true));
+            true,
+            List.of(),
+            null,
+            null,
+            null,
+            null));
   }
 
   @Transactional
@@ -201,13 +239,24 @@ public class DocumentFieldExtractionService implements ExtractionApi {
   @Override
   @Transactional(readOnly = true)
   public boolean hasUnresolvedConflicts(UUID expedienteId) {
-    return conflictRepository.existsByExpedienteIdAndResolvedFalse(expedienteId);
+    return conflictRepository.findByExpedienteIdAndResolvedFalse(expedienteId).stream().anyMatch(DataConflict::isCritical);
   }
 
   @Override
   @Transactional(readOnly = true)
   public List<String> unresolvedConflictDescriptions(UUID expedienteId) {
-    return conflictRepository.findByExpedienteIdAndResolvedFalse(expedienteId).stream().map(DataConflict::getDescription).toList();
+    return conflictRepository.findByExpedienteIdAndResolvedFalse(expedienteId).stream()
+        .filter(DataConflict::isCritical)
+        .map(DataConflict::getDescription)
+        .toList();
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<ConflictView> unresolvedConflicts(UUID expedienteId) {
+    return conflictRepository.findByExpedienteIdAndResolvedFalse(expedienteId).stream()
+        .map(c -> new ConflictView(c.getSeverity(), c.getDescription()))
+        .toList();
   }
 
   @Transactional
@@ -276,8 +325,8 @@ public class DocumentFieldExtractionService implements ExtractionApi {
     for (Finding finding : findings) {
       Optional.ofNullable(open.get(finding.key()))
           .ifPresentOrElse(
-              existing -> existing.refreshDescription(finding.description()),
-              () -> conflictRepository.save(new DataConflict(expedienteId, finding.key(), finding.description(), now)));
+              existing -> existing.refresh(finding.description(), finding.severity()),
+              () -> conflictRepository.save(new DataConflict(expedienteId, finding.key(), finding.description(), finding.severity(), now)));
     }
     open.values().stream().filter(c -> !currentKeys.contains(c.getFieldName())).forEach(c -> c.closeBecauseDataNowMatches(now));
 

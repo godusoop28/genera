@@ -1,5 +1,5 @@
-import { apiClient, uploadFiles } from "@/lib/api/client";
-import { shrinkImages } from "@/lib/image-shrink";
+import { apiClient, uploadFiles, type UploadProgress } from "@/lib/api/client";
+import { prepareUploads } from "@/lib/upload-limits";
 import type {
   DocumentResponse,
   DocumentVersionResponse,
@@ -20,8 +20,22 @@ export function listReviews(documentId: string) {
   return apiClient.get<ReviewHistoryResponse[]>(`/internal/documents/${documentId}/reviews`);
 }
 
-export async function uploadVersion(documentId: string, files: File[]) {
-  return uploadFiles<DocumentVersionResponse>(`/internal/documents/${documentId}/versions`, "files", await shrinkImages(files));
+export async function uploadVersion(documentId: string, files: File[], onProgress?: (progress: UploadProgress) => void) {
+  return uploadFiles<DocumentVersionResponse>(`/internal/documents/${documentId}/versions`, "files", await prepareUploads(files), onProgress);
+}
+
+/** "Reprocesar con IA" sin que el cliente vuelva a subir el archivo. full: también calidad y PDF. */
+export function reprocessDocument(documentId: string, full = false) {
+  return apiClient.post<DocumentResponse>(`/internal/documents/${documentId}/reprocess`, { full });
+}
+
+export function reprocessAllDocuments(expedienteId: string) {
+  return apiClient.post<{ reprocessed: number }>(`/internal/expedientes/${expedienteId}/documents/reprocess`);
+}
+
+/** "Cambiar tipo de documento": mueve el archivo vigente a otro requisito del expediente. */
+export function moveDocumentFile(documentId: string, targetDocumentId: string) {
+  return apiClient.post<DocumentResponse>(`/internal/documents/${documentId}/move`, { targetDocumentId });
 }
 
 /** overrideJustification solo aplica para aceptar por excepción un archivo con alertas. */

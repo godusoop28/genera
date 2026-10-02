@@ -124,6 +124,18 @@ public class Document extends AuditableEntity {
     this.notApplicableAt = when;
   }
 
+  /**
+   * El archivo cargado aquí se movió a otro requisito (p. ej. era un predial
+   * cargado como acta de matrimonio): este requisito vuelve a pendiente. El
+   * historial de versiones se conserva.
+   */
+  public void detachCurrentFile() {
+    if (status == DocumentStatus.ACCEPTED) {
+      throw new ConflictException("DOCUMENT_ALREADY_ACCEPTED", "Un documento ya aceptado no se puede mover a otro requisito.");
+    }
+    this.status = DocumentStatus.PENDING;
+  }
+
   /** Revierte un "No aplica": vuelve a pendiente, o a revisión si ya tenía archivo cargado. */
   public void requestAgain() {
     if (status != DocumentStatus.NOT_APPLICABLE) {

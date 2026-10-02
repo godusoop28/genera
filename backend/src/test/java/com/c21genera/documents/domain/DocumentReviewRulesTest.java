@@ -7,6 +7,7 @@ import com.c21genera.documents.DocumentStatus;
 import com.c21genera.shared.domain.ConflictException;
 import com.c21genera.shared.domain.DocumentTypeCode;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -26,15 +27,10 @@ class DocumentReviewRulesTest {
   }
 
   @Test
-  void qualityFailureAiMismatchAndIllegibilityBlockAcceptance() {
+  void onlyAnUnreadableFileBlocksAcceptance() {
     DocumentVersion grayImage = version();
     grayImage.failQuality("La imagen está en blanco, gris o sin contraste");
     assertThat(grayImage.blockingIssues()).singleElement().asString().contains("gris");
-
-    DocumentVersion shoppingList = version();
-    shoppingList.completeProcessing("doc.pdf", "m.json");
-    shoppingList.recordAiAssessment(false, true, "lista de compras", "No es una credencial", false, Instant.now());
-    assertThat(shoppingList.blockingIssues()).singleElement().asString().contains("lista de compras");
 
     DocumentVersion illegible = version();
     illegible.completeProcessing("doc.pdf", "m.json");
@@ -43,21 +39,31 @@ class DocumentReviewRulesTest {
   }
 
   @Test
-  void unknownAiResultIsNotTreatedAsApprovalNorAsBlocking() {
-    DocumentVersion v = version();
-    v.completeProcessing("doc.pdf", "m.json");
-    v.recordAiAssessment(null, null, null, null, false, Instant.now());
+  void aFileThatLooksLikeAnotherDocumentIsAWarningAndKeepsItsData() {
+    DocumentVersion predialAsMarriage = version();
+    predialAsMarriage.completeProcessing("doc.pdf", "m.json");
+    predialAsMarriage.recordAiAssessment(false, true, "Predial", "Es un recibo predial", false, Instant.now());
 
-    assertThat(v.blockingIssues()).isEmpty();
+    assertThat(predialAsMarriage.blockingIssues()).isEmpty();
+    assertThat(predialAsMarriage.warnings()).anyMatch(w -> w.contains("Predial") && w.contains("se conservaron"));
   }
 
   @Test
-  void aFileTheAiCouldNotCheckNeedsAnOverride() {
+  void qualityAndAiWarningsNeverBlockAcceptance() {
     DocumentVersion v = version();
-    v.completeProcessing("doc.pdf", "m.json");
-    v.recordAiAssessment(null, null, null, "El servicio no respondió", true, Instant.now());
+    v.completeProcessing("doc.pdf", "m.json", "ACCEPTED_WITH_WARNINGS", List.of("La foto está algo borrosa", "Resolución baja (600x800 px)"));
+    v.recordAiAssessment(
+        true,
+        true,
+        "credencial INE (frente)",
+        null,
+        false,
+        Instant.now(),
+        new DocumentVersion.AiDetails(List.of("Solo se ve el frente de la credencial"), 1, 1, 6, 4));
 
-    assertThat(v.blockingIssues()).singleElement().asString().contains("No se pudo hacer la revisión automática");
+    assertThat(v.blockingIssues()).isEmpty();
+    assertThat(v.warnings()).containsExactly("La foto está algo borrosa", "Resolución baja (600x800 px)", "Solo se ve el frente de la credencial");
+    assertThat(v.getAiFieldsFound()).isEqualTo(4);
   }
 
   @Test

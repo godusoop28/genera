@@ -109,10 +109,11 @@ public final class ContractDtos {
 
   public record GenerateResponse(ContractGenerationResponse contract, List<SigningLinkResponse> signingLinks) {}
 
-  public record ReadinessResponse(boolean ready, List<String> blockers, List<String> missingData, String variant) {
+  public record ReadinessResponse(
+      boolean ready, List<String> blockers, List<String> missingData, List<String> reviewItems, List<String> inconsistencies, String variant) {
 
     public static ReadinessResponse from(Readiness r) {
-      return new ReadinessResponse(r.ready(), r.blockers(), r.missingData(), r.variant());
+      return new ReadinessResponse(r.ready(), r.blockers(), r.missingData(), r.reviewItems(), r.inconsistencies(), r.variant());
     }
   }
 

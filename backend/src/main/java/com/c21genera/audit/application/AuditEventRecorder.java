@@ -17,6 +17,8 @@ import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsApproved;
 import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsUploaded;
 import com.c21genera.shared.events.DocumentEvents.DocumentApplicabilityChanged;
 import com.c21genera.shared.events.DocumentEvents.DocumentContentAssessed;
+import com.c21genera.shared.events.DocumentEvents.DocumentFileMoved;
+import com.c21genera.shared.events.DocumentEvents.DocumentReprocessRequested;
 import com.c21genera.shared.events.DocumentEvents.DocumentQualityFailed;
 import com.c21genera.shared.events.DocumentEvents.DocumentReviewed;
 import com.c21genera.shared.events.DocumentEvents.DocumentVersionProcessed;
@@ -147,6 +149,24 @@ class AuditEventRecorder {
   }
 
   @ApplicationModuleListener
+  void on(DocumentReprocessRequested event) {
+    String label = DocumentTypeLabels.of(event.type());
+    String mode = event.pdfStorageKey() != null ? "repetir la extracción con IA" : "procesar de nuevo desde el archivo original";
+    record("DocumentReprocessRequested", "Document", event.documentId(), event.actor(), "Reproceso solicitado (" + mode + "): " + label);
+    activity(event.expedienteId(), ActivityCategory.DOCUMENT, "DOCUMENT_REPROCESSED", event.actor(), event.documentId(), label,
+        "Pidió " + mode + " de " + label + " sin que el cliente lo vuelva a subir");
+  }
+
+  @ApplicationModuleListener
+  void on(DocumentFileMoved event) {
+    String from = DocumentTypeLabels.of(event.fromType());
+    String to = DocumentTypeLabels.of(event.toType());
+    record("DocumentFileMoved", "Document", event.toDocumentId(), event.actor(), "Archivo movido de " + from + " a " + to);
+    activity(event.expedienteId(), ActivityCategory.DOCUMENT, "DOCUMENT_MOVED", event.actor(), event.toDocumentId(), to,
+        "Movió el archivo cargado como " + from + " a " + to + " (" + from + " vuelve a quedar pendiente)");
+  }
+
+  @ApplicationModuleListener
   void on(DocumentVersionProcessed event) {
     record("DocumentVersionProcessed", "Document", event.documentId(), Actor.system(), "Documento procesado (normalización/PDF listo)");
   }
@@ -174,7 +194,7 @@ class AuditEventRecorder {
     if (mismatch || illegible) {
       String detail =
           mismatch
-              ? "el archivo cargado como " + label + " no parece corresponder a ese documento"
+              ? "el archivo cargado como " + label + " parece ser otro documento (los datos leídos se conservaron)"
                   + (event.detectedDocumentKind() != null ? " (parece: " + event.detectedDocumentKind() + ")" : "")
               : "el archivo de " + label + " no es legible";
       activity(event.expedienteId(), ActivityCategory.DOCUMENT, "DOCUMENT_CONTENT_ALERT", Actor.system(), event.documentId(), label,

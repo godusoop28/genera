@@ -119,6 +119,72 @@ class DocumentConsistencyCheckerTest {
   }
 
   @Test
+  void abbreviationsAndPunctuationInAddressesAreTheSameAddress() {
+    assertThat(DocumentConsistencyChecker.addressesMatch("Av. Reforma 120", "Avenida Reforma #120")).isTrue();
+    assertThat(DocumentConsistencyChecker.addressesMatch("Calle Pino 5, Col. Las Fincas", "Pino No. 5, Colonia Las Fincas")).isTrue();
+    assertThat(DocumentConsistencyChecker.namesMatch("PEREZ LOPEZ JUAN", "Juan Pérez López")).isTrue();
+  }
+
+  private static DeclaredData declaredAt(String address) {
+    return new DeclaredData(
+        List.of(new DeclaredParticipant(JUAN, true, "Juan Pérez López", "PELJ800101AB1", "PELJ800101HMSRPN01")), address, null, null);
+  }
+
+  @Test
+  void minorDifferencesAreInfoOrWarningNeverCritical() {
+    List<Finding> findings =
+        DocumentConsistencyChecker.check(
+            List.of(
+                // Una letra distinta en el folio: probable error de lectura.
+                doc(DocumentTypeCode.DEED, null, Map.of("ownerFullName", "Juan Pérez López", "publicRegistryFolio", "FR-123456")),
+                doc(DocumentTypeCode.RPP_REGISTRATION_SLIP, null, Map.of("publicRegistryFolio", "FR-123458")),
+                // Dirección escrita distinto (por lote/manzana en la escritura).
+                doc(DocumentTypeCode.PROPERTY_TAX, null, Map.of("ownerFullName", "JUAN PEREZ", "propertyAddress", "Lote 7 Manzana 3 Fracc. Vista Hermosa"))),
+            declaredAt(ADDRESS));
+
+    assertThat(findings).isNotEmpty();
+    assertThat(findings).noneMatch(f -> f.severity() == DataConflict.Severity.CRITICAL);
+    assertThat(findings).filteredOn(f -> f.key().equals("registry-folio")).singleElement()
+        .satisfies(f -> assertThat(f.severity()).isEqualTo(DataConflict.Severity.INFO));
+    assertThat(findings).allMatch(f -> f.description().startsWith("Posible inconsistencia"));
+  }
+
+  @Test
+  void onlyStrongEvidenceOfAnotherPersonOrPropertyIsCritical() {
+    List<Finding> findings =
+        DocumentConsistencyChecker.check(
+            List.of(
+                doc(DocumentTypeCode.INE, JUAN, Map.of("fullName", "ROBERTO SANCHEZ DIAZ", "curp", "SADR751212HDFNZB07")),
+                doc(DocumentTypeCode.DEED, null, Map.of("ownerFullName", "Pedro Martínez Ortiz"))),
+            declaredAt(ADDRESS));
+
+    assertThat(findings).filteredOn(f -> f.key().startsWith("identity-name")).singleElement()
+        .satisfies(f -> assertThat(f.severity()).isEqualTo(DataConflict.Severity.CRITICAL));
+    assertThat(findings).filteredOn(f -> f.key().startsWith("identity-curp")).singleElement()
+        .satisfies(f -> assertThat(f.severity()).isEqualTo(DataConflict.Severity.CRITICAL));
+    assertThat(findings).filteredOn(f -> f.key().equals("owners:DEED")).singleElement()
+        .satisfies(f -> assertThat(f.severity()).isEqualTo(DataConflict.Severity.CRITICAL));
+  }
+
+  @Test
+  void aCurpMisreadByOneCharacterIsOnlyAWarning() {
+    List<Finding> findings =
+        DocumentConsistencyChecker.check(
+            List.of(doc(DocumentTypeCode.INE, JUAN, Map.of("curp", "PELJ800101HMSRPN0I"))), declaredAt(null));
+
+    assertThat(findings).singleElement().satisfies(f -> assertThat(f.severity()).isEqualTo(DataConflict.Severity.WARNING));
+  }
+
+  @Test
+  void aPropertyTaxInTheNameOfAPreviousOwnerIsOnlyAWarning() {
+    List<Finding> findings =
+        DocumentConsistencyChecker.check(
+            List.of(doc(DocumentTypeCode.PROPERTY_TAX, null, Map.of("ownerFullName", "Antonio Ruiz Hernández"))), declaredAt(null));
+
+    assertThat(findings).singleElement().satisfies(f -> assertThat(f.severity()).isEqualTo(DataConflict.Severity.WARNING));
+  }
+
+  @Test
   void numbersAreParsedFromFreeText() {
     assertThat(DocumentConsistencyChecker.parseNumber("1,250.50 m²")).isEqualByComparingTo("1250.50");
     assertThat(DocumentConsistencyChecker.parseNumber("sin dato")).isNull();

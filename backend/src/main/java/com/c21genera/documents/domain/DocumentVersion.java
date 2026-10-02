@@ -8,6 +8,9 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -56,6 +59,21 @@ public class DocumentVersion {
   @Column(nullable = false)
   private boolean aiCheckFailed;
 
+  /** ACCEPTED, ACCEPTED_WITH_WARNINGS o UNREADABLE (ver documentprocessing). */
+  @Column(length = 32)
+  private String qualityLevel;
+
+  /** Advertencias de calidad, una por línea: se muestran, nunca bloquean. */
+  private String qualityWarnings;
+
+  /** Advertencias de la revisión con IA, una por línea. */
+  private String aiWarnings;
+
+  private Integer aiPagesAnalyzed;
+  private Integer aiPagesTotal;
+  private Integer aiFieldsExpected;
+  private Integer aiFieldsFound;
+
   protected DocumentVersion() {}
 
   public DocumentVersion(
@@ -72,40 +90,93 @@ public class DocumentVersion {
 
   public void recordAiAssessment(
       Boolean typeMatches, Boolean legible, String detectedKind, String observations, boolean checkFailed, Instant when) {
+    recordAiAssessment(typeMatches, legible, detectedKind, observations, checkFailed, when, AiDetails.NONE);
+  }
+
+  /** Detalle adicional de la revisión con IA (todo opcional). */
+  public record AiDetails(List<String> warnings, Integer pagesAnalyzed, Integer pagesTotal, Integer fieldsExpected, Integer fieldsFound) {
+    public static final AiDetails NONE = new AiDetails(List.of(), null, null, null, null);
+  }
+
+  public void recordAiAssessment(
+      Boolean typeMatches, Boolean legible, String detectedKind, String observations, boolean checkFailed, Instant when, AiDetails details) {
     this.aiCheckFailed = checkFailed;
     this.aiTypeMatches = typeMatches;
     this.aiLegible = legible;
     this.aiDetectedKind = detectedKind;
     this.aiObservations = observations;
     this.aiAssessedAt = when;
+    AiDetails d = details == null ? AiDetails.NONE : details;
+    this.aiWarnings = joinLines(d.warnings());
+    this.aiPagesAnalyzed = d.pagesAnalyzed();
+    this.aiPagesTotal = d.pagesTotal();
+    this.aiFieldsExpected = d.fieldsExpected();
+    this.aiFieldsFound = d.fieldsFound();
+  }
+
+  /** Se va a volver a ejecutar la revisión con IA: el resultado anterior deja de contar mientras tanto. */
+  public void clearAiAssessment() {
+    recordAiAssessment(null, null, null, null, false, null, AiDetails.NONE);
+  }
+
+  /** Se va a volver a procesar desde los archivos originales (p. ej. con reglas de calidad nuevas). */
+  public void resetForReprocessing() {
+    this.processingStatus = ProcessingStatus.QUEUED;
+    this.processingError = null;
+    this.qualityLevel = null;
+    this.qualityWarnings = null;
+    clearAiAssessment();
   }
 
   /**
-   * Alertas que impiden aceptar esta versión sin una autorización de
-   * excepción: calidad automática fallida, archivo sin procesar, o la IA
-   * indicó que no corresponde al documento solicitado o que es ilegible.
+   * Lo único que impide aceptar esta versión sin una autorización de
+   * excepción: que no se pueda leer (ninguna página utilizable, archivo
+   * dañado, o la IA confirma que es ilegible). Todo lo demás (advertencias de
+   * calidad, que parezca otro tipo de documento, que la IA no haya respondido)
+   * es una advertencia: el revisor la ve y decide (ver {@link #warnings()}).
    */
-  public java.util.List<String> blockingIssues() {
-    java.util.List<String> issues = new java.util.ArrayList<>();
+  public List<String> blockingIssues() {
+    List<String> issues = new ArrayList<>();
     switch (processingStatus) {
-      case QUALITY_FAILED -> issues.add("No pasó la verificación automática de calidad: " + processingError);
+      case QUALITY_FAILED -> issues.add("No se puede leer el archivo: " + processingError);
       case FAILED -> issues.add("El archivo no se pudo procesar: " + processingError);
       default -> {
         /* sin alertas de procesamiento */
       }
     }
-    if (Boolean.FALSE.equals(aiTypeMatches)) {
-      issues.add(
-          "La revisión automática indica que el archivo no corresponde al documento solicitado"
-              + (aiDetectedKind != null && !aiDetectedKind.isBlank() ? " (parece: " + aiDetectedKind + ")" : ""));
-    }
     if (Boolean.FALSE.equals(aiLegible)) {
       issues.add("La revisión automática indica que el documento no es legible");
     }
-    if (aiCheckFailed) {
-      issues.add("No se pudo hacer la revisión automática del contenido (el servicio de IA no respondió); verifica a mano que sea el documento correcto");
-    }
     return issues;
+  }
+
+  /** Avisos para el revisor que NO impiden aceptar. */
+  public List<String> warnings() {
+    List<String> result = new ArrayList<>(splitLines(qualityWarnings));
+    if (Boolean.FALSE.equals(aiTypeMatches)) {
+      result.add(
+          "La revisión automática indica que el archivo parece ser otro documento"
+              + (aiDetectedKind != null && !aiDetectedKind.isBlank() ? " (" + aiDetectedKind + ")" : "")
+              + "; los datos que se leyeron se conservaron");
+    }
+    if (aiCheckFailed) {
+      result.add(
+          "No se pudo hacer la revisión automática del contenido (el servicio de IA no respondió); verifícalo visualmente o reprocésalo con IA");
+    }
+    result.addAll(splitLines(aiWarnings));
+    return result.stream().distinct().toList();
+  }
+
+  private static String joinLines(List<String> lines) {
+    if (lines == null || lines.isEmpty()) {
+      return null;
+    }
+    String joined = String.join("\n", lines.stream().filter(l -> l != null && !l.isBlank()).map(String::strip).toList());
+    return joined.isBlank() ? null : joined;
+  }
+
+  private static List<String> splitLines(String text) {
+    return text == null || text.isBlank() ? List.of() : Arrays.stream(text.split("\n")).filter(l -> !l.isBlank()).toList();
   }
 
   public void startProcessing() {
@@ -113,14 +184,22 @@ public class DocumentVersion {
   }
 
   public void completeProcessing(String pdfStorageKey, String normalizedStorageKey) {
+    completeProcessing(pdfStorageKey, normalizedStorageKey, "ACCEPTED", List.of());
+  }
+
+  public void completeProcessing(String pdfStorageKey, String normalizedStorageKey, String qualityLevel, List<String> qualityWarnings) {
     this.processingStatus = ProcessingStatus.PROCESSED;
+    this.processingError = null;
     this.storageKeyPdf = pdfStorageKey;
     this.storageKeyNormalized = normalizedStorageKey;
+    this.qualityLevel = qualityLevel;
+    this.qualityWarnings = joinLines(qualityWarnings);
   }
 
   public void failQuality(String reason) {
     this.processingStatus = ProcessingStatus.QUALITY_FAILED;
     this.processingError = reason;
+    this.qualityLevel = "UNREADABLE";
   }
 
   public void fail(String reason) {
@@ -194,5 +273,25 @@ public class DocumentVersion {
 
   public Instant getAiAssessedAt() {
     return aiAssessedAt;
+  }
+
+  public String getQualityLevel() {
+    return qualityLevel;
+  }
+
+  public Integer getAiPagesAnalyzed() {
+    return aiPagesAnalyzed;
+  }
+
+  public Integer getAiPagesTotal() {
+    return aiPagesTotal;
+  }
+
+  public Integer getAiFieldsExpected() {
+    return aiFieldsExpected;
+  }
+
+  public Integer getAiFieldsFound() {
+    return aiFieldsFound;
   }
 }

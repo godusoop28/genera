@@ -5,6 +5,7 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import { SaveStatus } from "@/components/ui/SaveStatus";
 import { Select } from "@/components/ui/Select";
 import { Toggle } from "@/components/ui/Toggle";
 import { useToast } from "@/components/ui/Toast";
@@ -17,12 +18,12 @@ import type {
   BackendPropertyLegalStatus,
   ParticipantRequest,
 } from "@/lib/api/types";
-import { clearDraft, readDraft, writeDraft } from "@/lib/drafts";
+import { internalDraftTransport, useServerDraft, type ServerDraft } from "@/lib/use-server-draft";
 import { accreditationLabels, legalStatusLabels, propertyTypeLabels } from "@/lib/labels";
 import { previewRequirements } from "@/lib/requirements-preview";
 import { AlertTriangle, Plus, Save, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 interface AddressForm {
   street: string;
@@ -66,20 +67,24 @@ interface NewExpedienteDraft {
 
 const person = (role: ParticipantRequest["role"]): ParticipantRequest => ({ role, fullName: "" });
 
-const subscribeNoop = () => () => {};
-
 export default function NuevoExpedientePage() {
-  // El formulario se pinta solo en el navegador para poder iniciarlo con el
-  // borrador guardado sin que difiera del HTML del servidor.
-  const isClient = useSyncExternalStore(subscribeNoop, () => true, () => false);
-  return isClient ? <NuevoExpedienteForm /> : null;
+  // Lo capturado se autoguarda en el servidor (bajo el usuario) hasta que se
+  // crea el expediente: sobrevive a recargar, a cambiar de equipo y a caídas de red.
+  const draft = useServerDraft<NewExpedienteDraft>(DRAFT_KEY, () => internalDraftTransport(DRAFT_KEY));
+  if (draft.restored === undefined) {
+    return (
+      <PageContainer title="Nuevo expediente">
+        <p className="text-sm text-muted">Recuperando lo que ya habías capturado…</p>
+      </PageContainer>
+    );
+  }
+  return <NuevoExpedienteForm draft={draft.restored} serverDraft={draft} />;
 }
 
-function NuevoExpedienteForm() {
+function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft | null; serverDraft: ServerDraft<NewExpedienteDraft> }) {
   const { showToast } = useToast();
   const router = useRouter();
-  // Lo capturado sobrevive a recargar la página hasta que se crea el expediente.
-  const [draft] = useState(() => readDraft<NewExpedienteDraft>(DRAFT_KEY));
+  const { update: updateDraft } = serverDraft;
 
   const [personType, setPersonType] = useState<BackendPersonType>(draft?.personType ?? "FISICA");
   const [signedByAttorney, setSignedByAttorney] = useState(draft?.signedByAttorney ?? false);
@@ -93,8 +98,13 @@ function NuevoExpedienteForm() {
   const [address, setAddress] = useState<AddressForm>({ ...emptyAddress, ...draft?.address });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const firstRender = useRef(true);
   useEffect(() => {
-    writeDraft(DRAFT_KEY, {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    updateDraft({
       personType,
       signedByAttorney,
       owners,
@@ -106,7 +116,7 @@ function NuevoExpedienteForm() {
       legalStatus,
       address,
     } satisfies NewExpedienteDraft);
-  }, [personType, signedByAttorney, owners, representatives, attorney, accreditationType, propertyCaseType, condominiumRegime, legalStatus, address]);
+  }, [updateDraft, personType, signedByAttorney, owners, representatives, attorney, accreditationType, propertyCaseType, condominiumRegime, legalStatus, address]);
 
   const participants = useMemo<ParticipantRequest[]>(() => {
     if (personType === "MORAL") return [{ ...owners[0], role: "OWNER", civilStatus: null, maritalRegime: null }, ...representatives];
@@ -147,7 +157,7 @@ function NuevoExpedienteForm() {
         propertyAddress: formatAddress(address),
         participants: participants.map((p) => ({ ...p, fullName: p.fullName.trim() })),
       });
-      clearDraft(DRAFT_KEY);
+      await serverDraft.clear();
       showToast(`Expediente ${created.folio} creado.`);
       router.push(`/expedientes/${created.id}`);
     } catch (err) {
@@ -161,6 +171,7 @@ function NuevoExpedienteForm() {
     <PageContainer
       title="Nuevo expediente"
       subtitle="Captura quién vende y qué inmueble es. Con esto el sistema determina qué documentos pedirle al cliente."
+      action={<SaveStatus status={serverDraft.status} lastSavedAt={serverDraft.lastSavedAt} />}
     >
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="flex flex-col gap-6 lg:col-span-2">

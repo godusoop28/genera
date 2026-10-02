@@ -12,7 +12,7 @@ export function shrinkImages(files: File[]): Promise<File[]> {
 }
 
 async function shrinkImage(file: File): Promise<File> {
-  if (!/^image\/(jpeg|png)$/.test(file.type) || file.size <= SHRINK_ABOVE_BYTES || typeof createImageBitmap !== "function") {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size <= SHRINK_ABOVE_BYTES || typeof createImageBitmap !== "function") {
     return file;
   }
   try {

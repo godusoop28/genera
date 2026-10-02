@@ -5,23 +5,46 @@ import java.util.List;
 
 /**
  * Verificación determinística de calidad de una imagen normalizada (ver
- * AGENTS §36): resolución mínima, relación de aspecto razonable, orientación
- * vertical (salvo tipos de documento que son naturalmente horizontales, como
- * una identificación tipo tarjeta). No es un análisis de contenido ni usa IA;
- * eso lo hace extraction/AI por separado.
+ * AGENTS §36). Filosofía: aceptar y extraer todo lo posible. Solo una imagen
+ * que de verdad no sirve (vacía, en blanco, negra, diminuta o tan borrosa que
+ * no se distingue texto) es {@link QualityLevel#UNREADABLE}; lo demás que no
+ * es ideal (oscura, algo borrosa, resolución baja) es una advertencia que se
+ * le muestra al revisor y nunca detiene el PDF ni la extracción. La
+ * orientación, la proporción, los márgenes o el fondo nunca se evalúan: un
+ * documento se lee igual de lado o con la mesa alrededor.
  */
 public interface DocumentQualityAnalyzer {
 
   QualityResult analyze(byte[] normalizedImage, String mimeType, int widthPx, int heightPx, DocumentTypeCode documentType);
 
-  record QualityResult(boolean acceptable, List<String> issues) {
+  enum QualityLevel {
+    ACCEPTED,
+    ACCEPTED_WITH_WARNINGS,
+    UNREADABLE
+  }
 
-    public static QualityResult ok() {
-      return new QualityResult(true, List.of());
+  /** issues: motivos del rechazo si es UNREADABLE; advertencias si es ACCEPTED_WITH_WARNINGS. */
+  record QualityResult(QualityLevel level, List<String> issues) {
+
+    public QualityResult {
+      issues = issues == null ? List.of() : List.copyOf(issues);
     }
 
-    public static QualityResult rejected(List<String> issues) {
-      return new QualityResult(false, issues);
+    /** Se puede seguir con el PDF y la extracción (con o sin advertencias). */
+    public boolean acceptable() {
+      return level != QualityLevel.UNREADABLE;
+    }
+
+    public static QualityResult ok() {
+      return new QualityResult(QualityLevel.ACCEPTED, List.of());
+    }
+
+    public static QualityResult withWarnings(List<String> warnings) {
+      return warnings.isEmpty() ? ok() : new QualityResult(QualityLevel.ACCEPTED_WITH_WARNINGS, warnings);
+    }
+
+    public static QualityResult unreadable(List<String> issues) {
+      return new QualityResult(QualityLevel.UNREADABLE, issues);
     }
   }
 }

@@ -31,7 +31,11 @@ export function ConsistencyTab({ expediente, reload }: ExpedienteContext) {
     load();
   }, [load]);
 
-  const open = (conflicts ?? []).filter((c) => !c.resolved);
+  const severityOrder = { CRITICAL: 0, WARNING: 1, INFO: 2 } as const;
+  const open = (conflicts ?? [])
+    .filter((c) => !c.resolved)
+    .sort((a, b) => severityOrder[a.severity ?? "WARNING"] - severityOrder[b.severity ?? "WARNING"]);
+  const criticalCount = open.filter((c) => c.severity === "CRITICAL").length;
   const closed = (conflicts ?? []).filter((c) => c.resolved);
 
   return (
@@ -39,11 +43,15 @@ export function ConsistencyTab({ expediente, reload }: ExpedienteContext) {
       <Card>
         <CardHeader
           title="Consistencia entre documentos"
-          description="Compara nombres, CURP, RFC, propietarios, domicilio, clave catastral, folio real y superficies entre escritura, predial, plano, identificaciones y los datos capturados. Las diferencias deben resolverse (o justificarse) antes de generar el contrato."
+          description="Compara nombres, CURP, RFC, propietarios, domicilio, clave catastral, folio real y superficies entre escritura, predial, plano, identificaciones y los datos capturados. Cada diferencia es una POSIBLE inconsistencia para ayudarte a revisar: solo las críticas (evidencia fuerte de otra persona u otro inmueble) impiden enviar el contrato a firma."
         />
         <div className="mb-4 flex flex-wrap items-center gap-3">
-          <Badge tone={open.length === 0 ? "success" : "warning"}>
-            {open.length === 0 ? "Sin diferencias pendientes" : `${open.length} diferencia(s) por revisar`}
+          <Badge tone={open.length === 0 ? "success" : criticalCount > 0 ? "danger" : "warning"}>
+            {open.length === 0
+              ? "Sin diferencias pendientes"
+              : criticalCount > 0
+                ? `${criticalCount} crítica(s) · ${open.length} por revisar`
+                : `${open.length} posible(s) inconsistencia(s), ninguna crítica`}
           </Badge>
           <Button
             variant="secondary"
@@ -72,8 +80,24 @@ export function ConsistencyTab({ expediente, reload }: ExpedienteContext) {
         {conflicts === null ? <p className="text-sm text-muted">Cargando…</p> : null}
         <ul className="flex flex-col gap-2">
           {open.map((c) => (
-            <li key={c.id} className="rounded-lg border border-warning-text/30 bg-warning-bg px-3 py-2 text-sm">
-              <p className="text-warning-text">{c.description}</p>
+            <li
+              key={c.id}
+              className={`rounded-lg border px-3 py-2 text-sm ${
+                c.severity === "CRITICAL"
+                  ? "border-danger-text/30 bg-danger-bg"
+                  : c.severity === "INFO"
+                    ? "border-border bg-app-bg"
+                    : "border-warning-text/30 bg-warning-bg"
+              }`}
+            >
+              <div className="mb-1">
+                <Badge tone={c.severity === "CRITICAL" ? "danger" : c.severity === "INFO" ? "neutral" : "warning"}>
+                  {c.severity === "CRITICAL" ? "Crítica: bloquea la firma" : c.severity === "INFO" ? "Probablemente igual" : "Revisar"}
+                </Badge>
+              </div>
+              <p className={c.severity === "CRITICAL" ? "text-danger-text" : c.severity === "INFO" ? "text-muted" : "text-warning-text"}>
+                {c.description}
+              </p>
               <div className="mt-2 flex items-center justify-between gap-2">
                 <span className="text-xs text-muted">Detectada {formatDateTime(c.detectedAt)}</span>
                 {can("EXTRACTED_DATA_EDIT") ? (

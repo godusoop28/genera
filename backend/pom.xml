@@ -34,6 +34,7 @@
 		<poi.version>5.5.1</poi.version>
 		<tika.version>3.3.1</tika.version>
 		<metadata-extractor.version>2.21.0</metadata-extractor.version>
+		<twelvemonkeys.version>3.12.0</twelvemonkeys.version>
 		<springdoc.version>3.1.1</springdoc.version>
 		<testcontainers-minio.version>1.21.3</testcontainers-minio.version>
 	</properties>
@@ -203,6 +204,12 @@
 			<groupId>com.drewnoakes</groupId>
 			<artifactId>metadata-extractor</artifactId>
 			<version>${metadata-extractor.version}</version>
+		</dependency>
+		<!-- Lector WEBP para ImageIO (fotos de Android/WhatsApp); Java puro, se registra solo vía SPI. -->
+		<dependency>
+			<groupId>com.twelvemonkeys.imageio</groupId>
+			<artifactId>imageio-webp</artifactId>
+			<version>${twelvemonkeys.version}</version>
 		</dependency>
 	</dependencies>
 

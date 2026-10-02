@@ -1,5 +1,6 @@
 package com.c21genera.extraction.application;
 
+import com.c21genera.shared.events.DocumentEvents.DocumentReprocessRequested;
 import com.c21genera.shared.events.DocumentEvents.DocumentVersionProcessed;
 import com.c21genera.shared.jobs.BackgroundJobQueue;
 import org.springframework.modulith.events.ApplicationModuleListener;
@@ -19,6 +20,18 @@ class ExtractionListener {
 
   @ApplicationModuleListener
   void on(DocumentVersionProcessed event) {
+    queue.enqueue(
+        JOB_TYPE,
+        new ExtractDocumentFieldsPayload(
+            event.expedienteId(), event.documentId(), event.documentVersionId(), event.type(), event.pdfStorageKey()));
+  }
+
+  /** "Reprocesar con IA" sobre una versión que ya tiene PDF: solo se repite la extracción. */
+  @ApplicationModuleListener
+  void on(DocumentReprocessRequested event) {
+    if (event.pdfStorageKey() == null) {
+      return; // Reproceso completo: documentprocessing genera el PDF y luego publica DocumentVersionProcessed.
+    }
     queue.enqueue(
         JOB_TYPE,
         new ExtractDocumentFieldsPayload(

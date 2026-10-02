@@ -150,18 +150,51 @@ export const apiClient = {
   delete: <T>(path: string, options?: RequestOptions) => request<T>(path, { ...options, method: "DELETE" }),
 };
 
+export interface UploadProgress {
+  loaded: number;
+  total: number;
+  /** 0 a 100. */
+  percent: number;
+}
+
+/** POST multipart con XMLHttpRequest para poder reportar el avance de la subida (fetch no lo permite). */
+function xhrUpload(url: string, body: FormData, token: string | null, onProgress?: (progress: UploadProgress) => void): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        onProgress({ loaded: event.loaded, total: event.total, percent: Math.round((event.loaded / event.total) * 100) });
+      }
+    };
+    xhr.onload = () =>
+      resolve(new Response(xhr.status === 204 ? null : xhr.responseText, { status: xhr.status, statusText: xhr.statusText }));
+    xhr.onerror = () => reject(new TypeError("No se pudo conectar con el servidor. Revisa tu conexión e intenta de nuevo."));
+    xhr.ontimeout = () => reject(new TypeError("La subida tardó demasiado. Revisa tu conexión e intenta de nuevo."));
+    xhr.send(body);
+  });
+}
+
 // Subida de archivos: nunca pasa por `request` porque no debe fijar
 // Content-Type: application/json (el navegador pone el boundary multipart solo).
-export async function uploadFiles<T>(path: string, fieldName: string, files: File[]): Promise<T> {
+export async function uploadFiles<T>(
+  path: string,
+  fieldName: string,
+  files: File[],
+  onProgress?: (progress: UploadProgress) => void,
+): Promise<T> {
   const formData = new FormData();
   for (const file of files) formData.append(fieldName, file);
 
   const response = await fetchWithAuth(path, (token) =>
-    fetch(`${API_BASE_URL}${path}`, {
-      method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      body: formData,
-    }),
+    onProgress
+      ? xhrUpload(`${API_BASE_URL}${path}`, formData, token, onProgress)
+      : fetch(`${API_BASE_URL}${path}`, {
+          method: "POST",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          body: formData,
+        }),
   );
 
   const data = await response.json().catch(() => null);

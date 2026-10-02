@@ -14,7 +14,17 @@ import java.util.List;
  * resalta en amarillo; un contrato con datos pendientes nunca se puede
  * enviar a firma.
  */
-public record ContractDocument(String title, boolean draft, List<String> missingItems, List<Block> blocks) {
+/**
+ * missingItems: datos jurídicamente indispensables que faltan (sin ellos solo
+ * hay borrador). reviewItems: datos secundarios sin capturar (Anexo A,
+ * checklist II.g, autorizaciones de publicidad, correo/teléfono): no bloquean
+ * la firma; en el contrato quedan como espacio en blanco para llenarse a mano.
+ */
+public record ContractDocument(String title, boolean draft, List<String> missingItems, List<String> reviewItems, List<Block> blocks) {
+
+  public ContractDocument(String title, boolean draft, List<String> missingItems, List<Block> blocks) {
+    this(title, draft, missingItems, List.of(), blocks);
+  }
 
   public sealed interface Block permits SectionHeading, Paragraph, Table, PageBreak, SignatureLines, Image {}
 

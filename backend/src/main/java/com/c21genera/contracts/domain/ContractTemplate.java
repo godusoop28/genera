@@ -94,6 +94,8 @@ public final class ContractTemplate {
 
   private final ContractInput in;
   private final LinkedHashSet<String> missing = new LinkedHashSet<>();
+  /** Datos secundarios sin capturar: no bloquean la firma; quedan como espacio en blanco. */
+  private final LinkedHashSet<String> review = new LinkedHashSet<>();
   private final List<Block> blocks = new ArrayList<>();
 
   private ContractTemplate(ContractInput input) {
@@ -103,7 +105,8 @@ public final class ContractTemplate {
   public static ContractDocument build(ContractInput input, boolean draft) {
     ContractTemplate template = new ContractTemplate(input);
     template.render();
-    return new ContractDocument(ContractReferenceData.TITLE, draft, List.copyOf(template.missing), List.copyOf(template.blocks));
+    return new ContractDocument(
+        ContractReferenceData.TITLE, draft, List.copyOf(template.missing), List.copyOf(template.review), List.copyOf(template.blocks));
   }
 
   // ---------------------------------------------------------------------
@@ -467,11 +470,8 @@ public final class ContractTemplate {
         (key, question) -> {
           Boolean answer = answers.get(key);
           if (answer == null) {
-            missing.add("Declaración II.g: indicar si cuenta con \"" + shorten(question) + "\"");
-            rows.add(
-                Row.of(
-                    Cell.text(question),
-                    new Cell(List.of(List.of(Span.pending("Sí/No"))), 2, false, Align.CENTER)));
+            review.add("Declaración II.g: indicar si cuenta con \"" + shorten(question) + "\"");
+            rows.add(Row.of(Cell.text(question), Cell.centered(""), Cell.centered("")));
           } else {
             rows.add(Row.of(Cell.text(question), Cell.centered(answer ? "X" : ""), Cell.centered(answer ? "" : "X")));
           }
@@ -499,7 +499,7 @@ public final class ContractTemplate {
         Paragraph.indented(
             b("II. Publicidad.-"),
             t(" Promover a nombre del cliente el inmueble, utilizando los medios de difusión que considere apropiados conforme a su naturaleza. La publicidad será realizada a través de "),
-            value(legal().advertisingMedia(), "medios de publicidad autorizados por el cliente"),
+            reviewValue(legal().advertisingMedia(), "medios de publicidad autorizados por el cliente"),
             t(", que considere adecuados conforme a la naturaleza del inmueble previamente autorizados por el cliente.")));
     blocks.add(
         Paragraph.indented(
@@ -618,8 +618,8 @@ public final class ContractTemplate {
                     Cell.lines(
                         List.of(
                             List.of(b("Domicilio: "), value(notificationAddress, "domicilio del cliente para notificaciones")),
-                            List.of(b("Correo electrónico: "), value(data == null ? null : data.email(), "correo electrónico del cliente")),
-                            List.of(b("Teléfono: "), value(data == null ? null : data.phone(), "teléfono del cliente"))))))));
+                            List.of(b("Correo electrónico: "), reviewValue(data == null ? null : data.email(), "correo electrónico del cliente")),
+                            List.of(b("Teléfono: "), reviewValue(data == null ? null : data.phone(), "teléfono del cliente"))))))));
 
     ContractReferenceData.FIXED_CLAUSES_AFTER_NOTICES.forEach(this::clause);
   }
@@ -646,17 +646,18 @@ public final class ContractTemplate {
     ManualClientDataView data = in.clientData();
     Boolean share = data == null ? null : data.marketingDataAuthorized();
     Boolean ads = data == null ? null : data.receiveAdsAuthorized();
-    if (share == null) missing.add("Autorización del cliente para ceder su información con fines mercadotécnicos (sí/no)");
-    if (ads == null) missing.add("Autorización del cliente para recibir publicidad (sí/no)");
+    // Si no se capturó, el cliente la marca a mano al firmar: no bloquea el contrato.
+    if (share == null) review.add("Autorización del cliente para ceder su información con fines mercadotécnicos (sí/no)");
+    if (ads == null) review.add("Autorización del cliente para recibir publicidad (sí/no)");
     blocks.add(
         Paragraph.of(
             b("Autorización para la utilización de información con fines mercadotécnicos o publicitarios.-"),
             t(" El cliente si ( "),
-            share == null ? Span.pending("sí/no") : b(share ? "X" : " "),
+            share == null ? t("   ") : b(share ? "X" : " "),
             t(" ) no ( "),
             share == null ? t(" ") : b(share ? " " : "X"),
             t(" ) acepta que la intermediaria ceda o transmita a terceros, con fines mercadotécnicos o publicitarios, la información proporcionada con motivo del presente contrato y si ( "),
-            ads == null ? Span.pending("sí/no") : b(ads ? "X" : " "),
+            ads == null ? t("   ") : b(ads ? "X" : " "),
             t(" ) no ( "),
             ads == null ? t(" ") : b(ads ? " " : "X"),
             t(" ) acepta que la intermediaria le envíe publicidad sobre bienes y servicios.")));
@@ -695,11 +696,11 @@ public final class ContractTemplate {
         Row.of(
             Cell.spans(List.of(b("Superficie de construcción"))),
             Cell.spans(List.of(land ? optionalArea(d == null ? null : d.builtAreaM2()) : area(d == null ? null : d.builtAreaM2(), "superficie de construcción", true)))));
-    rows.add(Row.of(Cell.spans(List.of(b("Número de recámaras"))), Cell.spans(List.of(count(d == null ? null : d.bedrooms(), "número de recámaras", !land)))));
-    rows.add(Row.of(Cell.spans(List.of(b("Número de baños"))), Cell.spans(List.of(count(d == null ? null : d.bathrooms(), "número de baños", !land)))));
+    rows.add(Row.of(Cell.spans(List.of(b("Número de recámaras"))), Cell.spans(List.of(reviewCount(d == null ? null : d.bedrooms(), "número de recámaras", !land)))));
+    rows.add(Row.of(Cell.spans(List.of(b("Número de baños"))), Cell.spans(List.of(reviewCount(d == null ? null : d.bathrooms(), "número de baños", !land)))));
     rows.add(Row.of(Cell.spans(List.of(b("Estacionamientos"))), Cell.spans(List.of(count(d == null ? null : d.parkingSpots(), "estacionamientos", false)))));
-    rows.add(Row.of(Cell.spans(List.of(b("Estado general de conservación"))), Cell.spans(List.of(value(d == null ? null : d.conservationStatus(), "estado general de conservación")))));
-    rows.add(Row.of(Cell.spans(List.of(b("Servicios con los que cuenta"))), Cell.spans(List.of(value(d == null ? null : d.availableServices(), "servicios con los que cuenta el inmueble")))));
+    rows.add(Row.of(Cell.spans(List.of(b("Estado general de conservación"))), Cell.spans(List.of(reviewValue(d == null ? null : d.conservationStatus(), "Anexo A: estado general de conservación")))));
+    rows.add(Row.of(Cell.spans(List.of(b("Servicios con los que cuenta"))), Cell.spans(List.of(reviewValue(d == null ? null : d.availableServices(), "Anexo A: servicios con los que cuenta el inmueble")))));
     rows.add(
         Row.of(
             Cell.spans(List.of(b("Características relevantes del inmueble"))),
@@ -838,6 +839,26 @@ public final class ContractTemplate {
       return Span.pending(missingDescription);
     }
     return b(value);
+  }
+
+  /** Dato secundario: si falta, queda una línea en blanco para llenarse a mano y se lista para revisión. */
+  private Span reviewValue(String value, String description) {
+    if (!notBlank(value)) {
+      review.add(capitalize(description));
+      return t("______________________________");
+    }
+    return b(value);
+  }
+
+  private Span reviewCount(Integer value, String description, boolean applies) {
+    if (value == null) {
+      if (applies) {
+        review.add("Anexo A: " + description);
+        return t("________");
+      }
+      return t("No aplica");
+    }
+    return b(String.valueOf(value));
   }
 
   private Span money(BigDecimal amount, String missingDescription) {

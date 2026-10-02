@@ -198,6 +198,64 @@ export const extractedFieldLabels: Record<string, string> = {
   instrumentDate: "Fecha del instrumento",
   companyType: "Tipo de sociedad",
   commerceRegistryPlace: "Registro Público de Comercio",
+  expirationDate: "Fecha de vencimiento",
+  paidPeriod: "Periodo pagado",
+  serviceNumber: "Número de servicio",
+  registryPlace: "Lugar del Registro Civil",
+  actNumber: "Número de acta",
+  legalRepresentativeFullName: "Representante legal",
+  appraisalDate: "Fecha del avalúo",
+  appraisedValue: "Valor del avalúo",
+  appraiserName: "Valuador",
+  permittedUse: "Uso de suelo",
+  issuingAuthority: "Autoridad que emite",
+  deceasedFullName: "Autor de la sucesión",
+  heirFullNames: "Herederos",
+  executorFullName: "Albacea",
+  courtOrNotary: "Juzgado o notaría",
+  caseNumber: "Número de expediente",
+  resolutionDate: "Fecha de resolución",
+  testatorFullName: "Testador",
+  debtorFullName: "Deudor",
+  creditorName: "Acreedor",
+  amount: "Monto",
+  isCancelled: "¿Cancelada?",
+  landlordFullName: "Arrendador",
+  tenantFullName: "Arrendatario",
+  rentAmount: "Renta",
+  startDate: "Fecha de inicio",
+  endDate: "Fecha de terminación",
+  personNames: "Personas",
+  addresses: "Domicilios",
+  dates: "Fechas",
+  referenceNumbers: "Números de referencia",
+  summary: "De qué trata",
+};
+
+/** Nombre legible de un dato leído: los extra traen su propia etiqueta ("extra.Sección electoral"). */
+export function extractedFieldLabel(fieldName: string): string {
+  if (fieldName.startsWith("extra.")) return fieldName.slice("extra.".length);
+  return extractedFieldLabels[fieldName] ?? fieldName;
+}
+
+export const pipelineStatusLabels: Record<string, string> = {
+  UPLOADED: "Subido",
+  PROCESSING: "Procesando",
+  EXTRACTION_COMPLETE: "Extracción completa",
+  EXTRACTION_PARTIAL: "Extracción parcial",
+  REQUIRES_REVIEW: "Requiere revisión",
+  ACCEPTED: "Aceptado",
+  ERROR: "Error",
+};
+
+export const pipelineStatusTone: Record<string, "neutral" | "info" | "warning" | "success" | "danger"> = {
+  UPLOADED: "info",
+  PROCESSING: "info",
+  EXTRACTION_COMPLETE: "success",
+  EXTRACTION_PARTIAL: "info",
+  REQUIRES_REVIEW: "warning",
+  ACCEPTED: "success",
+  ERROR: "danger",
 };
 
 export function label(map: Record<string, string>, value: string | null | undefined, fallback = "—"): string {

@@ -3,12 +3,14 @@
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import { SaveStatus } from "@/components/ui/SaveStatus";
 import { useToast } from "@/components/ui/Toast";
 import { getContractReadiness } from "@/lib/api/contracts";
 import { getClientData, getLegalDetails, updateClientData, updateLegalDetails } from "@/lib/api/expedientes";
 import { getExpedienteExtractedFields } from "@/lib/api/extraction";
 import type { ContractReadinessResponse, LegalDetails, ManualClientDataResponse } from "@/lib/api/types";
-import { clearDraft, readDraft, writeDraft } from "@/lib/drafts";
+import { DraftSync, type DraftSaveState } from "@/lib/draft-sync";
+import { internalDraftTransport, sessionDraftStore } from "@/lib/use-server-draft";
 import { errorText } from "@/lib/errors";
 import { buildDetectedData, legalValue, type Detected, type DetectedData, type LegalKey } from "@/lib/detected-data";
 import { useCan } from "@/lib/permissions";
@@ -52,44 +54,81 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
   const [saving, setSaving] = useState(false);
   const [detected, setDetected] = useState<DetectedData | null>(null);
   const ownerId = participants.find((p) => p.role === "OWNER")?.id ?? null;
-  // Cambios sin guardar: sobreviven a recargar la página (se descartan al guardar).
+  // Cambios sin guardar: se autoguardan como borrador en el servidor (y se
+  // respaldan localmente), así sobreviven a recargar, a cambiar de pestaña o a
+  // una caída de red. "Guardar" los confirma con su motivo y borra el borrador.
   const draftKey = `contract-data:${expediente.id}`;
   const savedSnapshot = useRef<string | null>(null);
+  const syncRef = useRef<DraftSync | null>(null);
+  const [draftStatus, setDraftStatus] = useState<DraftSaveState>("idle");
+  const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const load = useCallback(
-    (useDraft: boolean) => {
-      getExpedienteExtractedFields(expediente.id)
-        .then((obs) => setDetected(buildDetectedData(obs, ownerId)))
-        .catch(() => setDetected(null));
-      getContractReadiness(expediente.id).then(setReadiness).catch(() => undefined);
-      Promise.all([getClientData(expediente.id), getLegalDetails(expediente.id)])
-        .then(([serverData, serverLegal]) => {
-          savedSnapshot.current = JSON.stringify({ data: serverData, legal: serverLegal });
-          const draft = useDraft ? readDraft<ContractDataDraft>(draftKey) : null;
-          setData(draft?.data ?? serverData);
-          setLegal(draft?.legal ?? serverLegal);
-          if (draft) {
-            setReason(draft.reason);
-            showToast("Se recuperaron cambios que no habías guardado. Revísalos y guarda.");
-          }
-        })
-        .catch((err) => showToast(errorText(err)));
-    },
-    [expediente.id, ownerId, showToast, draftKey],
-  );
+  const loadSide = useCallback(() => {
+    getExpedienteExtractedFields(expediente.id)
+      .then((obs) => setDetected(buildDetectedData(obs, ownerId)))
+      .catch(() => setDetected(null));
+    getContractReadiness(expediente.id).then(setReadiness).catch(() => undefined);
+  }, [expediente.id, ownerId]);
 
   useEffect(() => {
-    load(true);
-  }, [load]);
+    let active = true;
+    const sync = new DraftSync(internalDraftTransport(draftKey), {
+      local: sessionDraftStore(draftKey),
+      onStateChange: (state, savedAt) => {
+        if (!active) return;
+        setDraftStatus(state);
+        setDraftSavedAt(savedAt);
+      },
+    });
+    syncRef.current = sync;
+    loadSide();
+    Promise.all([getClientData(expediente.id), getLegalDetails(expediente.id), sync.restore()])
+      .then(([serverData, serverLegal, payload]) => {
+        if (!active) return;
+        savedSnapshot.current = JSON.stringify({ data: serverData, legal: serverLegal });
+        let draft: ContractDataDraft | null = null;
+        try {
+          draft = payload ? (JSON.parse(payload) as ContractDataDraft) : null;
+        } catch {
+          draft = null;
+        }
+        const differs = draft && (JSON.stringify({ data: draft.data, legal: draft.legal }) !== savedSnapshot.current || draft.reason.trim());
+        setData(differs && draft ? draft.data : serverData);
+        setLegal(differs && draft ? draft.legal : serverLegal);
+        if (differs && draft) {
+          setReason(draft.reason);
+          showToast("Se recuperaron cambios que no habías guardado. Revísalos y guarda.");
+        }
+      })
+      .catch((err) => active && setLoadError(errorText(err)));
+    return () => {
+      active = false;
+      void sync.flush().finally(() => sync.dispose());
+    };
+  }, [draftKey, expediente.id, loadSide, showToast]);
 
+  // Cada cambio se autoguarda como borrador; si vuelve a quedar igual a lo guardado, el borrador se borra.
   useEffect(() => {
-    if (!data || !legal || savedSnapshot.current === null) return;
+    const sync = syncRef.current;
+    if (!sync || !data || !legal || savedSnapshot.current === null) return;
     if (JSON.stringify({ data, legal }) === savedSnapshot.current && !reason.trim()) {
-      clearDraft(draftKey);
+      if (sync.hasUnsavedChanges || sync.saveState !== "idle") void sync.clear();
     } else {
-      writeDraft(draftKey, { data, legal, reason } satisfies ContractDataDraft);
+      sync.schedule(JSON.stringify({ data, legal, reason } satisfies ContractDataDraft));
     }
-  }, [data, legal, reason, draftKey]);
+  }, [data, legal, reason]);
+
+  if (loadError && (!data || !legal)) {
+    return (
+      <p className="text-sm text-danger-text">
+        {loadError}{" "}
+        <button type="button" className="underline" onClick={() => window.location.reload()}>
+          Reintentar
+        </button>
+      </p>
+    );
+  }
 
   if (!data || !legal) return <p className="text-sm text-muted">Cargando…</p>;
 
@@ -158,9 +197,9 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
       showToast("Datos del contrato guardados.");
       // Lo guardado pasa a ser la referencia: así el efecto de borrador no lo vuelve a escribir.
       savedSnapshot.current = JSON.stringify({ data, legal });
-      clearDraft(draftKey);
+      await syncRef.current?.clear();
       setReason("");
-      load(false);
+      loadSide();
       await reload();
     } catch (err) {
       showToast(errorText(err));
@@ -419,6 +458,10 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
             <Button onClick={save} disabled={saving}>
               <Save className="h-4 w-4" aria-hidden /> {saving ? "Guardando…" : "Guardar datos del contrato"}
             </Button>
+          </div>
+          <div className="mt-2">
+            <SaveStatus status={draftStatus} lastSavedAt={draftSavedAt} />
+            {draftStatus === "saved" ? <span className="ml-1 text-xs text-muted">como borrador; presiona &quot;Guardar&quot; para aplicarlo al contrato.</span> : null}
           </div>
           <p className="mt-2 text-xs text-muted">Si ya existe un contrato sin firmar, al guardar cambios quedará sin efecto y habrá que generar una versión nueva.</p>
         </Card>

@@ -50,7 +50,24 @@ public class ExtractedFieldObservation {
   @Column(nullable = false)
   private Instant updatedAt;
 
+  /** Página del documento donde se leyó el dato (1 = primera); null si no se sabe. */
+  private Integer sourcePage;
+
   protected ExtractedFieldObservation() {}
+
+  public ExtractedFieldObservation(
+      UUID expedienteId,
+      UUID documentId,
+      UUID documentVersionId,
+      String fieldName,
+      String detectedValue,
+      FieldOrigin origin,
+      Double confidence,
+      Instant now,
+      Integer sourcePage) {
+    this(expedienteId, documentId, documentVersionId, fieldName, detectedValue, origin, confidence, now);
+    this.sourcePage = sourcePage;
+  }
 
   public ExtractedFieldObservation(
       UUID expedienteId,
@@ -122,5 +139,9 @@ public class ExtractedFieldObservation {
 
   public Instant getUpdatedAt() {
     return updatedAt;
+  }
+
+  public Integer getSourcePage() {
+    return sourcePage;
   }
 }

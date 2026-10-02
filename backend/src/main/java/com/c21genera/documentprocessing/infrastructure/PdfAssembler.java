@@ -1,5 +1,6 @@
 package com.c21genera.documentprocessing.infrastructure;
 
+import com.c21genera.shared.pdf.PdfFiles;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.List;
@@ -23,11 +24,11 @@ public class PdfAssembler {
   public record PageContent(byte[] content, String mimeType) {}
 
   public byte[] assemble(List<PageContent> pages) {
-    try (PDDocument document = new PDDocument()) {
+    try (PDDocument document = PdfFiles.create()) {
       PDFMergerUtility merger = new PDFMergerUtility();
       for (PageContent page : pages) {
         if ("application/pdf".equals(page.mimeType())) {
-          try (PDDocument source = org.apache.pdfbox.Loader.loadPDF(page.content())) {
+          try (PDDocument source = PdfFiles.open(page.content())) {
             merger.appendDocument(document, source);
           }
         } else {

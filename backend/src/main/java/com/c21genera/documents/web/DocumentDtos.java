@@ -29,7 +29,15 @@ public final class DocumentDtos {
       String aiDetectedKind,
       String aiObservations,
       Instant aiAssessedAt,
-      List<String> blockingIssues) {
+      List<String> blockingIssues,
+      /* Avisos que NO impiden aceptar (calidad mejorable, parece otro documento, IA sin respuesta). */
+      List<String> warnings,
+      String qualityLevel,
+      Integer aiPagesAnalyzed,
+      Integer aiPagesTotal,
+      Integer aiFieldsExpected,
+      Integer aiFieldsFound,
+      boolean aiCheckFailed) {
 
     static LatestVersionSummary from(DocumentVersion v) {
       if (v == null) {
@@ -48,7 +56,14 @@ public final class DocumentDtos {
           v.getAiDetectedKind(),
           v.getAiObservations(),
           v.getAiAssessedAt(),
-          v.blockingIssues());
+          v.blockingIssues(),
+          v.warnings(),
+          v.getQualityLevel(),
+          v.getAiPagesAnalyzed(),
+          v.getAiPagesTotal(),
+          v.getAiFieldsExpected(),
+          v.getAiFieldsFound(),
+          v.isAiCheckFailed());
     }
   }
 
@@ -67,7 +82,9 @@ public final class DocumentDtos {
       ReturnReasonCode lastReviewReasonCode,
       String lastReviewComment,
       Instant lastReviewedAt,
-      LatestVersionSummary latestVersion) {
+      LatestVersionSummary latestVersion,
+      /* UPLOADED, PROCESSING, EXTRACTION_COMPLETE, EXTRACTION_PARTIAL, REQUIRES_REVIEW, ACCEPTED o ERROR. */
+      String pipelineStatus) {
 
     public static DocumentResponse from(Document d, DocumentVersion latest) {
       return new DocumentResponse(
@@ -85,8 +102,40 @@ public final class DocumentDtos {
           d.getLastReviewReasonCode(),
           d.getLastReviewComment(),
           d.getLastReviewedAt(),
-          LatestVersionSummary.from(latest));
+          LatestVersionSummary.from(latest),
+          pipelineStatusOf(d, latest));
     }
+  }
+
+  /**
+   * Estado de punta a punta, en el orden en que lo vive el revisor. La
+   * extracción con IA corre en segundo plano: mientras no termina el estado es
+   * PROCESSING y la información se actualiza sola al terminar.
+   */
+  public static String pipelineStatusOf(Document d, DocumentVersion v) {
+    if (d.getStatus() == DocumentStatus.ACCEPTED) {
+      return "ACCEPTED";
+    }
+    if (v == null) {
+      return null;
+    }
+    return switch (v.getProcessingStatus()) {
+      case QUEUED -> "UPLOADED";
+      case PROCESSING -> "PROCESSING";
+      case FAILED -> "ERROR";
+      case QUALITY_FAILED -> "REQUIRES_REVIEW";
+      case PROCESSED -> {
+        if (v.getAiAssessedAt() == null && !v.isAiCheckFailed()) {
+          yield "PROCESSING";
+        }
+        if (!v.blockingIssues().isEmpty() || !v.warnings().isEmpty()) {
+          yield "REQUIRES_REVIEW";
+        }
+        Integer expected = v.getAiFieldsExpected();
+        Integer found = v.getAiFieldsFound();
+        yield expected != null && found != null && found < expected ? "EXTRACTION_PARTIAL" : "EXTRACTION_COMPLETE";
+      }
+    };
   }
 
   /**
@@ -111,6 +160,7 @@ public final class DocumentDtos {
     public static PublicDocumentResponse from(Document d, DocumentVersion latest) {
       boolean needsCorrection = d.getStatus() == DocumentStatus.RETURNED || d.getStatus() == DocumentStatus.REJECTED;
       boolean latestIsCurrent = latest != null && latest.getVersionNumber() == d.getCurrentVersionNumber();
+      // Al cliente solo se le pide volver a subir algo si de verdad no se pudo leer.
       String qualityIssue =
           latestIsCurrent
                   && (latest.getProcessingStatus() == ProcessingStatus.QUALITY_FAILED
@@ -120,6 +170,7 @@ public final class DocumentDtos {
               : null;
       boolean wrongDocument =
           latestIsCurrent && Boolean.FALSE.equals(latest.getAiTypeMatches()) && d.getStatus() != DocumentStatus.ACCEPTED;
+      // El cliente no espera a la IA: en cuanto el archivo se recibió y procesó, puede seguir.
       boolean processing =
           latestIsCurrent
               && (latest.getProcessingStatus() == ProcessingStatus.QUEUED || latest.getProcessingStatus() == ProcessingStatus.PROCESSING);

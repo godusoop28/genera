@@ -158,9 +158,33 @@ class ContractTemplateTest {
         .anyMatch(i -> i.startsWith("Número de la escritura"))
         .anyMatch(i -> i.startsWith("Estado civil de Juan Pérez"))
         .anyMatch(i -> i.startsWith("Fecha de firma del contrato"))
-        .anyMatch(i -> i.contains("mercadotécnicos"))
-        .anyMatch(i -> i.startsWith("Anexo A: superficie de terreno"));
+        .anyMatch(i -> i.startsWith("Anexo A: superficie de terreno"))
+        .noneMatch(i -> i.contains("mercadotécnicos"));
     assertThat(text(doc)).contains("[PENDIENTE: precio aproximado de mercado (precio autorizado)]");
+  }
+
+  @Test
+  void secondaryDataIsListedForReviewAndLeftBlankInsteadOfBlockingTheSignature() {
+    ExpedienteSummary s =
+        summary(
+            PersonType.FISICA, SignerCharacter.PROPIETARIO, AccreditationType.ESCRITURA_PUBLICA, false, PropertyCaseType.HOUSING,
+            List.of(new ParticipantView(UUID.randomUUID(), "OWNER", "Juan Pérez", 1, null, null, null, null, null, null, null, null, null, null, null, null)),
+            LegalDetails.empty());
+    ManualClientDataView empty =
+        new ManualClientDataView(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+
+    ContractDocument doc = ContractTemplate.build(input(s, empty), false);
+
+    // Autorizaciones de publicidad, Anexo A descriptivo, checklist II.g, correo y teléfono: a revisar, no indispensables.
+    assertThat(doc.reviewItems())
+        .anyMatch(i -> i.contains("mercadotécnicos"))
+        .anyMatch(i -> i.startsWith("Anexo A: número de recámaras"))
+        .anyMatch(i -> i.startsWith("Anexo A: estado general de conservación"))
+        .anyMatch(i -> i.startsWith("Declaración II.g"))
+        .anyMatch(i -> i.startsWith("Correo electrónico del cliente"));
+    assertThat(doc.missingItems())
+        .noneMatch(i -> i.contains("mercadotécnicos") || i.contains("recámaras") || i.startsWith("Declaración II.g") || i.startsWith("Correo"));
+    assertThat(text(doc)).doesNotContain("[PENDIENTE: sí/no]").contains("______");
   }
 
   @Test

@@ -2,6 +2,7 @@ package com.c21genera.extraction.web;
 
 import com.c21genera.extraction.application.DocumentFieldExtractionService.DocumentObservation;
 import com.c21genera.extraction.domain.DataConflict;
+import com.c21genera.extraction.domain.DocumentFieldSchemas;
 import com.c21genera.extraction.domain.ExtractedFieldObservation;
 import jakarta.validation.constraints.NotBlank;
 import java.time.Instant;
@@ -20,7 +21,10 @@ public final class ExtractionDtos {
       String confirmedValue,
       String origin,
       Double confidence,
-      Instant updatedAt) {
+      Instant updatedAt,
+      Integer sourcePage,
+      /* Dato útil fuera del esquema del tipo (fieldName empieza con "extra."). */
+      boolean extra) {
 
     public static ObservationResponse from(ExtractedFieldObservation o) {
       return new ObservationResponse(
@@ -32,7 +36,9 @@ public final class ExtractionDtos {
           o.getConfirmedValue(),
           o.getOrigin().name(),
           o.getConfidence(),
-          o.getUpdatedAt());
+          o.getUpdatedAt(),
+          o.getSourcePage(),
+          DocumentFieldSchemas.isExtra(o.getFieldName()));
     }
   }
 
@@ -74,7 +80,8 @@ public final class ExtractionDtos {
       String resolutionNote,
       UUID resolvedByUserId,
       Instant detectedAt,
-      Instant resolvedAt) {
+      Instant resolvedAt,
+      String severity) {
 
     public static ConflictResponse from(DataConflict c) {
       return new ConflictResponse(
@@ -86,7 +93,8 @@ public final class ExtractionDtos {
           c.getResolutionNote(),
           c.getResolvedByUserId(),
           c.getDetectedAt(),
-          c.getResolvedAt());
+          c.getResolvedAt(),
+          c.getSeverity());
     }
   }
 

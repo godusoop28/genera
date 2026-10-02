@@ -44,13 +44,33 @@ public class DataConflict {
   @Column(nullable = false)
   private boolean resolvedAutomatically;
 
+  /** INFO, WARNING o CRITICAL (ver {@link Severity}). */
+  @Column(nullable = false, length = 16)
+  private String severity = Severity.WARNING.name();
+
+  /**
+   * INFO: diferencia de forma, probablemente el mismo dato. WARNING: posible
+   * inconsistencia que conviene revisar. CRITICAL: evidencia fuerte de otra
+   * persona u otro inmueble; es la única que bloquea el envío a firma.
+   */
+  public enum Severity {
+    INFO,
+    WARNING,
+    CRITICAL
+  }
+
   protected DataConflict() {}
 
   public DataConflict(UUID expedienteId, String fieldName, String description, Instant detectedAt) {
+    this(expedienteId, fieldName, description, Severity.WARNING, detectedAt);
+  }
+
+  public DataConflict(UUID expedienteId, String fieldName, String description, Severity severity, Instant detectedAt) {
     this.id = UUID.randomUUID();
     this.expedienteId = expedienteId;
     this.fieldName = fieldName;
     this.description = description;
+    this.severity = severity.name();
     this.detectedAt = detectedAt;
     this.resolved = false;
   }
@@ -72,6 +92,19 @@ public class DataConflict {
 
   public void refreshDescription(String description) {
     this.description = description;
+  }
+
+  public void refresh(String description, Severity severity) {
+    this.description = description;
+    this.severity = severity.name();
+  }
+
+  public String getSeverity() {
+    return severity;
+  }
+
+  public boolean isCritical() {
+    return Severity.CRITICAL.name().equals(severity);
   }
 
   public boolean isResolvedAutomatically() {

@@ -8,6 +8,7 @@ import { SignatureMock } from "@/components/privacy/SignatureMock";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
+import { SaveStatus } from "@/components/ui/SaveStatus";
 import { ORG_OFFICE_ADDRESS, ORG_OFFICE_MAPS_URL } from "@/data/organization";
 import { PRIVACY_CONSENT_TEXT, PRIVACY_SECONDARY_OPT_OUT_TEXT } from "@/data/privacy-reference";
 import { ApiError } from "@/lib/api/client";
@@ -30,10 +31,13 @@ import type {
   PublicParticipantResponse,
 } from "@/lib/api/types";
 import { documentTypeLabel } from "@/lib/document-type-labels";
-import { clearDraft, readDraft, writeDraft } from "@/lib/drafts";
+import { readDraft, writeDraft } from "@/lib/drafts";
+import { DraftSync, type DraftSaveState } from "@/lib/draft-sync";
+import { ACCEPTED_FILE_TYPES, UploadValidationError } from "@/lib/upload-limits";
+import { publicDraftTransport, sessionDraftStore } from "@/lib/use-server-draft";
 import { civilStatusLabels, label, maritalRegimeLabels, returnReasonLabels } from "@/lib/labels";
 import { AlertTriangle, CheckCircle2, HelpCircle, Loader2, MapPin, ShieldCheck, Upload } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const steps = ["Confirmar", "Aviso de privacidad", "Tus datos", "Documentos", "Listo"];
 
@@ -73,16 +77,25 @@ export function PublicPortal({ token }: { token: string }) {
   const [step, setStep] = useState(savedStep?.step ?? 1);
   const [maxReached, setMaxReached] = useState(savedStep ? Math.max(savedStep.step, savedStep.maxReached) : 1);
   const [invalid, setInvalid] = useState(false);
+  const [connectionError, setConnectionError] = useState(false);
 
   const loadExpediente = useCallback(
     () =>
       getPublicExpediente(token)
         .then((data) => {
           setExpediente(data);
+          setConnectionError(false);
           return data;
         })
-        .catch(() => {
-          setInvalid(true);
+        .catch((err) => {
+          // Solo una liga inválida o vencida se trata como tal. Un error de red o
+          // del servidor (p. ej. mientras despierta) se reintenta solo, sin
+          // sacar al cliente de donde iba ni perder lo que capturó.
+          if (err instanceof ApiError && [401, 403, 404, 410].includes(err.status)) {
+            setInvalid(true);
+          } else {
+            setConnectionError(true);
+          }
           return null;
         }),
     [token],
@@ -92,11 +105,35 @@ export function PublicPortal({ token }: { token: string }) {
     loadExpediente();
   }, [loadExpediente]);
 
+  useEffect(() => {
+    if (!connectionError) return;
+    const timer = setTimeout(() => void loadExpediente(), 5000);
+    return () => clearTimeout(timer);
+  }, [connectionError, loadExpediente]);
+
+  // El paso también se guarda en el servidor: al abrir la liga en otro equipo se continúa donde se iba.
+  const stepTransport = useMemo(() => publicDraftTransport(token, "portal-step"), [token]);
+  useEffect(() => {
+    if (savedStep) return;
+    stepTransport
+      .load()
+      .then((payload) => {
+        if (!payload) return;
+        const saved = JSON.parse(payload) as { step: number; maxReached: number };
+        if (saved.step >= 1 && saved.step <= steps.length) {
+          setStep(saved.step);
+          setMaxReached(Math.max(saved.step, saved.maxReached));
+        }
+      })
+      .catch(() => undefined);
+  }, [savedStep, stepTransport]);
+
   const goTo = (next: number) => {
     const reached = Math.max(maxReached, next);
     setStep(next);
     setMaxReached(reached);
     writeDraft(stepKey, { step: next, maxReached: reached });
+    void stepTransport.save(JSON.stringify({ step: next, maxReached: reached })).catch(() => undefined);
   };
 
   if (invalid) {
@@ -113,7 +150,14 @@ export function PublicPortal({ token }: { token: string }) {
   if (!expediente) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-app-bg px-4 text-center">
-        <p className="text-sm text-muted">Cargando…</p>
+        <div>
+          <p className="text-sm text-muted">{connectionError ? "No pudimos conectarnos. Reintentando en unos segundos…" : "Cargando…"}</p>
+          {connectionError ? (
+            <Button variant="secondary" size="sm" className="mt-3" onClick={() => void loadExpediente()}>
+              Reintentar ahora
+            </Button>
+          ) : null}
+        </div>
       </div>
     );
   }
@@ -141,6 +185,12 @@ export function PublicPortal({ token }: { token: string }) {
           <Badge tone="neutral">Recepción de documentos</Badge>
         </div>
         <p className="max-w-2xl text-sm text-muted">No necesitas crear una cuenta. Esta liga es tu acceso personal: no la compartas.</p>
+
+        {connectionError ? (
+          <p className="mt-4 rounded-lg bg-warning-bg px-3 py-2 text-sm text-warning-text">
+            Se perdió la conexión por un momento. Lo que capturaste se conserva; reintentando…
+          </p>
+        ) : null}
 
         <div className="mt-8 rounded-2xl border border-border bg-card p-5">
           <Stepper steps={steps} currentStep={step} maxReachedStep={maxReached} onStepClick={goTo} />
@@ -283,29 +333,61 @@ function ClientDataStep({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Lo capturado se conserva si el cliente recarga la página antes de continuar.
+  // Lo capturado se autoguarda en el servidor (borrador de la liga): sobrevive
+  // a recargar la página, a cerrar el navegador o a cambiar de celular.
   const draftKey = `portal:${token}:data`;
+  const syncRef = useRef<DraftSync | null>(null);
+  const [draftStatus, setDraftStatus] = useState<DraftSaveState>("idle");
+  const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   useEffect(() => {
-    Promise.all([getClientData(token), listPublicParticipants(token)])
-      .then(([d, p]) => {
-        const draft = readDraft<ClientDataDraft>(draftKey);
+    let active = true;
+    const sync = new DraftSync(publicDraftTransport(token, "client-data"), {
+      local: sessionDraftStore(draftKey),
+      onStateChange: (state, savedAt) => {
+        if (!active) return;
+        setDraftStatus(state);
+        setDraftSavedAt(savedAt);
+      },
+    });
+    syncRef.current = sync;
+    Promise.all([getClientData(token), listPublicParticipants(token), sync.restore()])
+      .then(([d, p, payload]) => {
+        if (!active) return;
+        let draft: ClientDataDraft | null = null;
+        try {
+          draft = payload ? (JSON.parse(payload) as ClientDataDraft) : null;
+        } catch {
+          draft = null;
+        }
         setEmail(draft?.email ?? d.email ?? "");
         setPhone(draft?.phone ?? d.phone ?? "");
         setParticipants(p.map((participant) => ({ ...participant, ...(draft?.civil?.[participant.id] ?? {}) })));
+        setError(null);
         setLoaded(true);
       })
-      .catch(() => setError("No se pudieron cargar tus datos. Recarga la página."));
-  }, [token, draftKey]);
+      .catch(() => {
+        if (!active) return;
+        setError("No pudimos cargar tus datos; reintentando…");
+        setTimeout(() => active && setLoadAttempt((n) => n + 1), 4000);
+      });
+    return () => {
+      active = false;
+      void sync.flush().finally(() => sync.dispose());
+    };
+  }, [token, draftKey, loadAttempt]);
 
   useEffect(() => {
     if (!loaded) return;
-    writeDraft(draftKey, {
-      email,
-      phone,
-      civil: Object.fromEntries(participants.map((p) => [p.id, { civilStatus: p.civilStatus, maritalRegime: p.maritalRegime }])),
-    } satisfies ClientDataDraft);
-  }, [loaded, draftKey, email, phone, participants]);
+    syncRef.current?.schedule(
+      JSON.stringify({
+        email,
+        phone,
+        civil: Object.fromEntries(participants.map((p) => [p.id, { civilStatus: p.civilStatus, maritalRegime: p.maritalRegime }])),
+      } satisfies ClientDataDraft),
+    );
+  }, [loaded, email, phone, participants]);
 
   const setParticipant = (id: string, patch: Partial<PublicParticipantResponse>) =>
     setParticipants((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
@@ -322,7 +404,7 @@ function ClientDataStep({
           await declareCivilStatus(token, p.id, p.civilStatus, p.civilStatus === "CASADO" ? p.maritalRegime : null);
         }
       }
-      clearDraft(draftKey);
+      await syncRef.current?.clear();
       onContinue();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No se pudo guardar tu información. Intenta de nuevo.");
@@ -402,7 +484,8 @@ function ClientDataStep({
           ) : null}
 
           {error ? <p className="text-sm text-danger-text">{error}</p> : null}
-          <div className="flex justify-end">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <SaveStatus status={draftStatus} lastSavedAt={draftSavedAt} />
             <Button size="lg" disabled={!email.trim() || !phone.trim() || civilStatusMissing || submitting} onClick={handleContinue}>
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
               Continuar
@@ -443,9 +526,8 @@ function DocumentsStep({
 
   const names = Object.fromEntries(participants.map((p) => [p.id, p.displayName]));
   const required = (documents ?? []).filter((d) => d.required);
-  const toFix = (documents ?? []).filter(
-    (d) => d.status === "RETURNED" || d.status === "REJECTED" || d.qualityIssue || d.looksLikeWrongDocument,
-  );
+  // Solo se le pide corregir al cliente lo que el equipo devolvió o lo que de verdad no se pudo leer.
+  const toFix = (documents ?? []).filter((d) => d.status === "RETURNED" || d.status === "REJECTED" || d.qualityIssue);
   const allRequiredUploaded = documents !== null && required.every((d) => d.status !== "PENDING");
   const canSubmit = status === "WAITING_DOCUMENTS";
 
@@ -477,7 +559,7 @@ function DocumentsStep({
       <Card>
         <CardHeader
           title="Documentos"
-          description="Sube una foto clara (vertical, con buena luz, el documento completo y sin reflejos) o el PDF de cada documento. Puedes subir varios archivos si tiene varias páginas."
+          description="Sube una foto (vertical u horizontal, que se lea) o el PDF de cada documento. Puedes subir varios archivos si tiene varias páginas. Fotos del iPhone (HEIC) también funcionan."
         />
         {documents === null ? (
           <p className="text-sm text-muted">Cargando…</p>
@@ -561,26 +643,33 @@ function PublicDocumentRow({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [justUploaded, setJustUploaded] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
 
   const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     setUploading(true);
     setError(null);
+    setProgress(null);
     try {
-      await uploadPublicDocumentVersion(token, doc.id, Array.from(files));
+      await uploadPublicDocumentVersion(token, doc.id, Array.from(files), (p) => setProgress(p.percent));
       setJustUploaded(true);
       onUploaded();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No se pudo subir el archivo. Revisa tu conexión e intenta de nuevo.");
+      setError(
+        err instanceof ApiError || err instanceof UploadValidationError
+          ? err.message
+          : "No se pudo subir el archivo. Revisa tu conexión e intenta de nuevo.",
+      );
     } finally {
       setUploading(false);
+      setProgress(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
   const status = clientDocStatus[doc.status];
-  const needsFix = doc.status === "RETURNED" || doc.status === "REJECTED" || Boolean(doc.qualityIssue) || doc.looksLikeWrongDocument;
+  const needsFix = doc.status === "RETURNED" || doc.status === "REJECTED" || Boolean(doc.qualityIssue);
   const canUpload = doc.status !== "ACCEPTED" && doc.status !== "NOT_APPLICABLE";
 
   return (
@@ -599,11 +688,11 @@ function PublicDocumentRow({
           ) : (
             <Badge tone={status.tone}>{status.text}</Badge>
           )}
-          <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,application/pdf" multiple className="hidden" onChange={handleFileSelected} />
+          <input ref={fileInputRef} type="file" accept={ACCEPTED_FILE_TYPES} multiple className="hidden" onChange={handleFileSelected} />
           {canUpload ? (
             <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
               {uploading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4" aria-hidden />}
-              {doc.currentVersionNumber > 0 ? "Subir de nuevo" : "Subir"}
+              {uploading ? (progress !== null && progress < 100 ? `Subiendo ${progress}%` : "Preparando…") : doc.currentVersionNumber > 0 ? "Subir de nuevo" : "Subir"}
             </Button>
           ) : null}
         </div>
@@ -619,14 +708,19 @@ function PublicDocumentRow({
           <strong>El archivo no se pudo leer:</strong> {doc.qualityIssue}
         </p>
       ) : null}
-      {doc.looksLikeWrongDocument ? (
-        <p className="mt-2 rounded-md bg-warning-bg px-3 py-2 text-sm text-warning-text">
-          El archivo que subiste no parece ser tu {documentTypeLabel(doc.type)}. Revisa que sea el documento correcto y súbelo de nuevo.
+      {uploading && progress !== null ? (
+        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-app-bg" aria-hidden>
+          <div className="h-full bg-gold transition-all" style={{ width: `${progress}%` }} />
+        </div>
+      ) : null}
+      {doc.looksLikeWrongDocument && !doc.qualityIssue && doc.status !== "RETURNED" && doc.status !== "REJECTED" ? (
+        <p className="mt-2 rounded-md bg-app-bg px-3 py-2 text-xs text-muted">
+          Recibimos tu archivo. Nuestro equipo confirmará que sea tu {documentTypeLabel(doc.type)}; si hiciera falta otro, te avisaremos aquí.
         </p>
       ) : null}
       {justUploaded && !error && !doc.qualityIssue ? (
         <p className="mt-2 flex items-center gap-1.5 text-xs text-success-text">
-          <CheckCircle2 className="h-3.5 w-3.5" aria-hidden /> Archivo recibido.
+          <CheckCircle2 className="h-3.5 w-3.5" aria-hidden /> Archivo recibido. La verificación sigue en segundo plano: puedes continuar con los demás documentos.
         </p>
       ) : null}
       {error ? <p className="mt-2 text-sm text-danger-text">{error}</p> : null}

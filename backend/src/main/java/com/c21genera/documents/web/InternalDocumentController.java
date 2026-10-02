@@ -158,6 +158,46 @@ public class InternalDocumentController {
     return toResponse(documentService.requestAgain(documentId, user.toActor()));
   }
 
+  public record ReprocessRequest(Boolean full) {}
+
+  public record ReprocessAllResponse(int reprocessed) {}
+
+  public record MoveRequest(UUID targetDocumentId) {}
+
+  /** "Reprocesar con IA" sin que el cliente vuelva a subir el archivo. */
+  @PostMapping("/api/v1/internal/documents/{documentId}/reprocess")
+  @PreAuthorize("hasAnyAuthority('DOCUMENT_ACCEPT', 'EXTRACTED_DATA_EDIT', 'DOCUMENT_UPLOAD')")
+  @ResponseStatus(HttpStatus.ACCEPTED)
+  public DocumentResponse reprocess(
+      @PathVariable UUID documentId, @RequestBody(required = false) ReprocessRequest request, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = CurrentUser.from(jwt);
+    requireDocument(documentId, jwt);
+    documentService.reprocess(documentId, request != null && Boolean.TRUE.equals(request.full()), user.toActor());
+    return toResponse(documentService.get(documentId));
+  }
+
+  /** Reprocesa todos los archivos del expediente (útil tras cambiar las reglas de recepción). */
+  @PostMapping("/api/v1/internal/expedientes/{expedienteId}/documents/reprocess")
+  @PreAuthorize("hasAnyAuthority('DOCUMENT_ACCEPT', 'EXTRACTED_DATA_EDIT', 'DOCUMENT_UPLOAD')")
+  @ResponseStatus(HttpStatus.ACCEPTED)
+  public ReprocessAllResponse reprocessAll(@PathVariable UUID expedienteId, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = requireExpediente(expedienteId, jwt);
+    return new ReprocessAllResponse(documentService.reprocessAll(expedienteId, user.toActor()));
+  }
+
+  /** "Cambiar tipo de documento": mueve el archivo vigente a otro requisito del expediente. */
+  @PostMapping("/api/v1/internal/documents/{documentId}/move")
+  @PreAuthorize("hasAnyAuthority('DOCUMENT_UPLOAD', 'DOCUMENT_ACCEPT')")
+  public DocumentResponse move(@PathVariable UUID documentId, @RequestBody MoveRequest request, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = CurrentUser.from(jwt);
+    requireDocument(documentId, jwt);
+    if (request == null || request.targetDocumentId() == null) {
+      throw new com.c21genera.shared.domain.UnprocessableException("TARGET_REQUIRED", "Elige a qué documento corresponde el archivo.");
+    }
+    requireDocument(request.targetDocumentId(), jwt);
+    return toResponse(documentService.moveCurrentFile(documentId, request.targetDocumentId(), user.toActor()));
+  }
+
   @PostMapping("/api/v1/internal/expedientes/{expedienteId}/reception/sign")
   @PreAuthorize("hasAuthority('RECEPTION_SIGN')")
   public void signReception(@PathVariable UUID expedienteId, @AuthenticationPrincipal Jwt jwt) {
