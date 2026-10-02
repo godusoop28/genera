@@ -30,7 +30,9 @@ EXPOSE 8080
 # Heap al 40% (~205 MB) de los 512 MB de Render: medido en producción (/actuator/info), el proceso ya usa
 # ~235 MB fuera del heap (metaspace, code cache, hilos, nativa). Con 70% o 55% el heap podía crecer hasta
 # superar el límite del contenedor y Render lo reiniciaba (502) en vez de lanzar un OutOfMemoryError.
+# TieredStopAtLevel=1: solo el compilador C1; C2 usaba decenas de MB de memoria nativa al compilar código
+# nuevo (p. ej. el primer render de un PDF grande) y llevaba el proceso por encima del límite.
 # glibc crea un arena de malloc por hilo y infla la memoria nativa del JVM en contenedores chicos.
 ENV MALLOC_ARENA_MAX=2
-ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=40 -XX:+UseSerialGC -Xss512k -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=48m"
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=40 -XX:+UseSerialGC -Xss512k -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=48m -XX:TieredStopAtLevel=1"
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

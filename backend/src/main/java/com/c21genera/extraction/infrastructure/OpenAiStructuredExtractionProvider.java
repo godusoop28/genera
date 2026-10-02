@@ -184,7 +184,11 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       content.add(text(userPrompt(type, wanted, fieldNames, pages, plan.pagesTotal(), i > 0)));
       List<Map<String, Object>> pageImages = new ArrayList<>();
       for (int page : pages) {
-        BufferedImage rendered = fitForModel(enlargeSmall(cropToContent(renderImage(renderer, page, dpi))));
+        // Con varias páginas por lote se renderiza directo al tamaño que usa el modelo: renderizar a 220 DPI y
+        // luego reducir duplicaba la memoria de cada página (E2E 02/10). Con 1-2 páginas (una credencial) se
+        // conserva la resolución alta: el recorte al contenido la necesita para los caracteres chicos.
+        int pageDpi = pages.size() > 2 ? Math.min(dpi, dpiForModel(document, page)) : dpi;
+        BufferedImage rendered = fitForModel(enlargeSmall(cropToContent(renderImage(renderer, page, pageDpi))));
         if (textLooksVertical(rendered)) {
           // Documento acostado (p. ej. credencial fotografiada con el celular vertical): se mandan solo las
           // dos versiones giradas, una de ellas derecha. Con la original de lado también, la IA mezclaba
@@ -477,6 +481,13 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
 
   /** OpenAI reduce toda imagen a 2048 px de lado mayor: más resolución solo gasta memoria (E2E 02/10, 502 por memoria). */
   static final int MODEL_MAX_SIDE = 2048;
+
+  /** DPI con el que el lado mayor de la página queda en {@link #MODEL_MAX_SIDE} px. */
+  private static int dpiForModel(PDDocument document, int page) {
+    var box = document.getPage(page - 1).getCropBox();
+    float longSidePt = Math.max(box.getWidth(), box.getHeight());
+    return longSidePt <= 0 ? LONG_DOCUMENT_DPI : Math.max(72, (int) (MODEL_MAX_SIDE * 72 / longSidePt));
+  }
 
   static BufferedImage fitForModel(BufferedImage image) {
     int longSide = Math.max(image.getWidth(), image.getHeight());
