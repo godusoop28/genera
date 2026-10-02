@@ -102,7 +102,7 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       - Nunca inventes un valor que no esté visible en el documento.
 
       Formato de los valores: superficies solo como número (sin "m2"); fechas como AAAA-MM-DD; números de \
-      escritura, notaría y folio tal como aparecen; nombres completos como aparecen.
+      escritura, notaría y folio tal como aparecen; nombres completos como aparecen, respetando letras y       acentos exactamente como están impresos (no agregues ni quites acentos).
 
       Responde ÚNICAMENTE con un JSON válido, sin markdown, con la forma:
       {"documentCheck": {"detectedDocumentKind": string, "matchesExpectedType": boolean, "legible": boolean, \
@@ -283,6 +283,19 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       IDENTIFIERS.stream().filter(fieldNames::contains).forEach(doubtful::add);
     }
     boolean illegible = Boolean.FALSE.equals(consolidator.legible());
+    // La IA marcó con "?" caracteres que no distinguió: el documento tiene partes ilegibles aunque lo
+    // haya considerado legible. Se trata igual que uno ilegible (E2E 02/10: la INE borrosa trajo la clave
+    // con "?" y, en la misma lectura, un apellido inventado con confianza 0.84).
+    boolean unreadableCharacters = current.values().stream().anyMatch(f -> f.value() != null && f.value().contains("?"));
+    boolean hardDocument = illegible || unreadableCharacters;
+    if (hardDocument) {
+      for (String key : List.of("fullName", "birthDate")) {
+        if (fieldNames.contains(key) && current.containsKey(key)) {
+          doubtful.add(key);
+        }
+      }
+      IDENTIFIERS.stream().filter(fieldNames::contains).forEach(doubtful::add);
+    }
     boolean fewFields = consolidator.foundOf(fieldNames) * 2 < fieldNames.size();
     if (!illegible && !fewFields && doubtful.isEmpty()) {
       return;
@@ -299,7 +312,7 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       readings.put(field, list);
     }
 
-    if (illegible || fewFields || doubtful.contains("birthDate")) {
+    if (hardDocument || fewFields || doubtful.contains("birthDate")) {
       ExtractionResult second = callQuietly(type, withPrompt(enhancedPrompt(type, fieldNames, pages, pagesTotal), enhanced));
       if (second != null) {
         for (FieldResult f : second.fields()) {
@@ -349,8 +362,8 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
                     : ": las lecturas no coinciden (" + String.join(" / ", distinct) + ")"));
       }
     }
-    if (illegible) {
-      // La primera lectura dijo "ilegible": aunque la versión mejorada se haya leído, el documento sigue
+    if (hardDocument) {
+      // La primera lectura dijo "ilegible" (o marcó caracteres que no distinguió): aunque la versión mejorada se haya leído, el documento sigue
       // marcado como difícil (queda en revisión) y ningún dato pasa de "revisar". Dos lecturas de los mismos
       // píxeles borrosos se equivocan igual (E2E 02/10: "1985-02-14" en vez de 1985-03-14 en ambas), así
       // que un consenso no basta para darlo por bueno.
@@ -360,7 +373,7 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
         }
       }
     }
-    if (illegible || unresolved) {
+    if (hardDocument || unresolved) {
       consolidator.addWarning(
           "Lectura difícil: además del original se leyó una versión mejorada (enderezada, con más contraste y ampliada); revisa los datos contra el archivo");
     }

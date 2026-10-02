@@ -357,6 +357,27 @@ class OpenAiExtractionStrategyTest {
   }
 
   @Test
+  void unreadableCharactersMakeEveryKeyFieldNeedAgreementAndReview() throws Exception {
+    // E2E 02/10: INE borrosa -> clave con "?" y, en la misma lectura, un apellido inventado con 0.84.
+    var answers = new java.util.concurrent.atomic.AtomicInteger();
+    String[] names = {"CARLOS EDUARDO ESCORQUIZ CALDERON", "CARLOS EDUARDO RODRIGUEZ CALDERON", "CARLOS EDUARDO RODRIGUEZ CALDERON"};
+    var provider =
+        provider(
+            body -> {
+              int n = Math.min(answers.getAndIncrement(), names.length - 1);
+              return new Object[] {200, json("credencial INE", true, String.join(",",
+                  field("fullName", names[n], 0.84, 1),
+                  field("electorKey", "E?C?85031417?00", 0.24, 1)), "", "")};
+            },
+            0);
+
+    ExtractionResult result = provider.extract(DocumentTypeCode.INE, pdf(1, null), List.of("fullName", "electorKey"));
+
+    assertThat(find(result, "fullName").value()).isEqualTo("CARLOS EDUARDO RODRIGUEZ CALDERON");
+    assertThat(result.fields()).allSatisfy(f -> assertThat(f.confidence()).isLessThanOrEqualTo(0.7));
+  }
+
+  @Test
   void aCoherentReadingIsNotProcessedAgain() throws Exception {
     var provider =
         provider(
