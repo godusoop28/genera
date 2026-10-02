@@ -185,6 +185,46 @@ class DocumentConsistencyCheckerTest {
   }
 
   @Test
+  void aPowerOfAttorneyFromAnotherPersonIsCritical() {
+    UUID company = UUID.randomUUID();
+    UUID sofia = UUID.randomUUID();
+    DeclaredData moral =
+        new DeclaredData(
+            List.of(
+                new DeclaredParticipant(company, true, "INMUEBLES DEMO DEL SUR, S.A. DE C.V.", "IDS260101AA1", null, false),
+                new DeclaredParticipant(sofia, false, "SOFIA EJEMPLO RIVERA", null, null, true)),
+            null, null, null);
+
+    List<Finding> findings =
+        DocumentConsistencyChecker.check(
+            List.of(
+                doc(DocumentTypeCode.POWER_OF_ATTORNEY, null, Map.of("grantorFullName", "CARLOS EDUARDO RODRIGUEZ CALDERON", "attorneyFullName", "DANIELA TORRES VEGA")),
+                doc(DocumentTypeCode.INCORPORATION_DEED, null, Map.of("companyName", "INMUEBLES DEMO DEL SUR, S.A. DE C.V.", "legalRepresentativeFullName", "SOFIA EJEMPLO RIVERA"))),
+            moral);
+
+    assertThat(findings).extracting(Finding::key).containsExactlyInAnyOrder("poa-grantor", "poa-attorney");
+    assertThat(findings).allMatch(f -> f.severity() == DataConflict.Severity.CRITICAL);
+  }
+
+  @Test
+  void theRightPowerOfAttorneyRaisesNothing() {
+    UUID daniela = UUID.randomUUID();
+    DeclaredData represented =
+        new DeclaredData(
+            List.of(
+                new DeclaredParticipant(JUAN, true, "CARLOS EDUARDO RODRIGUEZ CALDERON", null, null, false),
+                new DeclaredParticipant(daniela, false, "DANIELA TORRES VEGA", null, null, true)),
+            null, null, null);
+
+    List<Finding> findings =
+        DocumentConsistencyChecker.check(
+            List.of(doc(DocumentTypeCode.POWER_OF_ATTORNEY, null, Map.of("grantorFullName", "CARLOS EDUARDO RODRIGUEZ CALDERON", "attorneyFullName", "DANIELA TORRES VEGA"))),
+            represented);
+
+    assertThat(findings).isEmpty();
+  }
+
+  @Test
   void numbersAreParsedFromFreeText() {
     assertThat(DocumentConsistencyChecker.parseNumber("1,250.50 m²")).isEqualByComparingTo("1250.50");
     assertThat(DocumentConsistencyChecker.parseNumber("sin dato")).isNull();

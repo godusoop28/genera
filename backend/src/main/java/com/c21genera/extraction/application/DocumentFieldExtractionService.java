@@ -308,7 +308,10 @@ public class DocumentFieldExtractionService implements ExtractionApi {
     DeclaredData declared =
         new DeclaredData(
             summary.participants().stream()
-                .map(p -> new DeclaredParticipant(p.id(), p.isOwner(), p.fullName(), p.rfc(), p.curp()))
+                .map(
+                    p ->
+                        new DeclaredParticipant(
+                            p.id(), p.isOwner(), p.fullName(), p.rfc(), p.curp(), "ATTORNEY".equals(p.role()) || "LEGAL_REPRESENTATIVE".equals(p.role())))
                 .toList(),
             summary.propertyAddress(),
             manual.landAreaM2(),

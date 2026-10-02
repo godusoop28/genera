@@ -64,7 +64,13 @@ public final class DocumentConsistencyChecker {
     }
   }
 
-  public record DeclaredParticipant(UUID id, boolean owner, String fullName, String rfc, String curp) {}
+  /** representative: firma por el titular (apoderado o representante legal). */
+  public record DeclaredParticipant(UUID id, boolean owner, String fullName, String rfc, String curp, boolean representative) {
+
+    public DeclaredParticipant(UUID id, boolean owner, String fullName, String rfc, String curp) {
+      this(id, owner, fullName, rfc, curp, false);
+    }
+  }
 
   public record DeclaredData(List<DeclaredParticipant> participants, String propertyAddress, BigDecimal landArea, BigDecimal builtArea) {}
 
@@ -93,6 +99,7 @@ public final class DocumentConsistencyChecker {
     List<Finding> findings = new ArrayList<>();
     checkIdentities(documents, declared, findings);
     checkOwners(documents, declared, findings);
+    checkRepresentation(documents, declared, findings);
     checkAddresses(documents, declared, findings);
     checkSameValue(documents, "cadastral-key", "Clave catastral", "cadastralKey", Set.of(DocumentTypeCode.PROPERTY_TAX, DocumentTypeCode.CADASTRAL_PLAN), findings);
     checkSameValue(
@@ -195,6 +202,62 @@ public final class DocumentConsistencyChecker {
                 "Posible inconsistencia: en %s el propietario aparece como \"%s\"; no se encontró a: %s."
                     .formatted(label, ownersText, String.join(", ", missing)),
                 noneFound ? DataConflict.Severity.CRITICAL : DataConflict.Severity.WARNING));
+      }
+    }
+  }
+
+  /**
+   * E2E 02/10: a una persona moral representada por Sofía se le cargó el poder
+   * que Carlos otorgó a Daniela y no se advertía nada; el contrato habría citado
+   * el poder de otra persona. El poder debe otorgarlo un propietario y a favor
+   * de quien firma; el acta constitutiva debe ser de la empresa propietaria.
+   */
+  private static void checkRepresentation(List<DocumentFacts> documents, DeclaredData declared, List<Finding> findings) {
+    List<DeclaredParticipant> owners = declared.participants().stream().filter(DeclaredParticipant::owner).toList();
+    List<DeclaredParticipant> representatives = declared.participants().stream().filter(DeclaredParticipant::representative).toList();
+    for (DocumentFacts doc : documents) {
+      if (doc.type() == DocumentTypeCode.POWER_OF_ATTORNEY) {
+        String grantor = doc.get("grantorFullName");
+        if (grantor != null && !owners.isEmpty() && owners.stream().noneMatch(o -> namesMatch(o.fullName(), grantor) || nameContainedIn(o.fullName(), grantor))) {
+          findings.add(
+              new Finding(
+                  "poa-grantor",
+                  "Posible inconsistencia: el poder lo otorga \"%s\", que no es ninguno de los propietarios registrados (%s): podría ser el poder de otra persona."
+                      .formatted(grantor, String.join(", ", owners.stream().map(DeclaredParticipant::fullName).toList())),
+                  DataConflict.Severity.CRITICAL));
+        }
+        String attorney = doc.get("attorneyFullName");
+        if (attorney != null && !representatives.isEmpty()
+            && representatives.stream().noneMatch(r -> namesMatch(r.fullName(), attorney) || nameContainedIn(r.fullName(), attorney))) {
+          findings.add(
+              new Finding(
+                  "poa-attorney",
+                  "Posible inconsistencia: el poder es a favor de \"%s\", pero quien firmará es %s."
+                      .formatted(attorney, String.join(", ", representatives.stream().map(DeclaredParticipant::fullName).toList())),
+                  DataConflict.Severity.CRITICAL));
+        }
+      }
+      if (doc.type() == DocumentTypeCode.INCORPORATION_DEED) {
+        String company = doc.get("companyName");
+        if (company != null && !owners.isEmpty() && owners.stream().noneMatch(o -> namesMatch(o.fullName(), company))) {
+          findings.add(
+              new Finding(
+                  "incorporation-company",
+                  "Posible inconsistencia: el acta constitutiva es de \"%s\", distinta de la empresa registrada (%s)."
+                      .formatted(company, owners.getFirst().fullName()),
+                  DataConflict.Severity.CRITICAL));
+        }
+        String representative = doc.get("legalRepresentativeFullName");
+        if (representative != null && !representatives.isEmpty()
+            && representatives.stream().noneMatch(r -> namesMatch(r.fullName(), representative) || nameContainedIn(r.fullName(), representative))) {
+          // Puede haberse designado después por otro poder: se avisa, no se bloquea.
+          findings.add(
+              new Finding(
+                  "incorporation-representative",
+                  "Posible inconsistencia: el acta constitutiva designa a \"%s\" y quien firmará es %s; verifica que tenga poder vigente."
+                      .formatted(representative, String.join(", ", representatives.stream().map(DeclaredParticipant::fullName).toList())),
+                  DataConflict.Severity.WARNING));
+        }
       }
     }
   }
