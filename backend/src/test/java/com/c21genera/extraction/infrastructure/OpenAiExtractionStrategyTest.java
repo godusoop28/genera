@@ -375,6 +375,8 @@ class OpenAiExtractionStrategyTest {
 
     assertThat(find(result, "fullName").value()).isEqualTo("CARLOS EDUARDO RODRIGUEZ CALDERON");
     assertThat(result.fields()).allSatisfy(f -> assertThat(f.confidence()).isLessThanOrEqualTo(0.7));
+    // Queda "difícil de leer" -> en revisión (sin bloquear, porque se extrajeron datos).
+    assertThat(result.assessment().legible()).isFalse();
   }
 
   @Test

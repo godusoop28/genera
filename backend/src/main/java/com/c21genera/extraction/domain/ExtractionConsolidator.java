@@ -73,9 +73,13 @@ public final class ExtractionConsolidator {
     return legible;
   }
 
-  /** Una segunda lectura (versión mejorada) sí pudo leer el documento. */
-  public void markLegible() {
-    legible = true;
+  /**
+   * El documento tiene partes que la IA no distinguió (caracteres marcados con
+   * "?"): queda como "difícil de leer", lo que lo manda a revisión aunque se
+   * hayan extraído datos (no lo bloquea, ver DocumentVersion.blockingIssues).
+   */
+  public void markHardToRead() {
+    legible = false;
   }
 
   public void addWarning(String warning) {

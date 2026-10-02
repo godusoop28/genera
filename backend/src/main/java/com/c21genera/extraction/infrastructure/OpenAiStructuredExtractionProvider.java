@@ -102,7 +102,7 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       - Nunca inventes un valor que no esté visible en el documento.
 
       Formato de los valores: superficies solo como número (sin "m2"); fechas como AAAA-MM-DD; números de \
-      escritura, notaría y folio tal como aparecen; nombres completos como aparecen, respetando letras y       acentos exactamente como están impresos (no agregues ni quites acentos).
+      escritura, notaría y folio tal como aparecen; nombres completos como aparecen, respetando letras y acentos exactamente como están impresos (no agregues ni quites acentos).
 
       Responde ÚNICAMENTE con un JSON válido, sin markdown, con la forma:
       {"documentCheck": {"detectedDocumentKind": string, "matchesExpectedType": boolean, "legible": boolean, \
@@ -149,7 +149,17 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
 
   @Override
   public ExtractionResult extract(DocumentTypeCode type, byte[] pdfBytes, List<String> fieldNames) {
-    try (PDDocument document = openForAi(pdfBytes)) {
+    return extract(type, () -> PdfFiles.open(pdfBytes), fieldNames);
+  }
+
+  /** Desde archivo: un PDF de 40 MB ya no ocupa 40 MB de heap mientras se analiza. */
+  @Override
+  public ExtractionResult extract(DocumentTypeCode type, java.nio.file.Path pdf, List<String> fieldNames) {
+    return extract(type, () -> PdfFiles.open(pdf), fieldNames);
+  }
+
+  private ExtractionResult extract(DocumentTypeCode type, java.util.function.Supplier<PDDocument> opener, List<String> fieldNames) {
+    try (PDDocument document = openForAi(opener)) {
       int pagesTotal = document.getNumberOfPages();
       boolean longDocument = DocumentFieldSchemas.isLongDocument(type);
       List<String> pageTexts = longDocument ? pageTexts(document) : List.of();
@@ -363,6 +373,8 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       }
     }
     if (hardDocument) {
+      // E2E 02/10: la INE borrosa terminaba como "extracción completa" con todos sus datos dudosos.
+      consolidator.markHardToRead();
       // La primera lectura dijo "ilegible" (o marcó caracteres que no distinguió): aunque la versión mejorada se haya leído, el documento sigue
       // marcado como difícil (queda en revisión) y ningún dato pasa de "revisar". Dos lecturas de los mismos
       // píxeles borrosos se equivocan igual (E2E 02/10: "1985-02-14" en vez de 1985-03-14 en ambas), así
@@ -689,9 +701,9 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
 
   // ---------------------------------------------------------------------
 
-  private static PDDocument openForAi(byte[] pdfBytes) {
+  private static PDDocument openForAi(java.util.function.Supplier<PDDocument> opener) {
     try {
-      return PdfFiles.open(pdfBytes);
+      return opener.get();
     } catch (PdfFiles.UnreadablePdfException e) {
       throw new AiUnavailableException(e.getMessage(), e);
     }
