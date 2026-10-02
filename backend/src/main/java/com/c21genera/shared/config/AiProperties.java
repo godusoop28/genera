@@ -33,7 +33,6 @@ public record AiProperties(
     }
   }
 
-  public AiProperties(boolean enabled, String provider, String apiKey, String model, String baseUrl, Duration timeout, int maxRetries) {
-    this(enabled, provider, apiKey, model, baseUrl, timeout, maxRetries, 0, 0);
-  }
+  // Un solo constructor a propósito: con dos, Spring Boot no sabe con cuál enlazar
+  // la configuración y el arranque falla ("No default constructor found").
 }

@@ -30,7 +30,7 @@ class OpenAiStructuredExtractionProviderTest {
 
   @Test
   void failsFastWhenEnabledWithoutApiKey() {
-    AiProperties properties = new AiProperties(true, "openai", "", "gpt-4o-mini", "https://api.openai.com/v1", Duration.ofSeconds(30), 2);
+    AiProperties properties = new AiProperties(true, "openai", "", "gpt-4o-mini", "https://api.openai.com/v1", Duration.ofSeconds(30), 2, 0, 0);
 
     assertThatThrownBy(() -> new OpenAiStructuredExtractionProvider(properties, new ObjectMapper()))
         .isInstanceOf(IllegalStateException.class)
@@ -40,7 +40,7 @@ class OpenAiStructuredExtractionProviderTest {
   @Test
   void failsFastWhenEnabledWithoutModel() {
     AiProperties properties =
-        new AiProperties(true, "openai", "not-a-real-key-fixture", "", "https://api.openai.com/v1", Duration.ofSeconds(30), 2);
+        new AiProperties(true, "openai", "not-a-real-key-fixture", "", "https://api.openai.com/v1", Duration.ofSeconds(30), 2, 0, 0);
 
     assertThatThrownBy(() -> new OpenAiStructuredExtractionProvider(properties, new ObjectMapper()))
         .isInstanceOf(IllegalStateException.class)
@@ -82,7 +82,7 @@ class OpenAiStructuredExtractionProviderTest {
         });
     server.start();
     String baseUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
-    AiProperties properties = new AiProperties(true, "openai", "fixture-key", "fixture-model", baseUrl, Duration.ofSeconds(5), maxRetries);
+    AiProperties properties = new AiProperties(true, "openai", "fixture-key", "fixture-model", baseUrl, Duration.ofSeconds(5), maxRetries, 0, 0);
     return new OpenAiStructuredExtractionProvider(properties, new ObjectMapper());
   }
 

@@ -55,7 +55,7 @@ class DocumentReprocessTest {
         new DocumentService(
             documents, versions, pages, mock(DocumentReviewRepository.class), mock(FileStorage.class), mock(FileValidator.class), events,
             Clock.fixed(Instant.parse("2026-10-01T12:00:00Z"), ZoneOffset.UTC),
-            new AiProperties(false, "openai", "", "", "", Duration.ofSeconds(30), 0));
+            new AiProperties(false, "openai", "", "", "", Duration.ofSeconds(30), 0, 0, 0));
   }
 
   private Document documentWithVersion(DocumentTypeCode type, DocumentVersion version) {
