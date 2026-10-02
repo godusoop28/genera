@@ -19,7 +19,9 @@ import org.springframework.stereotype.Component;
 public class DocumentProcessingWorker {
 
   private static final Logger log = LoggerFactory.getLogger(DocumentProcessingWorker.class);
-  private static final int BATCH_SIZE = 5;
+  // De uno en uno: el candado del job refleja cuándo empezó de verdad, y si el
+  // servidor se reinicia a medias solo queda abandonado ese job (se recupera solo).
+  private static final int BATCH_SIZE = 1;
   private static final String WORKER_ID = "documentprocessing-worker";
 
   private final BackgroundJobQueue queue;

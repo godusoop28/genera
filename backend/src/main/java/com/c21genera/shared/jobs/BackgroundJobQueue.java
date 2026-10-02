@@ -3,6 +3,7 @@ package com.c21genera.shared.jobs;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
@@ -33,9 +34,17 @@ public class BackgroundJobQueue {
     repository.save(new BackgroundJob(type, json, clock.instant()));
   }
 
+  /**
+   * Tiempo tras el cual un job "en proceso" se da por abandonado y se vuelve a
+   * tomar: holgado frente al peor caso de un job real (la revisión con IA de
+   * un documento largo con reintentos tarda unos minutos).
+   */
+  static final Duration STALE_AFTER = Duration.ofMinutes(20);
+
   @Transactional
   public List<BackgroundJob> claimBatch(String type, String workerId, int limit) {
-    List<BackgroundJob> jobs = repository.claimBatch(type, clock.instant(), limit);
+    Instant now = clock.instant();
+    List<BackgroundJob> jobs = repository.claimBatch(type, now, now.minus(STALE_AFTER), limit);
     jobs.forEach(job -> job.markLocked(workerId, clock.instant()));
     return jobs;
   }
