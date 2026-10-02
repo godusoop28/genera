@@ -23,22 +23,34 @@ public class FileValidator {
 
   public record ValidatedFile(byte[] content, String detectedMimeType) {}
 
+  /** Bytes del inicio del archivo que bastan para detectar su tipo real (firma "mágica"). */
+  public static final int HEAD_BYTES = 64 * 1024;
+
   public ValidatedFile validatePublic(byte[] content) {
-    return validate(content, properties.allowedPublicMimeTypes());
+    return new ValidatedFile(content, validate(content.length, content, properties.allowedPublicMimeTypes()));
   }
 
   public ValidatedFile validateInternal(byte[] content) {
-    return validate(content, properties.allowedInternalMimeTypes());
+    return new ValidatedFile(content, validate(content.length, content, properties.allowedInternalMimeTypes()));
   }
 
-  private ValidatedFile validate(byte[] content, List<String> allowedMimeTypes) {
-    if (content.length > properties.maxFileSizeBytes()) {
+  /** Valida sin tener el archivo en memoria: el tamaño y los primeros {@link #HEAD_BYTES} bytes. Devuelve el MIME real. */
+  public String validatePublic(long size, byte[] head) {
+    return validate(size, head, properties.allowedPublicMimeTypes());
+  }
+
+  public String validateInternal(long size, byte[] head) {
+    return validate(size, head, properties.allowedInternalMimeTypes());
+  }
+
+  private String validate(long size, byte[] head, List<String> allowedMimeTypes) {
+    if (size > properties.maxFileSizeBytes()) {
       throw new MaxUploadSizeExceededException(properties.maxFileSizeBytes());
     }
-    String detected = tika.detect(content);
+    String detected = tika.detect(head);
     if (!allowedMimeTypes.contains(detected)) {
       throw new UnsupportedFileException(detected);
     }
-    return new ValidatedFile(content, detected);
+    return detected;
   }
 }

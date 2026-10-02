@@ -191,7 +191,25 @@ public class DocumentService implements DocumentsApi {
     return versionIds.isEmpty() ? List.of() : reviewRepository.findByDocumentVersionIdInOrderByReviewedAtDesc(versionIds);
   }
 
-  public record UploadedFileContent(byte[] content, String originalFilename) {}
+  /**
+   * Archivo subido. source se puede abrir varias veces (p. ej. el MultipartFile,
+   * que Tomcat ya guardó en disco): el contenido nunca se carga entero en
+   * memoria (E2E 02/10: un PDF de 38.9 MB ocupaba 39 MB de heap en la carga).
+   */
+  public record UploadedFileContent(long size, String originalFilename, org.springframework.core.io.InputStreamSource source) {
+
+    public static UploadedFileContent of(byte[] content, String originalFilename) {
+      return new UploadedFileContent(content.length, originalFilename, new org.springframework.core.io.ByteArrayResource(content));
+    }
+  }
+
+  private static byte[] readHead(UploadedFileContent file) {
+    try (java.io.InputStream in = file.source().getInputStream()) {
+      return in.readNBytes(FileValidator.HEAD_BYTES);
+    } catch (java.io.IOException e) {
+      throw new java.io.UncheckedIOException("No se pudo leer el archivo subido", e);
+    }
+  }
 
   /** Público o interno: fotos JPG/PNG o PDF (según app.upload). Ver AGENTS §32/§94. */
   public DocumentVersion uploadVersion(UUID documentId, List<UploadedFileContent> files, UploadedVia via, Actor actor) {
@@ -213,18 +231,22 @@ public class DocumentService implements DocumentsApi {
     List<PageRef> pageRefs = new ArrayList<>();
     int pageNumber = 1;
     for (UploadedFileContent file : files) {
-      ValidatedFile validated =
+      byte[] head = readHead(file);
+      String mimeType =
           via == UploadedVia.PUBLIC_PORTAL
-              ? fileValidator.validatePublic(file.content())
-              : fileValidator.validateInternal(file.content());
+              ? fileValidator.validatePublic(file.size(), head)
+              : fileValidator.validateInternal(file.size(), head);
 
-      String extension = StorageKeys.extensionFor(validated.detectedMimeType());
+      String extension = StorageKeys.extensionFor(mimeType);
       String storageKey =
           StorageKeys.originalPageKey(document.getExpedienteId(), document.getType(), documentId, versionNumber, pageNumber, extension);
 
-      FileStorage.StoredObjectMetadata stored =
-          fileStorage.store(
-              storageKey, new ByteArrayInputStream(validated.content()), validated.content().length, validated.detectedMimeType());
+      FileStorage.StoredObjectMetadata stored;
+      try (java.io.InputStream content = file.source().getInputStream()) {
+        stored = fileStorage.store(storageKey, content, file.size(), mimeType);
+      } catch (java.io.IOException e) {
+        throw new java.io.UncheckedIOException("No se pudo leer el archivo subido", e);
+      }
 
       pageRepository.save(
           new DocumentPage(
@@ -232,10 +254,10 @@ public class DocumentService implements DocumentsApi {
               pageNumber,
               stored.storageKey(),
               file.originalFilename(),
-              validated.detectedMimeType(),
+              mimeType,
               stored.size(),
               stored.sha256()));
-      pageRefs.add(new PageRef(pageNumber, stored.storageKey(), validated.detectedMimeType()));
+      pageRefs.add(new PageRef(pageNumber, stored.storageKey(), mimeType));
       pageNumber++;
     }
 

@@ -96,11 +96,18 @@ public class DocumentFieldExtractionService implements ExtractionApi {
   public void extract(ExtractDocumentFieldsPayload payload) {
     List<String> fieldNames = DocumentFieldSchemas.fieldsFor(payload.type());
 
-    byte[] pdfBytes = readAll(payload.pdfStorageKey());
-    // Siempre se llama al proveedor, aunque el tipo no tenga campos que
-    // extraer: la verificación de que el archivo corresponde al documento
-    // solicitado aplica a todos los tipos.
-    ExtractionResult result = provider.extract(payload.type(), pdfBytes, fieldNames);
+    // El PDF se baja a un archivo temporal y se analiza desde el disco: cargarlo en memoria ocupaba su tamaño
+    // completo más una copia transitoria (E2E 02/10: 496/512 MB con un PDF de 38.9 MB).
+    java.nio.file.Path pdf = downloadToTempFile(payload.pdfStorageKey());
+    ExtractionResult result;
+    try {
+      // Siempre se llama al proveedor, aunque el tipo no tenga campos que
+      // extraer: la verificación de que el archivo corresponde al documento
+      // solicitado aplica a todos los tipos.
+      result = provider.extract(payload.type(), pdf, fieldNames);
+    } finally {
+      deleteQuietly(pdf);
+    }
 
     transactions.executeWithoutResult(status -> saveResult(payload, result));
   }
@@ -392,11 +399,19 @@ public class DocumentFieldExtractionService implements ExtractionApi {
         .toList();
   }
 
-  private byte[] readAll(String storageKey) {
-    try (InputStream in = fileStorage.get(storageKey)) {
-      return in.readAllBytes();
+  private java.nio.file.Path downloadToTempFile(String storageKey) {
+    try {
+      return com.c21genera.shared.pdf.PdfFiles.toTempFile(fileStorage.get(storageKey), ".pdf");
     } catch (Exception e) {
       throw new IllegalStateException("No se pudo leer el PDF procesado " + storageKey, e);
+    }
+  }
+
+  private static void deleteQuietly(java.nio.file.Path file) {
+    try {
+      java.nio.file.Files.deleteIfExists(file);
+    } catch (java.io.IOException ignored) {
+      // Archivo temporal: el sistema lo limpia si no se pudo borrar.
     }
   }
 }

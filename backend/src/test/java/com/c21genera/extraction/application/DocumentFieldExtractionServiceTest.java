@@ -90,7 +90,7 @@ class DocumentFieldExtractionServiceTest {
 
   @Test
   void aFileUploadedInTheWrongCategoryKeepsItsExtractedData() {
-    when(provider.extract(eq(DocumentTypeCode.MARRIAGE_CERTIFICATE), any(), anyList()))
+    when(provider.extract(eq(DocumentTypeCode.MARRIAGE_CERTIFICATE), any(java.nio.file.Path.class), anyList()))
         .thenReturn(
             new ExtractionResult(
                 List.of(new FieldResult("ownerFullName", "JUAN PEREZ", 0.9, 1), new FieldResult("cadastralKey", "1100-01", 0.85, 1)),
@@ -107,7 +107,7 @@ class DocumentFieldExtractionServiceTest {
 
   @Test
   void aPartialIneExtractionIsSavedAndCountedAsPartial() {
-    when(provider.extract(eq(DocumentTypeCode.INE), any(), anyList()))
+    when(provider.extract(eq(DocumentTypeCode.INE), any(java.nio.file.Path.class), anyList()))
         .thenReturn(
             new ExtractionResult(
                 List.of(
@@ -152,7 +152,7 @@ class DocumentFieldExtractionServiceTest {
         new ExtractedFieldObservation(expedienteId, documentId, versionId, "curp", "PELJ800101HMSRPN0I", FieldOrigin.AI_EXTRACTED, 0.5, Instant.EPOCH);
     confirmed.confirm("PELJ800101HMSRPN01", Instant.EPOCH);
     when(observations.findByDocumentVersionId(versionId)).thenReturn(List.of(confirmed));
-    when(provider.extract(eq(DocumentTypeCode.INE), any(), anyList()))
+    when(provider.extract(eq(DocumentTypeCode.INE), any(java.nio.file.Path.class), anyList()))
         .thenReturn(
             new ExtractionResult(
                 List.of(new FieldResult("curp", "OTRA-LECTURA", 0.7, 1), new FieldResult("fullName", "JUAN PEREZ LOPEZ", 0.9, 1)),

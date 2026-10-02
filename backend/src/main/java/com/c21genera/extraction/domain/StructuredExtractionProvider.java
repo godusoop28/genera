@@ -23,6 +23,18 @@ public interface StructuredExtractionProvider {
    */
   ExtractionResult extract(DocumentTypeCode type, byte[] pdfBytes, List<String> fieldNames);
 
+  /**
+   * Igual, con el PDF en un archivo. Los proveedores que lo soporten lo leen
+   * desde el disco sin cargarlo entero en memoria; por defecto se lee completo.
+   */
+  default ExtractionResult extract(DocumentTypeCode type, java.nio.file.Path pdf, List<String> fieldNames) {
+    try {
+      return extract(type, java.nio.file.Files.readAllBytes(pdf), fieldNames);
+    } catch (java.io.IOException e) {
+      throw new AiUnavailableException("No se pudo leer el documento para la revisión automática", e);
+    }
+  }
+
   /** El proveedor de IA no respondió o respondió algo inutilizable. */
   class AiUnavailableException extends RuntimeException {
     public AiUnavailableException(String message, Throwable cause) {

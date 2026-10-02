@@ -66,4 +66,13 @@ class FileValidatorTest {
         .isInstanceOf(UnsupportedFileException.class)
         .hasMessageContaining("PDF");
   }
+
+  @Test
+  void aLargeFileIsValidatedFromItsSizeAndFirstBytesWithoutLoadingIt() throws Exception {
+    // E2E 02/10: la carga de un PDF de 38.9 MB ya no lo lee entero a memoria; basta la cabecera.
+    byte[] head = java.util.Arrays.copyOf(pdfOfSize(1), FileValidator.HEAD_BYTES);
+
+    assertThat(validator.validatePublic(39L * 1024 * 1024, head)).isEqualTo("application/pdf");
+    assertThatThrownBy(() -> validator.validatePublic(FORTY_MB + 1, head)).isInstanceOf(MaxUploadSizeExceededException.class);
+  }
 }

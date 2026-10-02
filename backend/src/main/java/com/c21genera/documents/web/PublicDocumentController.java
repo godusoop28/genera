@@ -10,7 +10,6 @@ import com.c21genera.publicaccess.PublicAccessTokenApi;
 import com.c21genera.publicaccess.PublicLinkRevokedException;
 import com.c21genera.shared.events.Actor;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -95,10 +94,7 @@ public class PublicDocumentController {
   }
 
   private static UploadedFileContent readFile(MultipartFile file) {
-    try {
-      return new UploadedFileContent(file.getBytes(), file.getOriginalFilename());
-    } catch (IOException e) {
-      throw new UncheckedIOException(e);
-    }
+    // Sin getBytes(): Tomcat ya guardó el archivo en disco y se lee de ahí en flujo.
+    return new UploadedFileContent(file.getSize(), file.getOriginalFilename(), file);
   }
 }

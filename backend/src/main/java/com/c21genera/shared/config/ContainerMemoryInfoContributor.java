@@ -26,6 +26,10 @@ class ContainerMemoryInfoContributor implements InfoContributor {
     bytes("/sys/fs/cgroup/memory.current", "/sys/fs/cgroup/memory/memory.usage_in_bytes").ifPresent(b -> memory.put("cgroupCurrentMb", b / 1048576));
     bytes("/sys/fs/cgroup/memory.peak", "/sys/fs/cgroup/memory/memory.max_usage_in_bytes").ifPresent(b -> memory.put("cgroupPeakMb", b / 1048576));
     bytes("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes").ifPresent(b -> memory.put("cgroupMaxMb", b / 1048576));
+    // anon = memoria real del proceso; file = caché de archivos (temporales de carga, PDFBox), que el kernel
+    // recupera antes de matar el proceso. cgroupCurrentMb suma ambas.
+    cgroupStat("anon").ifPresent(b -> memory.put("cgroupAnonMb", b / 1048576));
+    cgroupStat("file").ifPresent(b -> memory.put("cgroupFileMb", b / 1048576));
     if (!memory.isEmpty()) {
       builder.withDetail("container", memory);
     }
@@ -40,6 +44,19 @@ class ContainerMemoryInfoContributor implements InfoContributor {
       }
     } catch (Exception ignored) {
       // No es Linux: no se informa.
+    }
+    return java.util.Optional.empty();
+  }
+
+  private static java.util.Optional<Long> cgroupStat(String key) {
+    try {
+      for (String line : Files.readAllLines(Path.of("/sys/fs/cgroup/memory.stat"))) {
+        if (line.startsWith(key + " ")) {
+          return java.util.Optional.of(Long.parseLong(line.substring(key.length() + 1).strip()));
+        }
+      }
+    } catch (Exception ignored) {
+      // cgroup v1 o no es Linux: no se informa.
     }
     return java.util.Optional.empty();
   }

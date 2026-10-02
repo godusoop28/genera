@@ -20,7 +20,6 @@ import com.c21genera.shared.security.ExpedienteAccessPolicy;
 import com.c21genera.shared.storage.FileStorage;
 import jakarta.validation.Valid;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.net.URI;
 import java.util.List;
 import java.util.UUID;
@@ -96,11 +95,8 @@ public class InternalDocumentController {
   }
 
   private static UploadedFileContent readFile(MultipartFile file) {
-    try {
-      return new UploadedFileContent(file.getBytes(), file.getOriginalFilename());
-    } catch (IOException e) {
-      throw new UncheckedIOException(e);
-    }
+    // Sin getBytes(): Tomcat ya guardó el archivo en disco y se lee de ahí en flujo.
+    return new UploadedFileContent(file.getSize(), file.getOriginalFilename(), file);
   }
 
   /**

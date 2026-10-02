@@ -1,6 +1,13 @@
 spring:
   application:
     name: c21genera-backend
+  # Un solo hilo para todos los @Scheduled (procesamiento, extracción con IA, correos): los trabajos
+  # pesados (renderizar un PDF de 40 MB, llamar a la IA) corren de uno en uno y el resto espera en QUEUED.
+  # En una instancia de 512 MB dos a la vez no caben. No subirlo sin medir la memoria (/actuator/info).
+  task:
+    scheduling:
+      pool:
+        size: 1
   modulith:
     events:
       # Si el servidor se reinicia entre el commit y la entrega de un evento asíncrono (p. ej.

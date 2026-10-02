@@ -21,7 +21,13 @@ import org.springframework.stereotype.Component;
 @Component
 public class PdfAssembler {
 
-  public record PageContent(byte[] content, String mimeType) {}
+  /** storageKey: de dónde se puede volver a leer el contenido (null si solo está en memoria). */
+  public record PageContent(byte[] content, String mimeType, String storageKey) {
+
+    public PageContent(byte[] content, String mimeType) {
+      this(content, mimeType, null);
+    }
+  }
 
   public byte[] assemble(List<PageContent> pages) {
     try (PDDocument document = PdfFiles.create()) {

@@ -81,27 +81,25 @@ public class DocumentVersionProcessor {
     List<String> damagedReasons = new ArrayList<>();
     List<NormalizedPage> normalizedPages = new ArrayList<>();
     List<PageContent> pdfPages = new ArrayList<>();
-    byte[] singlePdfOriginal = null;
     String singlePdfKey = null;
     int usablePages = 0;
 
     for (PageView page : pages) {
       String prefix = pages.size() > 1 ? "Archivo " + page.pageNumber() + ": " : "";
-      byte[] original = readAll(page.storageKeyOriginal());
 
       if ("application/pdf".equals(page.mimeType())) {
-        try {
-          PdfFiles.pageCount(original);
-        } catch (PdfFiles.UnreadablePdfException e) {
-          damagedReasons.add(prefix + e.getMessage());
+        // Solo se verifica que abra, desde un archivo temporal: bajar un PDF de 40 MB a memoria para
+        // contar sus páginas ocupaba 40 MB más una copia transitoria (E2E 02/10). Si es el único archivo,
+        // ya es el documento final y no se vuelve a leer.
+        if (!pdfOpens(page.storageKeyOriginal(), damagedReasons, prefix)) {
           continue;
         }
-        pdfPages.add(new PageContent(original, page.mimeType()));
-        singlePdfOriginal = original;
+        pdfPages.add(new PageContent(null, page.mimeType(), page.storageKeyOriginal()));
         singlePdfKey = page.storageKeyOriginal();
         usablePages++;
         continue;
       }
+      byte[] original = readAll(page.storageKeyOriginal());
 
       NormalizedImage normalized;
       try {
@@ -142,11 +140,16 @@ public class DocumentVersionProcessor {
     warnings.addAll(damagedReasons.stream().map(r -> r + " (se omitió)").toList());
 
     String pdfKey;
-    if (pdfPages.size() == 1 && singlePdfOriginal != null) {
+    if (pdfPages.size() == 1 && singlePdfKey != null) {
       // Un solo PDF: ya es el documento final; no se duplica (puede pesar decenas de MB).
       pdfKey = singlePdfKey;
     } else {
-      byte[] pdfBytes = pdfAssembler.assemble(pdfPages);
+      // Varios archivos: se arma un PDF. Los PDF subidos se leen ahora (solo en este caso).
+      List<PageContent> withContent = new ArrayList<>();
+      for (PageContent p : pdfPages) {
+        withContent.add(p.content() != null ? p : new PageContent(readAll(p.storageKey()), p.mimeType(), p.storageKey()));
+      }
+      byte[] pdfBytes = pdfAssembler.assemble(withContent);
       pdfKey = ProcessedStorageKeys.pdfKey(payload.documentVersionId());
       storeBytes(pdfKey, pdfBytes, "application/pdf");
     }
@@ -165,6 +168,28 @@ public class DocumentVersionProcessor {
 
     events.publishEvent(
         new DocumentVersionProcessed(payload.expedienteId(), payload.documentId(), payload.documentVersionId(), payload.type(), pdfKey));
+  }
+
+  private boolean pdfOpens(String storageKey, List<String> damagedReasons, String prefix) {
+    java.nio.file.Path file = null;
+    try {
+      file = PdfFiles.toTempFile(fileStorage.get(storageKey), ".pdf");
+      PdfFiles.pageCount(file);
+      return true;
+    } catch (PdfFiles.UnreadablePdfException e) {
+      damagedReasons.add(prefix + e.getMessage());
+      return false;
+    } catch (java.io.IOException e) {
+      throw new IllegalStateException("No se pudo leer la página original " + storageKey, e);
+    } finally {
+      if (file != null) {
+        try {
+          java.nio.file.Files.deleteIfExists(file);
+        } catch (java.io.IOException ignored) {
+          // Archivo temporal.
+        }
+      }
+    }
   }
 
   private byte[] readAll(String storageKey) {
