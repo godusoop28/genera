@@ -27,8 +27,22 @@ public final class MemoryRelief {
 
   private MemoryRelief() {}
 
+  /** Resultado de la última liberación, para /actuator/info (diagnóstico sin acceso a los logs). */
+  private static volatile String lastRun = "nunca";
+
+  public static String lastRun() {
+    return lastRun;
+  }
+
   public static void afterHeavyWork() {
-    System.gc();
+    long start = System.nanoTime();
+    long before = committedHeapMb();
+    // HotSpot encoge el heap de forma gradual entre recolecciones completas sucesivas (0%, 10%, 40%,
+    // 100% de lo que sobra) para no oscilar: con una sola, 199 MB solo bajaban a 161 (E2E 02/10).
+    for (int i = 0; i < 4; i++) {
+      System.gc();
+    }
+    String trim = "sin trim";
     try {
       ManagementFactory.getPlatformMBeanServer()
           .invoke(
@@ -36,8 +50,17 @@ public final class MemoryRelief {
               "systemTrimNativeHeap",
               new Object[] {new String[0]},
               new String[] {String[].class.getName()});
-    } catch (Exception | LinkageError ignored) {
+      trim = "trim ok";
+    } catch (Exception | LinkageError e) {
       // No disponible en este JVM/sistema: basta con la recolección.
+      trim = "trim no disponible (" + e.getClass().getSimpleName() + ")";
     }
+    lastRun =
+        "%s: heap comprometido %d -> %d MB en %d ms, %s"
+            .formatted(java.time.Instant.now(), before, committedHeapMb(), (System.nanoTime() - start) / 1_000_000, trim);
+  }
+
+  private static long committedHeapMb() {
+    return ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getCommitted() / 1048576;
   }
 }

@@ -30,6 +30,7 @@ class ContainerMemoryInfoContributor implements InfoContributor {
     // recupera antes de matar el proceso. cgroupCurrentMb suma ambas.
     cgroupStat("anon").ifPresent(b -> memory.put("cgroupAnonMb", b / 1048576));
     cgroupStat("file").ifPresent(b -> memory.put("cgroupFileMb", b / 1048576));
+    memory.put("lastRelief", com.c21genera.shared.jobs.MemoryRelief.lastRun());
     if (!memory.isEmpty()) {
       builder.withDetail("container", memory);
     }

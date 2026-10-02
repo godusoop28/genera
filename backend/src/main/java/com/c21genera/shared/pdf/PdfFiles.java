@@ -26,7 +26,7 @@ public final class PdfFiles {
 
   public static PDDocument open(byte[] content) {
     try {
-      return Loader.loadPDF(new RandomAccessReadBuffer(content), "", null, null, IOUtils.createTempFileOnlyStreamCache());
+      return withoutResourceCache(Loader.loadPDF(new RandomAccessReadBuffer(content), "", null, null, IOUtils.createTempFileOnlyStreamCache()));
     } catch (InvalidPasswordException e) {
       throw new UnreadablePdfException("El PDF está protegido con contraseña; súbelo sin contraseña o como fotos de las páginas", e);
     } catch (IOException e) {
@@ -41,7 +41,7 @@ public final class PdfFiles {
    */
   public static PDDocument open(java.nio.file.Path file) {
     try {
-      return Loader.loadPDF(file.toFile(), "", null, null, IOUtils.createTempFileOnlyStreamCache());
+      return withoutResourceCache(Loader.loadPDF(file.toFile(), "", null, null, IOUtils.createTempFileOnlyStreamCache()));
     } catch (InvalidPasswordException e) {
       throw new UnreadablePdfException("El PDF está protegido con contraseña; súbelo sin contraseña o como fotos de las páginas", e);
     } catch (IOException e) {
@@ -68,6 +68,18 @@ public final class PdfFiles {
       java.nio.file.Files.deleteIfExists(file);
       throw e;
     }
+  }
+
+  /**
+   * Sin caché de recursos: PDFBox guardaba cada imagen decodificada de cada
+   * página en referencias "suaves", que solo se liberan cuando la memoria está a
+   * punto de agotarse, así que el heap siempre llegaba a su tope (E2E 02/10:
+   * 196/199 MB al analizar un PDF escaneado de 38.9 MB). Aquí cada página se
+   * renderiza una sola vez, así que la caché no ahorra nada.
+   */
+  private static PDDocument withoutResourceCache(PDDocument document) {
+    document.setResourceCache(null);
+    return document;
   }
 
   /** Documento nuevo cuyo contenido intermedio también va a disco. */
