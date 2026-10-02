@@ -249,6 +249,8 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
 
   /** Identificadores con formato oficial: se confirman por consenso cuando hay dudas. */
   private static final List<String> IDENTIFIERS = List.of("curp", "electorKey", "rfc");
+  /** Identificaciones con foto: sus claves siempre se confirman con una segunda lectura. */
+  private static final Set<DocumentTypeCode> IDENTITY_DOCUMENTS = Set.of(DocumentTypeCode.INE, DocumentTypeCode.PASSPORT);
   /** Lado mayor con el que se renderiza la página para la versión mejorada (de sobra para una foto normalizada). */
   private static final int ENHANCED_RENDER_LONG_SIDE = 1800;
   private static final int MAX_ENHANCED_PAGES = 2;
@@ -287,10 +289,12 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       throws Exception {
     Map<String, FieldResult> current = byName(consolidator);
     Set<String> doubtful = doubtfulFields(fieldNames, current);
-    if (awkwardLayout) {
-      // De lado o inclinada: la confianza de la IA no es fiable (leyó "RDXACL..." con 0.88). Todo
-      // identificador leído se confirma con una segunda lectura independiente.
-      IDENTIFIERS.stream().filter(fieldNames::contains).forEach(doubtful::add);
+    if (awkwardLayout || IDENTITY_DOCUMENTS.contains(type)) {
+      // En la foto de una identificación la confianza de la IA en sus claves no es fiable: leyó "RDXACL..."
+      // con 0.88 (de lado) y "ROCCAL..." con 0.98 (derecha y nítida, mezclando el inicio de la CURP) (E2E
+      // 02/10). Toda CURP/clave/RFC de una identificación, o de una página de lado o inclinada, se confirma
+      // con una segunda lectura independiente: es una llamada más, no reprocesar la imagen.
+      IDENTIFIERS.stream().filter(id -> fieldNames.contains(id) && current.containsKey(id)).forEach(doubtful::add);
     }
     boolean illegible = Boolean.FALSE.equals(consolidator.legible());
     // La IA marcó con "?" caracteres que no distinguió: el documento tiene partes ilegibles aunque lo

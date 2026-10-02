@@ -400,22 +400,41 @@ class OpenAiExtractionStrategyTest {
   }
 
   @Test
-  void aCoherentReadingIsNotProcessedAgain() throws Exception {
+  void aCoherentReadingOfAnotherDocumentIsNotProcessedAgain() throws Exception {
     var provider =
         provider(
             body ->
                 new Object[] {
                   200,
-                  json("credencial INE", true, String.join(",",
-                      field("curp", "ROCC850314HMSDLR07", 0.95, 1),
-                      field("electorKey", "RDCACL85031417H900", 0.95, 1),
-                      field("birthDate", "1985-03-14", 0.95, 1)), "", "")
+                  json("constancia", true, String.join(",",
+                      field("rfc", "ROCC850314TQ7", 0.95, 1),
+                      field("curp", "ROCC850314HMSDLR07", 0.95, 1)), "", "")
                 },
             0);
 
-    provider.extract(DocumentTypeCode.INE, pdf(1, null), List.of("curp", "electorKey", "birthDate"));
+    provider.extract(DocumentTypeCode.TAX_STATUS_CERTIFICATE, pdf(1, null), List.of("rfc", "curp"));
 
     assertThat(requests).hasSize(1);
+  }
+
+  @Test
+  void theKeysOfAnIdAreAlwaysConfirmedByASecondReading() throws Exception {
+    // E2E 02/10: INE en WEBP, derecha y nítida: la clave salió "ROCCAL..." con 0.98 (mezcló el inicio de la CURP).
+    var answers = new java.util.concurrent.atomic.AtomicInteger();
+    var provider =
+        provider(
+            body -> {
+              String key = answers.getAndIncrement() == 0 ? "ROCCAL85031417H900" : "RDCACL85031417H900";
+              return new Object[] {200, json("credencial INE", true, String.join(",",
+                  field("electorKey", key, 0.98, 1), field("birthDate", "1985-03-14", 0.95, 1)), "", "")};
+            },
+            0);
+
+    ExtractionResult result = provider.extract(DocumentTypeCode.INE, pdf(1, null), List.of("electorKey", "birthDate"));
+
+    assertThat(requests.get(1)).contains("Lee EXCLUSIVAMENTE");
+    assertThat(find(result, "electorKey").value()).isEqualTo("RDCACL85031417H900");
+    assertThat(find(result, "electorKey").confidence()).isBetween(0.9, 0.95);
   }
 
   @Test
