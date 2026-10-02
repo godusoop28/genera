@@ -159,7 +159,9 @@ class ContractTemplateTest {
 
     String text = text(ContractTemplate.build(input(s, completeClientData()), false));
 
-    assertThat(text).contains("ante la fe del Lic. ANDRES PRUEBA DEMO").doesNotContain("Lic. LIC.");
+    assertThat(text)
+        .contains("ante la fe de la Notaría Pública número 18 de Jiutepec, Morelos, a cargo de Lic. ANDRES PRUEBA DEMO")
+        .doesNotContain("Lic. LIC.");
   }
 
   @Test
@@ -279,6 +281,47 @@ class ContractTemplateTest {
         .contains("Inmobiliaria Sol SA de CV, representada en este acto por Laura Méndez Ríos")
         .doesNotContain("a.1. En caso de ser persona física")
         .doesNotContain("estado civil");
+  }
+
+  @Test
+  void theContractNeverAssumesTheGenderOfANotaryOrBroker() {
+    // E2E 02/10 (persona moral): el poder ante "LIC. PAULA PODER DEMO" decía "el Licenciado PAULA".
+    LegalDetails legal =
+        new LegalDetails(
+            new LegalDetails.CompanyData(
+                "Sociedad Anónima de Capital Variable", "INM010101AB1", "12,346", LocalDate.of(2001, 1, 1), "Corredora Pública", "6",
+                "Cuernavaca, Morelos", "Lic. Norma Ruiz", "Cuernavaca, Morelos", "N-2001000111"),
+            new LegalDetails.RepresentationData(
+                "representante legal", "45,679", LocalDate.of(2024, 2, 15), "Notario Público", "7", "Cuernavaca, Morelos", "LIC. PAULA PODER DEMO",
+                "Cuernavaca, Morelos", "N-2024000222"),
+            deedDetails(housingChecklist()).deed(),
+            null,
+            new LegalDetails.CondominiumData("7,777", LocalDate.of(2005, 1, 1), "9", "Cuernavaca", "Licenciada Hugo Mar", LocalDate.of(2005, 2, 1), "FR-555"),
+            housingChecklist(),
+            "portales inmobiliarios");
+    ParticipantView company =
+        new ParticipantView(UUID.randomUUID(), "OWNER", "Inmobiliaria Sol SA de CV", 1, null, null, null, null, null, null, null, "INM010101AB1", null, null, null,
+            "Av. Siempre Viva 1, Cuernavaca, Morelos");
+    ExpedienteSummary s =
+        summary(
+            PersonType.MORAL, SignerCharacter.REPRESENTANTE_LEGAL, AccreditationType.ESCRITURA_PUBLICA, true, PropertyCaseType.HOUSING,
+            List.of(company, person("LEGAL_REPRESENTATIVE", "Sofía Ejemplo Rivera", 2, null)), legal);
+
+    String text = text(ContractTemplate.build(input(s, completeClientData()), false));
+
+    assertThat(text)
+        .contains("ante la fe de la Correduría Pública número 6 de Cuernavaca, Morelos, a cargo de Lic. Norma Ruiz")
+        .contains("ante la fe de la Notaría Pública número 7 de Cuernavaca, Morelos, a cargo de Lic. PAULA PODER DEMO")
+        .contains("ante la fe de la Notaría Pública número 9 de Cuernavaca, a cargo de Lic. Hugo Mar")
+        .doesNotContain("Licenciado ")
+        .doesNotContain("el Lic.")
+        .doesNotContain("del Lic.")
+        .doesNotContain("Lic. LIC.");
+    // El único "Licenciada" es el dato fijo de la propia agencia (no se infiere de ningún nombre).
+    assertThat(text.split("Licenciada", -1).length - 1).isEqualTo(2);
+    assertThat(ContractTemplate.officeOf("Corredor")).isEqualTo("Correduría");
+    assertThat(ContractTemplate.officeOf("NOTARIO PUBLICO")).isEqualTo("Notaría");
+    assertThat(ContractTemplate.officeOf("Juez")).isNull();
   }
 
   @Test

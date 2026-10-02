@@ -243,13 +243,13 @@ public final class ContractTemplate {
               value(c == null ? null : c.instrumentNumber(), "número del instrumento de constitución"),
               t(", de fecha "),
               value(c == null ? null : date(c.instrumentDate()), "fecha del instrumento de constitución"),
-              t(", otorgado ante la fe del "),
-              value(c == null ? null : c.notaryTitle(), "Notario o Corredor"),
-              t(" Público "),
+              t(", otorgado ante la fe de la "),
+              value(c == null ? null : officeOf(c.notaryTitle()), "Notaría o Correduría"),
+              t(" Pública número "),
               value(c == null ? null : c.notaryNumber(), "número de notaría o correduría"),
               t(" de "),
               value(c == null ? null : c.notaryPlace(), "lugar de la notaría o correduría"),
-              t(", el Licenciado "),
+              t(", a cargo de Lic. "),
               value(c == null ? null : withoutTitle(c.notaryName()), "nombre del notario o corredor"),
               t(", instrumento que consta inscrito en el Registro Público de Comercio de "),
               value(c == null ? null : c.commerceRegistryPlace(), "lugar del Registro Público de Comercio"),
@@ -316,13 +316,13 @@ public final class ContractTemplate {
     spans.add(value(r == null ? null : r.instrumentNumber(), "número del instrumento del poder"));
     spans.add(t(", de fecha "));
     spans.add(value(r == null ? null : date(r.instrumentDate()), "fecha del instrumento del poder"));
-    spans.add(t(", otorgado ante la fe del "));
-    spans.add(value(r == null ? null : r.notaryTitle(), "Notario o Corredor que otorgó el poder"));
-    spans.add(t(" Público número "));
+    spans.add(t(", otorgado ante la fe de la "));
+    spans.add(value(r == null ? null : officeOf(r.notaryTitle()), "Notaría o Correduría que otorgó el poder"));
+    spans.add(t(" Pública número "));
     spans.add(value(r == null ? null : r.notaryNumber(), "número de notaría del poder"));
     spans.add(t(" de "));
     spans.add(value(r == null ? null : r.notaryPlace(), "lugar de la notaría del poder"));
-    spans.add(t(", el Licenciado "));
+    spans.add(t(", a cargo de Lic. "));
     spans.add(value(r == null ? null : withoutTitle(r.notaryName()), "nombre del notario del poder"));
     if (r != null && notBlank(r.registryPlace()) && notBlank(r.registryFolio())) {
       spans.add(t(", mismo que consta inscrito en el Registro Público de Comercio de "));
@@ -381,12 +381,12 @@ public final class ContractTemplate {
       spans.add(value(d == null ? null : d.number(), "número de la escritura"));
       spans.add(t(", otorgada el "));
       spans.add(value(d == null ? null : date(d.date()), "fecha de la escritura"));
-      spans.add(t(", ante la fe del Lic. "));
-      spans.add(value(d == null ? null : withoutTitle(d.notaryName()), "nombre del notario de la escritura"));
-      spans.add(t(", Notario Público número "));
+      spans.add(t(", ante la fe de la Notaría Pública número "));
       spans.add(value(d == null ? null : d.notaryNumber(), "número de notaría de la escritura"));
       spans.add(t(" de "));
       spans.add(value(d == null ? null : d.notaryPlace(), "lugar de la notaría de la escritura"));
+      spans.add(t(", a cargo de Lic. "));
+      spans.add(value(d == null ? null : withoutTitle(d.notaryName()), "nombre del notario de la escritura"));
       if (d != null && notBlank(d.registryData())) {
         spans.add(t(", debidamente inscrita en el Registro Público de la Propiedad bajo los datos registrales "));
         spans.add(b(d.registryData()));
@@ -414,7 +414,7 @@ public final class ContractTemplate {
                   value(p == null ? null : p.notaryNumber(), "número de notaría de la ratificación"),
                   t(" de "),
                   value(p == null ? null : p.notaryPlace(), "lugar de la notaría de la ratificación"),
-                  t(", el Licenciado "),
+                  t(", a cargo de Lic. "),
                   value(p == null ? null : withoutTitle(p.notaryName()), "nombre del notario de la ratificación"),
                   t(", ratificación debidamente inscrita el "),
                   value(p == null ? null : date(p.registryDate()), "fecha de inscripción de la ratificación"),
@@ -443,11 +443,11 @@ public final class ContractTemplate {
             value(c == null ? null : c.deedNumber(), "número de la escritura del régimen de condominio"),
             t(", otorgada en fecha "),
             value(c == null ? null : date(c.date()), "fecha de la escritura del régimen de condominio"),
-            t(", ante la fe del Notario Público "),
+            t(", ante la fe de la Notaría Pública número "),
             value(c == null ? null : c.notaryNumber(), "número de notaría del régimen de condominio"),
             t(" de "),
             value(c == null ? null : c.notaryPlace(), "lugar de la notaría del régimen de condominio"),
-            t(", el Licenciado "),
+            t(", a cargo de Lic. "),
             value(c == null ? null : withoutTitle(c.notaryName()), "nombre del notario del régimen de condominio"),
             t(" y debidamente inscrita el "),
             value(c == null ? null : date(c.registryDate()), "fecha de inscripción del régimen de condominio"),
@@ -865,9 +865,30 @@ public final class ContractTemplate {
       java.util.regex.Pattern.compile("^(?:(?:lic(?:enciad[oa])?|lcdo|lcda|ldo|lda|notari[oa](?:\\s+p[uú]blic[oa])?|mtr[oa]|dr[a]?)\\.?\\s+)+", java.util.regex.Pattern.CASE_INSENSITIVE);
 
   /**
-   * El contrato ya dice "ante la fe del Lic." / "el Licenciado": si el documento trae el nombre con su
+   * El contrato ya dice "a cargo de Lic.": si el documento trae el nombre con su
    * título ("LIC. ANDRES PRUEBA DEMO") quedaba "Lic. LIC. ANDRES..." (E2E 02/10).
    */
+  /**
+   * Oficina ante la que se otorgó ("Notaría" o "Correduría"), deducida del título
+   * que trae el documento ("Notario Público", "Corredora Pública"...), nunca del
+   * nombre: la redacción "ante la fe de la Notaría ..., a cargo de Lic. ..." no
+   * presupone el género de quien la encabeza (E2E 02/10: "el Licenciado PAULA").
+   * null (pendiente) si el título no se reconoce.
+   */
+  static String officeOf(String notaryTitle) {
+    if (notaryTitle == null || notaryTitle.isBlank()) {
+      return null;
+    }
+    String t = notaryTitle.toLowerCase(java.util.Locale.ROOT);
+    if (t.contains("corredor") || t.contains("corredur")) {
+      return "Correduría";
+    }
+    if (t.contains("notar")) {
+      return "Notaría";
+    }
+    return null;
+  }
+
   static String withoutTitle(String name) {
     if (name == null) {
       return null;
