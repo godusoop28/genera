@@ -644,8 +644,12 @@ function ExtractedDataPanel({
   if (!v) return null;
   const inProgress = doc.pipelineStatus ? IN_PROGRESS.includes(doc.pipelineStatus) : false;
   const legibility =
-    v.qualityLevel === "UNREADABLE" || v.aiLegible === false
+    v.qualityLevel === "UNREADABLE"
       ? "No legible"
+      : v.aiLegible === false
+        ? (v.aiFieldsFound ?? 0) > 0
+          ? `Difícil de leer: se extrajeron ${v.aiFieldsFound} datos, revísalos contra el archivo`
+          : "No legible"
       : v.aiLegible === true
         ? v.qualityLevel === "ACCEPTED_WITH_WARNINGS"
           ? "Legible (con advertencias de calidad)"

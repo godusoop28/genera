@@ -68,6 +68,16 @@ public final class ExtractionConsolidator {
     best.put(field.fieldName(), field);
   }
 
+  /** Lo que dijo la IA sobre la legibilidad (null si no lo dijo). */
+  public Boolean legible() {
+    return legible;
+  }
+
+  /** Una segunda lectura (versión mejorada) sí pudo leer el documento. */
+  public void markLegible() {
+    legible = true;
+  }
+
   public void addWarning(String warning) {
     warnings.add(warning);
   }

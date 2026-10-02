@@ -39,6 +39,24 @@ class DocumentReviewRulesTest {
   }
 
   @Test
+  void anIllegibleVerdictWithExtractedDataIsReviewNotABlock() {
+    // E2E 02/10: la INE algo borrosa pero legible quedaba bloqueada aunque se leyeron 5 datos.
+    DocumentVersion hard = version();
+    hard.completeProcessing("doc.pdf", "m.json");
+    hard.recordAiAssessment(true, false, "credencial INE", "borrosa", false, Instant.now(),
+        new DocumentVersion.AiDetails(List.of(), 1, 1, 6, 5));
+
+    assertThat(hard.blockingIssues()).isEmpty();
+    assertThat(hard.warnings()).anyMatch(w -> w.contains("difícil de leer") && w.contains("5 datos"));
+
+    DocumentVersion nothingRead = version();
+    nothingRead.completeProcessing("doc.pdf", "m.json");
+    nothingRead.recordAiAssessment(true, false, "credencial INE", null, false, Instant.now(),
+        new DocumentVersion.AiDetails(List.of(), 1, 1, 6, 0));
+    assertThat(nothingRead.blockingIssues()).singleElement().asString().contains("no es legible");
+  }
+
+  @Test
   void aFileThatLooksLikeAnotherDocumentIsAWarningAndKeepsItsData() {
     DocumentVersion predialAsMarriage = version();
     predialAsMarriage.completeProcessing("doc.pdf", "m.json");

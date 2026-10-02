@@ -106,6 +106,8 @@ class NotificationTriggers {
     }
     ExpedienteSummary e = expedientes.getSummary(event.expedienteId());
     String label = DocumentTypeLabels.of(event.type());
+    // "Ilegible" pero con datos extraídos: es un documento difícil, no uno inservible (no bloquea).
+    boolean hardButRead = Boolean.FALSE.equals(event.legible()) && event.fieldsFound() != null && event.fieldsFound() > 0;
     toAdvisor(
         e,
         "Alerta de documento",
@@ -113,12 +115,16 @@ class NotificationTriggers {
         "La revisión automática detectó que el archivo cargado como \""
             + label
             + "\" "
-            + (Boolean.FALSE.equals(event.legible())
+            + (hardButRead
+                ? "es difícil de leer (se extrajeron " + event.fieldsFound() + " datos)"
+                : Boolean.FALSE.equals(event.legible())
                 ? "no es legible"
                 : "parece ser otro documento" + (event.detectedDocumentKind() != null ? " (" + event.detectedDocumentKind() + ")" : ""))
             + ".\n\n"
             + (event.observations() != null ? "Observaciones: " + event.observations() + "\n\n" : "")
-            + (Boolean.FALSE.equals(event.legible())
+            + (hardButRead
+                ? "Revisa los datos leídos contra el archivo; si son correctos, acéptalo. Si no se distinguen, devuélvelo al cliente."
+                : Boolean.FALSE.equals(event.legible())
                 ? "Un archivo ilegible solo se acepta con una autorización de excepción; lo recomendable es devolverlo al cliente."
                 : "Los datos que se leyeron se conservaron. Si el archivo corresponde a otro requisito, usa \"Cambiar tipo de documento\"; si es correcto, acéptalo."));
   }

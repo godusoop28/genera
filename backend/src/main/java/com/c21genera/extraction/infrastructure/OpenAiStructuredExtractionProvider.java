@@ -4,6 +4,7 @@ import com.c21genera.extraction.domain.DocumentFieldSchemas;
 import com.c21genera.extraction.domain.ExtractionConsolidator;
 import com.c21genera.extraction.domain.FieldFormats;
 import com.c21genera.extraction.domain.PagePlanner;
+import com.c21genera.extraction.domain.ReadingConsensus;
 import com.c21genera.extraction.domain.StructuredExtractionProvider;
 import com.c21genera.shared.config.AiProperties;
 import com.c21genera.shared.domain.DocumentTypeCode;
@@ -217,42 +218,242 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       }
     }
     if (!longDocument && !firstBatchImages.isEmpty()) {
-      rereadInvalidIdentifiers(type, consolidator, firstBatchImages);
+      improveDifficultReading(type, document, fieldNames, plan.pagesTotal(), consolidator, firstBatchImages);
     }
     addCoverageWarning(consolidator, fieldNames, analyzed.size(), plan.pagesTotal());
     return withCounts(consolidator, analyzed.size(), plan.pagesTotal());
   }
 
+  // --- Lectura difícil -----------------------------------------------------
+
+  /** Identificadores con formato oficial: se confirman por consenso cuando hay dudas. */
+  private static final List<String> IDENTIFIERS = List.of("curp", "electorKey", "rfc");
+  /** Lado mayor con el que se renderiza la página para la versión mejorada (de sobra para una foto normalizada). */
+  private static final int ENHANCED_RENDER_LONG_SIDE = 1800;
+  private static final int MAX_ENHANCED_PAGES = 2;
+
   /**
-   * Una CURP, RFC o clave de elector que no cumple su formato es casi seguro una
-   * mala lectura: se le pide a la IA una sola vez que relea esos campos carácter
-   * por carácter, diciéndole el formato. Si la nueva lectura sí cumple, la
-   * reemplaza; si no, la marca la guarda de confianza baja (ver
-   * DocumentFieldExtractionService).
+   * Segunda oportunidad para un documento corto que la primera lectura no
+   * resolvió bien: la IA dijo "ilegible", faltan la mayoría de los datos, o un
+   * identificador (CURP, clave de elector, RFC) falta, trae "?", no cumple su
+   * formato, tiene confianza baja o no coincide con la fecha de nacimiento del
+   * mismo documento. Si no hay ninguna de esas señales, no se hace nada (una
+   * imagen que ya funciona no se reprocesa).
+   *
+   * <ol>
+   *   <li>Lectura completa sobre una versión mejorada (enderezada, con más
+   *       contraste, ampliada en franjas), si la IA dijo ilegible o faltan datos.
+   *   <li>Relecturas dirigidas SOLO de los datos dudosos, primero sobre la versión
+   *       mejorada y después sobre la original, hasta que haya consenso.
+   *   <li>Por cada dato dudoso decide {@link ReadingConsensus}: dos lecturas
+   *       limpias idénticas lo confirman; si no coinciden, queda en confianza
+   *       baja con todas las lecturas a la vista del revisor.
+   * </ol>
+   * Nunca se completa un carácter por contexto ni se toma de otro documento.
    */
-  private void rereadInvalidIdentifiers(DocumentTypeCode type, ExtractionConsolidator consolidator, List<Map<String, Object>> images) {
-    Map<String, String> invalid = new LinkedHashMap<>();
-    for (FieldResult f : consolidator.result(null, null).fields()) {
-      FieldFormats.problem(f.fieldName(), f.value()).ifPresent(problem -> invalid.put(f.fieldName(), problem));
-    }
-    if (invalid.isEmpty()) {
+  private void improveDifficultReading(
+      DocumentTypeCode type,
+      PDDocument document,
+      List<String> fieldNames,
+      int pagesTotal,
+      ExtractionConsolidator consolidator,
+      List<Map<String, Object>> originalImages)
+      throws Exception {
+    Map<String, FieldResult> current = byName(consolidator);
+    Set<String> doubtful = doubtfulFields(fieldNames, current);
+    boolean illegible = Boolean.FALSE.equals(consolidator.legible());
+    boolean fewFields = consolidator.foundOf(fieldNames) * 2 < fieldNames.size();
+    if (!illegible && !fewFields && doubtful.isEmpty()) {
       return;
     }
-    StringBuilder prompt = new StringBuilder("Vuelve a leer SOLO estos campos del documento, carácter por carácter, y transcribe exactamente lo que dice:\n");
-    invalid.forEach((field, problem) -> prompt.append("- ").append(field).append(": ").append(problem).append(".\n"));
-    prompt.append("Si de verdad no se distingue algún carácter, transcribe lo que veas con confianza baja.");
-    List<Map<String, Object>> content = new ArrayList<>();
-    content.add(text(prompt.toString()));
-    content.addAll(images);
-    try {
-      ExtractionResult reread = call(type, content);
-      for (FieldResult f : reread.fields()) {
-        if (invalid.containsKey(f.fieldName()) && FieldFormats.problem(f.fieldName(), f.value()).isEmpty()) {
-          consolidator.replace(f);
+    List<Integer> pages = pagesToEnhance(doubtful, current, pagesTotal);
+    List<Map<String, Object>> enhanced = enhancedImages(document, pages);
+
+    Map<String, List<FieldResult>> readings = new LinkedHashMap<>();
+    for (String field : doubtful) {
+      List<FieldResult> list = new ArrayList<>();
+      if (current.get(field) != null) {
+        list.add(current.get(field));
+      }
+      readings.put(field, list);
+    }
+
+    if (illegible || fewFields || doubtful.contains("birthDate")) {
+      ExtractionResult second = callQuietly(type, withPrompt(enhancedPrompt(type, fieldNames, pages, pagesTotal), enhanced));
+      if (second != null) {
+        if (Boolean.TRUE.equals(second.assessment().legible())) {
+          consolidator.markLegible();
+        }
+        for (FieldResult f : second.fields()) {
+          if (readings.containsKey(f.fieldName())) {
+            readings.get(f.fieldName()).add(f);
+          } else if (!current.containsKey(f.fieldName()) && f.value() != null && !f.value().isBlank()) {
+            consolidator.replace(f); // Dato que la primera lectura no encontró.
+          }
+        }
+        second.warnings().forEach(consolidator::addWarning);
+      }
+    }
+
+    for (List<Map<String, Object>> images : List.of(enhanced, originalImages)) {
+      List<String> pending = readings.keySet().stream().filter(f -> !hasConsensus(f, readings.get(f))).toList();
+      if (pending.isEmpty()) {
+        break;
+      }
+      ExtractionResult targeted = callQuietly(type, withPrompt(targetedPrompt(pending), images));
+      if (targeted != null) {
+        for (FieldResult f : targeted.fields()) {
+          if (pending.contains(f.fieldName())) {
+            readings.get(f.fieldName()).add(f);
+          }
         }
       }
+    }
+
+    boolean unresolved = false;
+    for (var entry : readings.entrySet()) {
+      var decision = ReadingConsensus.decide(entry.getKey(), entry.getValue());
+      if (decision.isEmpty()) {
+        unresolved = true;
+        continue;
+      }
+      consolidator.replace(decision.get().field());
+      if (!decision.get().consensus()) {
+        unresolved = true;
+        List<String> distinct = decision.get().distinctReadings();
+        consolidator.addWarning(
+            "Revisa "
+                + DocumentFieldSchemas.describe(List.of(entry.getKey())).getFirst()
+                + (distinct.size() == 1
+                    ? ": se leyó \"" + distinct.getFirst() + "\" pero con confianza baja"
+                    : ": las lecturas no coinciden (" + String.join(" / ", distinct) + ")"));
+      }
+    }
+    if (illegible || unresolved) {
+      consolidator.addWarning(
+          "Lectura difícil: además del original se leyó una versión mejorada (enderezada, con más contraste y ampliada); revisa los datos contra el archivo");
+    }
+  }
+
+  static Set<String> doubtfulFields(List<String> fieldNames, Map<String, FieldResult> current) {
+    Set<String> doubtful = new LinkedHashSet<>();
+    for (String id : IDENTIFIERS) {
+      if (!fieldNames.contains(id)) {
+        continue;
+      }
+      FieldResult f = current.get(id);
+      if (f == null || !ReadingConsensus.isClean(id, f.value()) || f.confidence() < ExtractionConsolidator.GOOD_CONFIDENCE) {
+        doubtful.add(id);
+      }
+    }
+    if (fieldNames.contains("birthDate") && current.get("birthDate") != null) {
+      FieldResult birth = current.get("birthDate");
+      var date = FieldFormats.yymmdd(birth.value());
+      if (birth.value().contains("?") || birth.confidence() < ExtractionConsolidator.GOOD_CONFIDENCE || date.isEmpty()) {
+        doubtful.add("birthDate");
+      }
+      for (String id : IDENTIFIERS) {
+        if (!fieldNames.contains(id) || current.get(id) == null) {
+          continue;
+        }
+        var embedded = FieldFormats.embeddedDate(id, current.get(id).value());
+        if (date.isPresent() && embedded.isPresent() && !date.get().equals(embedded.get())) {
+          // La CURP/clave no coincide con la fecha de nacimiento del mismo documento: una de las dos se leyó mal.
+          doubtful.add(id);
+          doubtful.add("birthDate");
+        }
+      }
+    }
+    return doubtful;
+  }
+
+  private static boolean hasConsensus(String field, List<FieldResult> readings) {
+    return ReadingConsensus.decide(field, readings).map(ReadingConsensus.Decision::consensus).orElse(false);
+  }
+
+  private static Map<String, FieldResult> byName(ExtractionConsolidator consolidator) {
+    Map<String, FieldResult> map = new LinkedHashMap<>();
+    consolidator.result(null, null).fields().forEach(f -> map.put(f.fieldName(), f));
+    return map;
+  }
+
+  /** Las páginas donde estaban los datos dudosos (o la primera), máximo dos. */
+  private static List<Integer> pagesToEnhance(Set<String> doubtful, Map<String, FieldResult> current, int pagesTotal) {
+    Set<Integer> pages = new LinkedHashSet<>();
+    for (String field : doubtful) {
+      FieldResult f = current.get(field);
+      if (f != null && f.page() != null && f.page() >= 1 && f.page() <= pagesTotal) {
+        pages.add(f.page());
+      }
+    }
+    if (pages.isEmpty()) {
+      pages.add(1);
+    }
+    return pages.stream().limit(MAX_ENHANCED_PAGES).toList();
+  }
+
+  private List<Map<String, Object>> enhancedImages(PDDocument document, List<Integer> pages) throws Exception {
+    PDFRenderer renderer = new PDFRenderer(document);
+    List<Map<String, Object>> content = new ArrayList<>();
+    for (int page : pages) {
+      var box = document.getPage(page - 1).getCropBox();
+      float longSidePt = Math.max(box.getWidth(), box.getHeight());
+      int dpi = longSidePt <= 0 ? SHORT_DOCUMENT_DPI : Math.min(SHORT_DOCUMENT_DPI, (int) (ENHANCED_RENDER_LONG_SIDE * 72 / longSidePt));
+      BufferedImage rendered = renderImage(renderer, page, Math.max(72, dpi));
+      boolean sideways = textLooksVertical(cropToContent(rendered));
+      List<BufferedImage> candidates = sideways ? List.of(rotate(rendered, true), rotate(rendered, false)) : List.of(rendered);
+      for (int c = 0; c < candidates.size(); c++) {
+        List<BufferedImage> bands = DifficultImages.enhancedBands(candidates.get(c));
+        String orientation = !sideways ? "" : c == 0 ? ", girada 90° a la derecha" : ", girada 90° a la izquierda";
+        for (int b = 0; b < bands.size(); b++) {
+          content.add(text("Página " + page + orientation + ", versión mejorada, franja " + (b + 1) + " de " + bands.size() + ":"));
+          content.add(image(encode(bands.get(b))));
+        }
+      }
+    }
+    return content;
+  }
+
+  private String enhancedPrompt(DocumentTypeCode type, List<String> fieldNames, List<Integer> pages, int pagesTotal) {
+    return userPrompt(type, fieldNames, fieldNames, pages, pagesTotal, false)
+        + "\nEstas imágenes son una versión MEJORADA del mismo documento (enderezada, en escala de grises, con más contraste"
+        + " y ampliada), dividida en franjas horizontales que se traslapan: un mismo renglón puede aparecer en dos franjas."
+        + " Transcribe solo lo que se ve. No completes ni corrijas caracteres por contexto: si uno no se distingue, escribe"
+        + " \"?\" en su lugar y baja la confianza.";
+  }
+
+  static String targetedPrompt(List<String> fields) {
+    StringBuilder prompt = new StringBuilder("Lee EXCLUSIVAMENTE estos datos impresos en el documento y transcríbelos carácter por carácter:\n");
+    for (String field : fields) {
+      prompt.append("- ").append(DocumentFieldSchemas.describe(List.of(field)).getFirst());
+      if (FieldFormats.hasFormat(field)) {
+        prompt.append("; debe tener ").append(FieldFormats.DESCRIPTION.get(field));
+      }
+      if ("birthDate".equals(field)) {
+        prompt.append("; como AAAA-MM-DD");
+      }
+      prompt.append(".\n");
+    }
+    prompt.append(
+        "No completes ni corrijas caracteres por contexto: no los deduzcas del nombre, de la fecha ni de otros datos del"
+            + " documento. Si un carácter no es visible, escribe \"?\" en su lugar y baja la confianza. En \"fields\" devuelve"
+            + " solo estos datos.");
+    return prompt.toString();
+  }
+
+  private static List<Map<String, Object>> withPrompt(String prompt, List<Map<String, Object>> images) {
+    List<Map<String, Object>> content = new ArrayList<>();
+    content.add(text(prompt));
+    content.addAll(images);
+    return content;
+  }
+
+  /** Una lectura extra que falla no tumba la revisión: se conserva lo que ya se tenía. */
+  private ExtractionResult callQuietly(DocumentTypeCode type, List<Map<String, Object>> content) {
+    try {
+      return call(type, content);
     } catch (AiUnavailableException e) {
-      // La primera lectura se conserva con confianza baja.
+      return null;
     }
   }
 

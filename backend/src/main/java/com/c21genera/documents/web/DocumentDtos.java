@@ -133,6 +133,7 @@ public final class DocumentDtos {
         // ("no se observa la fecha de emisión") no cambian el estado: eso es extracción parcial.
         if (!v.blockingIssues().isEmpty()
             || Boolean.FALSE.equals(v.getAiTypeMatches())
+            || Boolean.FALSE.equals(v.getAiLegible())
             || v.isAiCheckFailed()
             || "ACCEPTED_WITH_WARNINGS".equals(v.getQualityLevel())) {
           yield "REQUIRES_REVIEW";

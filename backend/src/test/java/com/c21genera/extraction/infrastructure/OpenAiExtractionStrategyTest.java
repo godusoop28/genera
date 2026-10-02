@@ -146,7 +146,8 @@ class OpenAiExtractionStrategyTest {
 
     ExtractionResult result = provider.extract(DocumentTypeCode.INE, pdf(2, null), DocumentFieldSchemas.fieldsFor(DocumentTypeCode.INE));
 
-    assertThat(requests).hasSize(1);
+    // Faltan CURP y clave de elector: después de la lectura principal vienen las relecturas de lectura difícil.
+    assertThat(requests.getFirst()).doesNotContain("Lee EXCLUSIVAMENTE").doesNotContain("versión MEJORADA");
     // Páginas en blanco (sin texto de lado): se mandan tal cual, una imagen por página.
     assertThat(count(requests.getFirst(), "\"type\":\"image_url\"")).isEqualTo(2);
     assertThat(requests.getFirst()).contains("Página 1:").contains("Página 2:");
@@ -286,20 +287,99 @@ class OpenAiExtractionStrategyTest {
   }
 
   @Test
-  void anIdentifierWithAnInvalidFormatIsReReadOnce() throws Exception {
+  void anIdentifierWithAnInvalidFormatIsReReadUntilTwoReadingsAgree() throws Exception {
+    // Lecturas reales de producción: la primera trae 16 caracteres; las dirigidas leen la clave completa.
     var provider =
         provider(
             body ->
-                body.contains("Vuelve a leer SOLO estos campos")
+                body.contains("Lee EXCLUSIVAMENTE")
                     ? new Object[] {200, json("credencial INE", true, field("electorKey", "RDCACL85031417H900", 0.9, 1), "", "")}
                     : new Object[] {200, json("credencial INE", true, field("electorKey", "RDCAL8503147H900", 0.8, 1), "", "")},
             0);
 
     ExtractionResult result = provider.extract(DocumentTypeCode.INE, pdf(1, null), List.of("electorKey"));
 
-    assertThat(requests).hasSize(2);
-    assertThat(requests.get(1)).contains("18 caracteres: 6 letras");
+    // Principal + relectura dirigida sobre la versión mejorada + sobre la original (la segunda da el consenso).
+    assertThat(requests).hasSize(3);
+    assertThat(requests.get(1)).contains("Lee EXCLUSIVAMENTE").contains("18 caracteres: 6 letras").contains("versión mejorada, franja");
+    assertThat(requests.get(1)).contains("No completes ni corrijas caracteres por contexto");
     assertThat(find(result, "electorKey").value()).isEqualTo("RDCACL85031417H900");
+    assertThat(find(result, "electorKey").confidence()).isEqualTo(0.9);
+  }
+
+  @Test
+  void readingsThatNeverAgreeStayInLowConfidenceWithAllReadingsVisible() throws Exception {
+    var answers = new java.util.concurrent.atomic.AtomicInteger();
+    String[] curps = {"ROCCR850314HMSDLR07", "ROCC850314HMSDLR07", "RDCC850314HMSDLR07"};
+    var provider =
+        provider(
+            body -> {
+              int n = Math.min(answers.getAndIncrement(), curps.length - 1);
+              return new Object[] {200, json("credencial INE", true, field("curp", curps[n], 0.9, 1), "", "")};
+            },
+            0);
+
+    ExtractionResult result = provider.extract(DocumentTypeCode.INE, pdf(1, null), List.of("curp"));
+
+    // Ninguna lectura limpia se repitió: se elige una válida pero nunca como dato confiable.
+    assertThat(find(result, "curp").confidence()).isLessThanOrEqualTo(0.5);
+    assertThat(result.warnings()).anyMatch(w -> w.contains("las lecturas no coinciden") && w.contains("ROCC850314HMSDLR07"));
+    assertThat(result.warnings()).anyMatch(w -> w.startsWith("Lectura difícil"));
+  }
+
+  @Test
+  void aDocumentTheAiCallsIllegibleIsReadAgainFromAnEnhancedVersion() throws Exception {
+    // E2E 02/10: la INE algo borrosa pero legible quedaba bloqueada como "no legible".
+    String illegible =
+        """
+        {"documentCheck": {"detectedDocumentKind": "credencial", "matchesExpectedType": true, "legible": false, "observations": "borrosa"},
+         "fields": [%s], "otherFields": [], "warnings": []}"""
+            .formatted(field("fullName", "CARLOS EDUARDO RODRIGUEZ CALDERON", 0.6, 1));
+    var provider =
+        provider(
+            body ->
+                body.contains("versión MEJORADA")
+                    ? new Object[] {200, json("credencial INE", true, String.join(",",
+                        field("fullName", "CARLOS EDUARDO RODRIGUEZ CALDERON", 0.9, 1),
+                        field("birthDate", "1985-03-14", 0.85, 1)), "", "")}
+                    : new Object[] {200, illegible},
+            0);
+
+    ExtractionResult result = provider.extract(DocumentTypeCode.INE, pdf(1, null), List.of("fullName", "birthDate"));
+
+    assertThat(requests.get(1)).contains("versión MEJORADA").contains("escala de grises");
+    assertThat(result.assessment().legible()).isTrue();
+    assertThat(find(result, "birthDate").value()).isEqualTo("1985-03-14");
+    assertThat(result.warnings()).anyMatch(w -> w.startsWith("Lectura difícil"));
+  }
+
+  @Test
+  void aCoherentReadingIsNotProcessedAgain() throws Exception {
+    var provider =
+        provider(
+            body ->
+                new Object[] {
+                  200,
+                  json("credencial INE", true, String.join(",",
+                      field("curp", "ROCC850314HMSDLR07", 0.95, 1),
+                      field("electorKey", "RDCACL85031417H900", 0.95, 1),
+                      field("birthDate", "1985-03-14", 0.95, 1)), "", "")
+                },
+            0);
+
+    provider.extract(DocumentTypeCode.INE, pdf(1, null), List.of("curp", "electorKey", "birthDate"));
+
+    assertThat(requests).hasSize(1);
+  }
+
+  @Test
+  void aCurpThatContradictsTheBirthDateOfTheSameIdIsReRead() {
+    var current = new java.util.LinkedHashMap<String, FieldResult>();
+    current.put("curp", new FieldResult("curp", "ROCC860314HMSDLR07", 0.95, 1));
+    current.put("birthDate", new FieldResult("birthDate", "1985-03-14", 0.95, 1));
+
+    assertThat(OpenAiStructuredExtractionProvider.doubtfulFields(List.of("curp", "birthDate"), current))
+        .containsExactlyInAnyOrder("curp", "birthDate");
   }
 
   @Test

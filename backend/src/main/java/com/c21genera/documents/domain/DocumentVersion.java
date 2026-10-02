@@ -144,10 +144,17 @@ public class DocumentVersion {
         /* sin alertas de procesamiento */
       }
     }
-    if (Boolean.FALSE.equals(aiLegible)) {
+    // "Ilegible" según la IA solo bloquea si además no se pudo extraer NINGÚN dato. Si se leyeron datos,
+    // el archivo sí se pudo usar: queda como advertencia y en revisión (E2E 02/10: una INE algo borrosa
+    // pero legible quedaba bloqueada).
+    if (Boolean.FALSE.equals(aiLegible) && !hasExtractedData()) {
       issues.add("La revisión automática indica que el documento no es legible");
     }
     return issues;
+  }
+
+  private boolean hasExtractedData() {
+    return aiFieldsFound != null && aiFieldsFound > 0;
   }
 
   /** Avisos para el revisor que NO impiden aceptar. */
@@ -158,6 +165,13 @@ public class DocumentVersion {
           "La revisión automática indica que el archivo parece ser otro documento"
               + (aiDetectedKind != null && !aiDetectedKind.isBlank() ? " (" + aiDetectedKind + ")" : "")
               + "; los datos que se leyeron se conservaron");
+    }
+    if (Boolean.FALSE.equals(aiLegible) && hasExtractedData()) {
+      result.add(
+          "La revisión automática considera el documento difícil de leer, pero se extrajeron "
+              + aiFieldsFound
+              + (aiFieldsFound == 1 ? " dato" : " datos")
+              + ": revísalos contra el archivo antes de aceptarlo");
     }
     if (aiCheckFailed) {
       result.add(
