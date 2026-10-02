@@ -400,6 +400,30 @@ class OpenAiExtractionStrategyTest {
   }
 
   @Test
+  void aBlurryIdWhoseKeysCannotBeConfirmedStaysInReviewWithNoReliableField() throws Exception {
+    // E2E 02/10 (7e06028): INE borrosa sin CURP ni clave legibles y la fecha mal leída con 0.88.
+    byte[] original;
+    try (var in = getClass().getResourceAsStream("/qa-fixtures/INE_LIGERAMENTE_BORROSA_PERO_LEGIBLE.jpg")) {
+      original = in.readAllBytes();
+    }
+    var normalized = new com.c21genera.documentprocessing.infrastructure.ImageIoImageNormalizer().normalize(original, "image/jpeg");
+    byte[] blurryPdf =
+        new com.c21genera.documentprocessing.infrastructure.PdfAssembler()
+            .assemble(List.of(new com.c21genera.documentprocessing.infrastructure.PdfAssembler.PageContent(normalized.content(), normalized.mimeType())));
+    var provider =
+        provider(
+            body -> new Object[] {200, json("credencial INE", true, String.join(",",
+                field("fullName", "CARLOS EDUARDO RODRIGUEZ CALDERON", 0.93, 1),
+                field("birthDate", "1985-02-14", 0.88, 1)), "", "")},
+            0);
+
+    ExtractionResult result = provider.extract(DocumentTypeCode.INE, blurryPdf, List.of("fullName", "curp", "electorKey", "birthDate"));
+
+    assertThat(result.assessment().legible()).isFalse();
+    assertThat(result.fields()).allSatisfy(f -> assertThat(f.confidence()).isLessThanOrEqualTo(0.7));
+  }
+
+  @Test
   void aCoherentReadingOfAnotherDocumentIsNotProcessedAgain() throws Exception {
     var provider =
         provider(

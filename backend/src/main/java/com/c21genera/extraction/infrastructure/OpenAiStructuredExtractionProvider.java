@@ -360,6 +360,11 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       }
     }
 
+    // "?" en CUALQUIER lectura (no solo la primera): las relecturas también confiesan caracteres ilegibles.
+    boolean sawUnreadable =
+        unreadableCharacters
+            || readings.entrySet().stream()
+                .anyMatch(e -> e.getValue().stream().anyMatch(r -> r.value() != null && r.value().contains("?")));
     boolean unresolved = false;
     for (var entry : readings.entrySet()) {
       var decision = ReadingConsensus.decide(entry.getKey(), entry.getValue());
@@ -382,7 +387,12 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
     // Un "?" aislado en una página NÍTIDA que las relecturas resolvieron por consenso no vuelve difícil el
     // documento (E2E 02/10: el PDF de 38.9 MB, leído 4/4, quedaba todo en 0.7 y en revisión). En una página
     // BORROSA sí: ahí dos lecturas de los mismos píxeles se equivocan igual y el consenso no es prueba.
-    boolean stayHard = illegible || (unreadableCharacters && (enhancedPages.blurry() || unresolved));
+    // Y en una página borrosa, un identificador que no se pudo confirmar también: E2E 02/10, la INE borrosa
+    // no trajo CURP ni clave y su fecha de nacimiento salió mal con 0.88.
+    boolean stayHard =
+        illegible
+            || (sawUnreadable && (enhancedPages.blurry() || unresolved))
+            || (unresolved && enhancedPages.blurry());
     if (stayHard) {
       // E2E 02/10: la INE borrosa terminaba como "extracción completa" con todos sus datos dudosos.
       consolidator.markHardToRead();
