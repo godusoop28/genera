@@ -100,6 +100,7 @@ public final class DocumentConsistencyChecker {
     checkIdentities(documents, declared, findings);
     checkOwners(documents, declared, findings);
     checkRepresentation(documents, declared, findings);
+    checkIdentityAcrossDocuments(documents, declared, findings);
     checkAddresses(documents, declared, findings);
     checkSameValue(documents, "cadastral-key", "Clave catastral", "cadastralKey", Set.of(DocumentTypeCode.PROPERTY_TAX, DocumentTypeCode.CADASTRAL_PLAN), findings);
     checkSameValue(
@@ -260,6 +261,83 @@ public final class DocumentConsistencyChecker {
         }
       }
     }
+  }
+
+  /**
+   * E2E 02/10: de una INE algo borrosa la IA leyó la fecha de nacimiento 1986 en
+   * vez de 1985 (y la CURP con 86); la constancia fiscal del mismo expediente
+   * tenía la CURP correcta y nada lo advertía. Se cruzan la CURP de los
+   * documentos de identidad de cada persona entre sí y la fecha de nacimiento
+   * contra la fecha que lleva su CURP.
+   */
+  private static void checkIdentityAcrossDocuments(List<DocumentFacts> documents, DeclaredData declared, List<Finding> findings) {
+    Map<UUID, String> names = new LinkedHashMap<>();
+    declared.participants().forEach(p -> names.put(p.id(), p.fullName()));
+    Map<UUID, Map<String, String>> curps = new LinkedHashMap<>();
+    Map<UUID, Map<String, String>> birthDates = new LinkedHashMap<>();
+    for (DocumentFacts doc : documents) {
+      if (!IDENTITY_TYPES.contains(doc.type()) || doc.participantId() == null) {
+        continue;
+      }
+      String label = DocumentTypeLabels.of(doc.type());
+      if (doc.get("curp") != null) {
+        curps.computeIfAbsent(doc.participantId(), k -> new LinkedHashMap<>()).put(label, doc.get("curp"));
+      }
+      if (doc.get("birthDate") != null) {
+        birthDates.computeIfAbsent(doc.participantId(), k -> new LinkedHashMap<>()).put(label, doc.get("birthDate"));
+      }
+    }
+    curps.forEach(
+        (participant, byDoc) -> {
+          List<String> distinct = byDoc.values().stream().map(DocumentConsistencyChecker::alnum).distinct().toList();
+          if (distinct.size() > 1) {
+            boolean close = true;
+            for (int i = 1; i < distinct.size(); i++) {
+              close &= editDistance(distinct.getFirst(), distinct.get(i)) <= 2;
+            }
+            findings.add(
+                new Finding(
+                    "identity-curp-docs:" + participant,
+                    "Posible inconsistencia: la CURP de %s se leyó distinta en sus documentos: %s."
+                        .formatted(names.getOrDefault(participant, "un participante"), describe(byDoc)),
+                    close ? DataConflict.Severity.WARNING : DataConflict.Severity.CRITICAL));
+          }
+        });
+    birthDates.forEach(
+        (participant, byDoc) -> {
+          Map<String, String> participantCurps = curps.getOrDefault(participant, Map.of());
+          for (var birth : byDoc.entrySet()) {
+            String yymmdd = yymmdd(birth.getValue());
+            if (yymmdd == null) {
+              continue;
+            }
+            for (var curp : participantCurps.entrySet()) {
+              String digits = alnum(curp.getValue());
+              if (digits.length() >= 10 && !digits.substring(4, 10).equals(yymmdd)) {
+                findings.add(
+                    new Finding(
+                        "identity-birthdate:" + participant + ":" + birth.getKey(),
+                        "Posible inconsistencia: la fecha de nacimiento de %s leída en %s (%s) no coincide con la de su CURP en %s (%s)."
+                            .formatted(names.getOrDefault(participant, "un participante"), birth.getKey(), birth.getValue(), curp.getKey(), curp.getValue()),
+                        DataConflict.Severity.WARNING));
+                break;
+              }
+            }
+          }
+        });
+  }
+
+  /** "1985-03-14" o "14/03/1985" -> "850314"; null si no se reconoce. */
+  static String yymmdd(String date) {
+    Matcher iso = Pattern.compile("^(\\d{4})-(\\d{2})-(\\d{2})").matcher(date.strip());
+    if (iso.find()) {
+      return iso.group(1).substring(2) + iso.group(2) + iso.group(3);
+    }
+    Matcher dmy = Pattern.compile("^(\\d{1,2})/(\\d{1,2})/(\\d{4})").matcher(date.strip());
+    if (dmy.find()) {
+      return dmy.group(3).substring(2) + "%02d%02d".formatted(Integer.parseInt(dmy.group(2)), Integer.parseInt(dmy.group(1)));
+    }
+    return null;
   }
 
   private static void checkAddresses(List<DocumentFacts> documents, DeclaredData declared, List<Finding> findings) {

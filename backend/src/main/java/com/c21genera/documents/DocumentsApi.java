@@ -49,6 +49,16 @@ public interface DocumentsApi {
 
   record AcceptedDocumentView(UUID documentId, String type, UUID participantId, String pdfStorageKey) {}
 
+  /** currentVersionId: la versión vigente del documento (null si no tiene archivo). */
   record RequirementStatusView(
-      UUID documentId, com.c21genera.shared.domain.DocumentTypeCode type, UUID participantId, boolean required, String status) {}
+      UUID documentId, com.c21genera.shared.domain.DocumentTypeCode type, UUID participantId, boolean required, String status, UUID currentVersionId) {
+
+    public RequirementStatusView(
+        UUID documentId, com.c21genera.shared.domain.DocumentTypeCode type, UUID participantId, boolean required, String status) {
+      this(documentId, type, participantId, required, status, null);
+    }
+  }
+
+  /** Versión vigente de un documento: los datos leídos de versiones anteriores ya no cuentan. */
+  Optional<UUID> currentVersionIdOf(UUID documentId);
 }

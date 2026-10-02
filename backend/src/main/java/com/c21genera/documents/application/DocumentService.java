@@ -600,8 +600,18 @@ public class DocumentService implements DocumentsApi {
   @Transactional(readOnly = true)
   public List<RequirementStatusView> requirementStatusOf(UUID expedienteId) {
     return documentRepository.findByExpedienteId(expedienteId).stream()
-        .map(d -> new RequirementStatusView(d.getId(), d.getType(), d.getParticipantId(), d.isRequired(), d.getStatus().name()))
+        .map(
+            d ->
+                new RequirementStatusView(
+                    d.getId(), d.getType(), d.getParticipantId(), d.isRequired(), d.getStatus().name(),
+                    latestVersion(d.getId()).map(DocumentVersion::getId).orElse(null)))
         .toList();
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Optional<UUID> currentVersionIdOf(UUID documentId) {
+    return latestVersion(documentId).map(DocumentVersion::getId);
   }
 
   private DocumentVersion findVersion(UUID documentVersionId) {

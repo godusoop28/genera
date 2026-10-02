@@ -174,6 +174,12 @@ public class DocumentFieldExtractionService implements ExtractionApi {
     List<FieldResult> fields = new ArrayList<>();
     List<String> warnings = new ArrayList<>(result.warnings());
     for (FieldResult f : result.fields()) {
+      if (f.value() != null && f.value().contains("?")) {
+        // La IA marcó con "?" un carácter que no distinguió: nunca es un dato confiable.
+        fields.add(new FieldResult(f.fieldName(), f.value(), Math.min(f.confidence(), 0.3), f.page()));
+        warnings.add("Revisa " + DocumentFieldSchemas.describe(List.of(f.fieldName())).getFirst() + ": tiene caracteres que no se distinguieron (\"" + f.value() + "\")");
+        continue;
+      }
       var problem = com.c21genera.extraction.domain.FieldFormats.problem(f.fieldName(), f.value());
       if (problem.isPresent()) {
         fields.add(new FieldResult(f.fieldName(), f.value(), Math.min(f.confidence(), 0.3), f.page()));
@@ -229,7 +235,13 @@ public class DocumentFieldExtractionService implements ExtractionApi {
 
   @Transactional(readOnly = true)
   public List<ExtractedFieldObservation> observationsOfDocument(UUID documentId) {
-    return latestVersionOnly(observationRepository.findByDocumentIdOrderByFieldNameAsc(documentId));
+    // Solo lo leído en la versión VIGENTE: si la última carga no se pudo leer, no se muestran como
+    // actuales los datos de una carga anterior (E2E 02/10).
+    List<ExtractedFieldObservation> all = observationRepository.findByDocumentIdOrderByFieldNameAsc(documentId);
+    return documentsApi
+        .currentVersionIdOf(documentId)
+        .map(current -> all.stream().filter(o -> o.getDocumentVersionId().equals(current)).toList())
+        .orElseGet(() -> latestVersionOnly(all));
   }
 
   /** Datos detectados en la versión vigente de cada documento del expediente (sin rechazados ni "No aplica"). */
@@ -241,7 +253,7 @@ public class DocumentFieldExtractionService implements ExtractionApi {
         documentsApi.requirementStatusOf(expedienteId).stream()
             .filter(d -> !"NOT_APPLICABLE".equals(d.status()) && !"REJECTED".equals(d.status()))
             .collect(Collectors.toMap(RequirementStatusView::documentId, d -> d));
-    return latestVersionOnly(observationRepository.findByExpedienteIdOrderByFieldNameAsc(expedienteId)).stream()
+    return currentVersionsOnly(observationRepository.findByExpedienteIdOrderByFieldNameAsc(expedienteId), documents).stream()
         .filter(o -> documents.containsKey(o.getDocumentId()))
         .map(o -> new DocumentObservation(o, documents.get(o.getDocumentId())))
         .toList();
@@ -307,7 +319,7 @@ public class DocumentFieldExtractionService implements ExtractionApi {
             .collect(Collectors.toMap(RequirementStatusView::documentId, d -> d));
 
     Map<UUID, List<ExtractedFieldObservation>> byDocument =
-        latestVersionOnly(observationRepository.findByExpedienteIdOrderByFieldNameAsc(expedienteId)).stream()
+        currentVersionsOnly(observationRepository.findByExpedienteIdOrderByFieldNameAsc(expedienteId), documents).stream()
             .collect(Collectors.groupingBy(ExtractedFieldObservation::getDocumentId, LinkedHashMap::new, Collectors.toList()));
 
     List<DocumentFacts> facts = new ArrayList<>();
@@ -355,6 +367,18 @@ public class DocumentFieldExtractionService implements ExtractionApi {
     open.values().stream().filter(c -> !currentKeys.contains(c.getFieldName())).forEach(c -> c.closeBecauseDataNowMatches(now));
 
     return conflictRepository.findByExpedienteIdOrderByDetectedAtDesc(expedienteId);
+  }
+
+  /** De cada documento, solo lo leído en su versión vigente (si se conoce; si no, la más reciente con datos). */
+  private static List<ExtractedFieldObservation> currentVersionsOnly(
+      List<ExtractedFieldObservation> observations, Map<UUID, RequirementStatusView> documents) {
+    return latestVersionOnly(observations).stream()
+        .filter(
+            o -> {
+              RequirementStatusView doc = documents.get(o.getDocumentId());
+              return doc == null || doc.currentVersionId() == null || doc.currentVersionId().equals(o.getDocumentVersionId());
+            })
+        .toList();
   }
 
   /** De cada documento, solo cuentan las observaciones de su versión más reciente. */

@@ -60,6 +60,12 @@ management:
   info:
     env:
       enabled: true
+    # Memoria del proceso y versión de Java en /actuator/info: permite saber si un reinicio en Render
+    # fue por falta de memoria (E2E 02/10: 502 intermitentes sin despliegue de por medio).
+    process:
+      enabled: true
+    java:
+      enabled: true
   endpoints:
     web:
       exposure:

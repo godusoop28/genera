@@ -225,6 +225,34 @@ class DocumentConsistencyCheckerTest {
   }
 
   @Test
+  void aBirthDateMisreadOnTheIneIsCaughtAgainstTheCurpOfTheTaxCertificate() {
+    // Lectura real de producción: INE algo borrosa -> 1986 y CURP con 86; la CSF trae la CURP correcta.
+    List<Finding> findings =
+        DocumentConsistencyChecker.check(
+            List.of(
+                doc(DocumentTypeCode.INE, JUAN, Map.of("curp", "ROCC860314HMSDLR07", "birthDate", "1986-03-14")),
+                doc(DocumentTypeCode.TAX_STATUS_CERTIFICATE, JUAN, Map.of("curp", "ROCC850314HMSDLR07"))),
+            new DeclaredData(List.of(new DeclaredParticipant(JUAN, true, "Carlos Eduardo Rodríguez Calderón", null, null)), null, null, null));
+
+    assertThat(findings).extracting(Finding::key)
+        .contains("identity-curp-docs:" + JUAN)
+        .anyMatch(k -> k.startsWith("identity-birthdate:" + JUAN));
+    assertThat(findings).noneMatch(f -> f.severity() == DataConflict.Severity.CRITICAL);
+  }
+
+  @Test
+  void matchingIdentityDocumentsRaiseNothing() {
+    List<Finding> findings =
+        DocumentConsistencyChecker.check(
+            List.of(
+                doc(DocumentTypeCode.INE, JUAN, Map.of("curp", "PELJ800101HMSRPN01", "birthDate", "1980-01-01")),
+                doc(DocumentTypeCode.TAX_STATUS_CERTIFICATE, JUAN, Map.of("curp", "PELJ800101HMSRPN01"))),
+            declared(null, null));
+
+    assertThat(findings).isEmpty();
+  }
+
+  @Test
   void numbersAreParsedFromFreeText() {
     assertThat(DocumentConsistencyChecker.parseNumber("1,250.50 m²")).isEqualByComparingTo("1250.50");
     assertThat(DocumentConsistencyChecker.parseNumber("sin dato")).isNull();
