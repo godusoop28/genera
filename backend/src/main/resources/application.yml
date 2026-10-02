@@ -12,6 +12,13 @@ spring:
     lazy-initialization: true
   jackson:
     default-property-inclusion: non_null
+  servlet:
+    multipart:
+      # Sin esto Spring limita cada archivo a 1 MB y casi cualquier foto de
+      # celular se rechazaba como "demasiado pesada". El límite real por
+      # archivo lo aplica FileValidator (app.upload.max-file-size-bytes).
+      max-file-size: 10MB
+      max-request-size: 100MB
   jpa:
     open-in-view: false
     hibernate:
@@ -96,7 +103,7 @@ app:
     api-key: ${CLOUDINARY_API_KEY:}
     api-secret: ${CLOUDINARY_API_SECRET:}
   upload:
-    max-file-size-bytes: 15728640 # 15 MB
+    max-file-size-bytes: 10485760 # 10 MB: el plan gratuito de Cloudinary no acepta archivos más grandes
     max-files-per-request: 20
     allowed-public-mime-types: image/jpeg,image/png,application/pdf
     allowed-internal-mime-types: image/jpeg,image/png,application/pdf

@@ -17,11 +17,12 @@ import type {
   BackendPropertyLegalStatus,
   ParticipantRequest,
 } from "@/lib/api/types";
+import { clearDraft, readDraft, writeDraft } from "@/lib/drafts";
 import { accreditationLabels, legalStatusLabels, propertyTypeLabels } from "@/lib/labels";
 import { previewRequirements } from "@/lib/requirements-preview";
 import { AlertTriangle, Plus, Save, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 interface AddressForm {
   street: string;
@@ -48,24 +49,64 @@ function formatAddress(a: AddressForm): string {
   return `${a.street.trim()} No. Ext. ${a.exteriorNumber.trim()}${interior}, Col. ${a.neighborhood.trim()}, ${a.municipality.trim()}, ${a.state.trim()}, C.P. ${a.zipCode.trim()}`;
 }
 
+const DRAFT_KEY = "nuevo-expediente";
+
+interface NewExpedienteDraft {
+  personType: BackendPersonType;
+  signedByAttorney: boolean;
+  owners: ParticipantRequest[];
+  representatives: ParticipantRequest[];
+  attorney: ParticipantRequest;
+  accreditationType: BackendAccreditationType;
+  propertyCaseType: BackendPropertyCaseType;
+  condominiumRegime: boolean;
+  legalStatus: BackendPropertyLegalStatus;
+  address: AddressForm;
+}
+
 const person = (role: ParticipantRequest["role"]): ParticipantRequest => ({ role, fullName: "" });
 
+const subscribeNoop = () => () => {};
+
 export default function NuevoExpedientePage() {
+  // El formulario se pinta solo en el navegador para poder iniciarlo con el
+  // borrador guardado sin que difiera del HTML del servidor.
+  const isClient = useSyncExternalStore(subscribeNoop, () => true, () => false);
+  return isClient ? <NuevoExpedienteForm /> : null;
+}
+
+function NuevoExpedienteForm() {
   const { showToast } = useToast();
   const router = useRouter();
+  // Lo capturado sobrevive a recargar la página hasta que se crea el expediente.
+  const [draft] = useState(() => readDraft<NewExpedienteDraft>(DRAFT_KEY));
 
-  const [personType, setPersonType] = useState<BackendPersonType>("FISICA");
-  const [signedByAttorney, setSignedByAttorney] = useState(false);
-  const [owners, setOwners] = useState<ParticipantRequest[]>([person("OWNER")]);
-  const [representatives, setRepresentatives] = useState<ParticipantRequest[]>([person("LEGAL_REPRESENTATIVE")]);
-  const [attorney, setAttorney] = useState<ParticipantRequest>(person("ATTORNEY"));
-  const [accreditationType, setAccreditationType] = useState<BackendAccreditationType>("ESCRITURA_PUBLICA");
-  const [propertyCaseType, setPropertyCaseType] = useState<BackendPropertyCaseType>("HOUSING");
-  const [condominiumRegime, setCondominiumRegime] = useState(false);
-  const [legalStatus, setLegalStatus] = useState<BackendPropertyLegalStatus>("LIBRE_GRAVAMEN");
-  const [address, setAddress] = useState<AddressForm>(emptyAddress);
+  const [personType, setPersonType] = useState<BackendPersonType>(draft?.personType ?? "FISICA");
+  const [signedByAttorney, setSignedByAttorney] = useState(draft?.signedByAttorney ?? false);
+  const [owners, setOwners] = useState<ParticipantRequest[]>(draft?.owners ?? [person("OWNER")]);
+  const [representatives, setRepresentatives] = useState<ParticipantRequest[]>(draft?.representatives ?? [person("LEGAL_REPRESENTATIVE")]);
+  const [attorney, setAttorney] = useState<ParticipantRequest>(draft?.attorney ?? person("ATTORNEY"));
+  const [accreditationType, setAccreditationType] = useState<BackendAccreditationType>(draft?.accreditationType ?? "ESCRITURA_PUBLICA");
+  const [propertyCaseType, setPropertyCaseType] = useState<BackendPropertyCaseType>(draft?.propertyCaseType ?? "HOUSING");
+  const [condominiumRegime, setCondominiumRegime] = useState(draft?.condominiumRegime ?? false);
+  const [legalStatus, setLegalStatus] = useState<BackendPropertyLegalStatus>(draft?.legalStatus ?? "LIBRE_GRAVAMEN");
+  const [address, setAddress] = useState<AddressForm>({ ...emptyAddress, ...draft?.address });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    writeDraft(DRAFT_KEY, {
+      personType,
+      signedByAttorney,
+      owners,
+      representatives,
+      attorney,
+      accreditationType,
+      propertyCaseType,
+      condominiumRegime,
+      legalStatus,
+      address,
+    } satisfies NewExpedienteDraft);
+  }, [personType, signedByAttorney, owners, representatives, attorney, accreditationType, propertyCaseType, condominiumRegime, legalStatus, address]);
 
   const participants = useMemo<ParticipantRequest[]>(() => {
     if (personType === "MORAL") return [{ ...owners[0], role: "OWNER", civilStatus: null, maritalRegime: null }, ...representatives];
@@ -106,6 +147,7 @@ export default function NuevoExpedientePage() {
         propertyAddress: formatAddress(address),
         participants: participants.map((p) => ({ ...p, fullName: p.fullName.trim() })),
       });
+      clearDraft(DRAFT_KEY);
       showToast(`Expediente ${created.folio} creado.`);
       router.push(`/expedientes/${created.id}`);
     } catch (err) {

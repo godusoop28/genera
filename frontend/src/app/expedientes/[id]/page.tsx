@@ -9,6 +9,7 @@ import { ApiError } from "@/lib/api/client";
 import { getExpediente, getParticipants } from "@/lib/api/expedientes";
 import { backendStatusLabels, backendStatusNextStep, backendStatusTone } from "@/lib/api/status-labels";
 import type { ExpedienteResponse, ParticipantResponse, SigningLinkResponse } from "@/lib/api/types";
+import { readDraft, writeDraft } from "@/lib/drafts";
 import { cn } from "@/lib/utils";
 import { ArrowRight, RefreshCw } from "lucide-react";
 import { use, useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
@@ -51,7 +52,17 @@ export interface ExpedienteContext {
 
 export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes/[id]">) {
   const { id } = use(params);
-  const [tab, setTab] = useState<TabId>("resumen");
+  // Al recargar se vuelve a la pestaña en la que se estaba trabajando. (Seguro
+  // de leer en el estado inicial: las pestañas no se pintan hasta cargar el expediente.)
+  const tabKey = `expediente:${id}:tab`;
+  const [tab, setTabState] = useState<TabId>(() => {
+    const saved = readDraft<TabId>(tabKey);
+    return saved && tabs.some((t) => t.id === saved) ? saved : "resumen";
+  });
+  const setTab = (next: TabId) => {
+    setTabState(next);
+    writeDraft(tabKey, next);
+  };
   const { showToast } = useToast();
   const [expediente, setExpediente] = useState<ExpedienteResponse | null>(null);
   const [participants, setParticipants] = useState<ParticipantResponse[]>([]);

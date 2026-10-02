@@ -23,6 +23,10 @@ public class ImageIoImageNormalizer implements ImageNormalizer {
 
   private static final float JPEG_QUALITY = 0.9f;
 
+  // Una foto de celular de 12-50 MP no aporta legibilidad extra a un
+  // documento y multiplica memoria, tamaño del PDF y de la petición a la IA.
+  private static final int MAX_LONG_SIDE_PX = 2400;
+
   @Override
   public NormalizedImage normalize(byte[] original, String sourceMimeType) {
     BufferedImage image;
@@ -37,7 +41,7 @@ public class ImageIoImageNormalizer implements ImageNormalizer {
 
     int orientation = readExifOrientation(original);
     BufferedImage corrected = applyOrientation(image, orientation);
-    BufferedImage flattened = flattenToRgb(corrected);
+    BufferedImage flattened = downscale(flattenToRgb(corrected));
 
     byte[] jpeg = encodeJpeg(flattened);
     return new NormalizedImage(jpeg, "image/jpeg", flattened.getWidth(), flattened.getHeight());
@@ -99,6 +103,23 @@ public class ImageIoImageNormalizer implements ImageNormalizer {
     graphics.drawImage(image, 0, 0, null);
     graphics.dispose();
     return flattened;
+  }
+
+  private BufferedImage downscale(BufferedImage image) {
+    int longSide = Math.max(image.getWidth(), image.getHeight());
+    if (longSide <= MAX_LONG_SIDE_PX) {
+      return image;
+    }
+    double scale = (double) MAX_LONG_SIDE_PX / longSide;
+    int width = Math.max(1, (int) Math.round(image.getWidth() * scale));
+    int height = Math.max(1, (int) Math.round(image.getHeight() * scale));
+    BufferedImage scaled = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+    var graphics = scaled.createGraphics();
+    graphics.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+    graphics.setRenderingHint(java.awt.RenderingHints.KEY_RENDERING, java.awt.RenderingHints.VALUE_RENDER_QUALITY);
+    graphics.drawImage(image, 0, 0, width, height, null);
+    graphics.dispose();
+    return scaled;
   }
 
   private byte[] encodeJpeg(BufferedImage image) {

@@ -61,9 +61,13 @@ public class GlobalExceptionHandler {
   }
 
   @ExceptionHandler(MaxUploadSizeExceededException.class)
-  public ProblemDetail handleTooLarge(HttpServletRequest request) {
+  public ProblemDetail handleTooLarge(MaxUploadSizeExceededException ex, HttpServletRequest request) {
+    long maxBytes = ex.getMaxUploadSize();
+    String limit = maxBytes > 0 ? " (%d MB por archivo)".formatted(Math.max(1, maxBytes / (1024 * 1024))) : "";
     ProblemDetail problem =
-        ProblemDetail.forStatusAndDetail(HttpStatus.PAYLOAD_TOO_LARGE, "El archivo excede el tamaño máximo permitido.");
+        ProblemDetail.forStatusAndDetail(
+            HttpStatus.PAYLOAD_TOO_LARGE,
+            "El archivo pesa más de lo permitido" + limit + ". Si es un PDF, guárdalo en menor calidad o sube fotos de las páginas.");
     problem.setProperty("code", "FILE_TOO_LARGE");
     attachTraceId(problem, request);
     return problem;

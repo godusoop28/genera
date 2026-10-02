@@ -30,6 +30,7 @@ import type {
   PublicParticipantResponse,
 } from "@/lib/api/types";
 import { documentTypeLabel } from "@/lib/document-type-labels";
+import { clearDraft, readDraft, writeDraft } from "@/lib/drafts";
 import { civilStatusLabels, label, maritalRegimeLabels, returnReasonLabels } from "@/lib/labels";
 import { AlertTriangle, CheckCircle2, HelpCircle, Loader2, MapPin, ShieldCheck, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -62,8 +63,15 @@ const clientStatusText: Record<PublicExpedienteResponse["status"], string> = {
 
 export function PublicPortal({ token }: { token: string }) {
   const [expediente, setExpediente] = useState<PublicExpedienteResponse | null>(null);
-  const [step, setStep] = useState(1);
-  const [maxReached, setMaxReached] = useState(1);
+  // Al recargar la página el cliente vuelve al paso en el que iba. (Seguro de
+  // leer en el estado inicial: nada depende del paso hasta cargar el expediente.)
+  const stepKey = `portal:${token}:step`;
+  const [savedStep] = useState(() => {
+    const saved = readDraft<{ step: number; maxReached: number }>(stepKey);
+    return saved && saved.step >= 1 && saved.step <= steps.length ? saved : null;
+  });
+  const [step, setStep] = useState(savedStep?.step ?? 1);
+  const [maxReached, setMaxReached] = useState(savedStep ? Math.max(savedStep.step, savedStep.maxReached) : 1);
   const [invalid, setInvalid] = useState(false);
 
   const loadExpediente = useCallback(
@@ -85,8 +93,10 @@ export function PublicPortal({ token }: { token: string }) {
   }, [loadExpediente]);
 
   const goTo = (next: number) => {
+    const reached = Math.max(maxReached, next);
     setStep(next);
-    setMaxReached((m) => Math.max(m, next));
+    setMaxReached(reached);
+    writeDraft(stepKey, { step: next, maxReached: reached });
   };
 
   if (invalid) {
@@ -251,6 +261,12 @@ function PrivacyStep({ token, onContinue }: { token: string; onContinue: () => v
   );
 }
 
+interface ClientDataDraft {
+  email: string;
+  phone: string;
+  civil: Record<string, Pick<PublicParticipantResponse, "civilStatus" | "maritalRegime">>;
+}
+
 function ClientDataStep({
   token,
   personType,
@@ -267,16 +283,29 @@ function ClientDataStep({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Lo capturado se conserva si el cliente recarga la página antes de continuar.
+  const draftKey = `portal:${token}:data`;
+
   useEffect(() => {
     Promise.all([getClientData(token), listPublicParticipants(token)])
       .then(([d, p]) => {
-        setEmail(d.email ?? "");
-        setPhone(d.phone ?? "");
-        setParticipants(p);
+        const draft = readDraft<ClientDataDraft>(draftKey);
+        setEmail(draft?.email ?? d.email ?? "");
+        setPhone(draft?.phone ?? d.phone ?? "");
+        setParticipants(p.map((participant) => ({ ...participant, ...(draft?.civil?.[participant.id] ?? {}) })));
         setLoaded(true);
       })
       .catch(() => setError("No se pudieron cargar tus datos. Recarga la página."));
-  }, [token]);
+  }, [token, draftKey]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    writeDraft(draftKey, {
+      email,
+      phone,
+      civil: Object.fromEntries(participants.map((p) => [p.id, { civilStatus: p.civilStatus, maritalRegime: p.maritalRegime }])),
+    } satisfies ClientDataDraft);
+  }, [loaded, draftKey, email, phone, participants]);
 
   const setParticipant = (id: string, patch: Partial<PublicParticipantResponse>) =>
     setParticipants((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
@@ -293,6 +322,7 @@ function ClientDataStep({
           await declareCivilStatus(token, p.id, p.civilStatus, p.civilStatus === "CASADO" ? p.maritalRegime : null);
         }
       }
+      clearDraft(draftKey);
       onContinue();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No se pudo guardar tu información. Intenta de nuevo.");

@@ -1,6 +1,7 @@
 // Portal público del cliente y liga personal de firma: sin JWT, el token en la
 // URL es la credencial (ver backend AGENTS §90-97). No requiere setAccessToken.
 import { apiClient, uploadFiles } from "@/lib/api/client";
+import { shrinkImages } from "@/lib/image-shrink";
 import type {
   BackendCivilStatus,
   BackendMaritalRegime,
@@ -68,8 +69,8 @@ export function listPublicDocuments(token: string) {
   return apiClient.get<PublicDocumentResponse[]>(`/public/expedientes/${token}/documents`);
 }
 
-export function uploadPublicDocumentVersion(token: string, documentId: string, files: File[]) {
-  return uploadFiles<DocumentVersionResponse>(`/public/expedientes/${token}/documents/${documentId}/versions`, "files", files);
+export async function uploadPublicDocumentVersion(token: string, documentId: string, files: File[]) {
+  return uploadFiles<DocumentVersionResponse>(`/public/expedientes/${token}/documents/${documentId}/versions`, "files", await shrinkImages(files));
 }
 
 // --- Firma del contrato (liga personal de cada firmante) ---

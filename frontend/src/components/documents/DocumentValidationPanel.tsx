@@ -3,8 +3,8 @@ import { CheckCircle2, Info, ShieldCheck } from "lucide-react";
 
 const checklist = [
   { title: "Documento completo", description: "Debe verse íntegro, sin recortes." },
-  { title: "Orientación vertical", description: "El documento debe estar en posición vertical." },
-  { title: "Nitidez", description: "Fotos nítidas, sin movimiento ni desenfoque." },
+  { title: "Cualquier orientación", description: "Vertical u horizontal: lo importante es que se lea." },
+  { title: "Nitidez", description: "Que el texto se pueda leer; no tiene que ser perfecta." },
   { title: "Sin reflejos excesivos", description: "Evita brillos que cubran el texto." },
   { title: "Texto visible", description: "Todo el contenido debe ser legible." },
   { title: "Formato admitido", description: "Formatos aceptados: JPG, PNG y PDF." },

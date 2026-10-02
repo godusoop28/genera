@@ -29,17 +29,17 @@ class HeuristicDocumentQualityAnalyzerTest {
 
   @Test
   void rejectsALowResolutionPhoto() {
-    QualityResult result = analyzer.analyze(new byte[]{1, 2, 3}, "image/jpeg", 200, 300, DocumentTypeCode.DEED);
+    QualityResult result = analyzer.analyze(new byte[]{1, 2, 3}, "image/jpeg", 200, 240, DocumentTypeCode.DEED);
 
     assertThat(result.acceptable()).isFalse();
     assertThat(result.issues()).isNotEmpty();
   }
 
   @Test
-  void rejectsAnExtremeAspectRatio() {
+  void acceptsAPanoramicPhotoBecauseTheAiDecidesIfItIsReadable() {
     QualityResult result = analyzer.analyze(new byte[]{1, 2, 3}, "image/jpeg", 5000, 500, DocumentTypeCode.DEED);
 
-    assertThat(result.acceptable()).isFalse();
+    assertThat(result.acceptable()).isTrue();
   }
 
   @Test
@@ -50,11 +50,19 @@ class HeuristicDocumentQualityAnalyzerTest {
   }
 
   @Test
-  void rejectsALandscapePhotoForADocumentThatShouldBeVertical() {
-    QualityResult result = analyzer.analyze(new byte[]{1, 2, 3}, "image/jpeg", 1600, 1200, DocumentTypeCode.PROOF_OF_ADDRESS);
+  void acceptsALandscapePhotoOfAPageDocument() {
+    QualityResult result = analyzer.analyze(new byte[]{1, 2, 3}, "image/jpeg", 1600, 1200, DocumentTypeCode.MARRIAGE_CERTIFICATE);
 
-    assertThat(result.acceptable()).isFalse();
-    assertThat(result.issues()).anyMatch(issue -> issue.contains("posición vertical"));
+    assertThat(result.acceptable()).isTrue();
+  }
+
+  @Test
+  void acceptsASlightlyBlurryDocumentPhoto() throws IOException {
+    byte[] jpeg = encodeJpeg(heavilyBlur(documentLikeImage(), 2));
+
+    QualityResult result = analyzer.analyze(jpeg, "image/jpeg", 1200, 1600, DocumentTypeCode.DEED);
+
+    assertThat(result.acceptable()).isTrue();
   }
 
   @Test
@@ -102,8 +110,8 @@ class HeuristicDocumentQualityAnalyzerTest {
   }
 
   @Test
-  void rejectsARealBlurryDocumentPhoto() throws IOException {
-    byte[] jpeg = encodeJpeg(heavilyBlur(documentLikeImage(), 20));
+  void rejectsAnIllegiblyBlurryDocumentPhoto() throws IOException {
+    byte[] jpeg = encodeJpeg(smear(documentLikeImage(), 16));
 
     QualityResult result = analyzer.analyze(jpeg, "image/jpeg", 1200, 1600, DocumentTypeCode.DEED);
 
@@ -140,6 +148,23 @@ class HeuristicDocumentQualityAnalyzerTest {
       current = output;
     }
     return current;
+  }
+
+  /** Reduce la imagen 1/factor y la vuelve a ampliar: el texto queda como manchas ilegibles. */
+  private static BufferedImage smear(BufferedImage source, int factor) {
+    int w = source.getWidth() / factor;
+    int h = source.getHeight() / factor;
+    BufferedImage tiny = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+    var g = tiny.createGraphics();
+    g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+    g.drawImage(source, 0, 0, w, h, null);
+    g.dispose();
+    BufferedImage big = new BufferedImage(source.getWidth(), source.getHeight(), BufferedImage.TYPE_INT_RGB);
+    g = big.createGraphics();
+    g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+    g.drawImage(tiny, 0, 0, source.getWidth(), source.getHeight(), null);
+    g.dispose();
+    return big;
   }
 
   private static byte[] encodeJpeg(BufferedImage image) throws IOException {

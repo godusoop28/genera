@@ -8,11 +8,12 @@ import { getContractReadiness } from "@/lib/api/contracts";
 import { getClientData, getLegalDetails, updateClientData, updateLegalDetails } from "@/lib/api/expedientes";
 import { getExpedienteExtractedFields } from "@/lib/api/extraction";
 import type { ContractReadinessResponse, LegalDetails, ManualClientDataResponse } from "@/lib/api/types";
+import { clearDraft, readDraft, writeDraft } from "@/lib/drafts";
 import { errorText } from "@/lib/errors";
 import { buildDetectedData, legalValue, type Detected, type DetectedData, type LegalKey } from "@/lib/detected-data";
 import { useCan } from "@/lib/permissions";
 import { CheckCircle2, CircleAlert, Save, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ExpedienteContext } from "./page";
 
 const HOUSING_CHECKLIST: [string, string][] = [
@@ -34,6 +35,12 @@ const LAND_CHECKLIST: [string, string][] = [
 
 type Section = Record<string, string | null | undefined>;
 
+interface ContractDataDraft {
+  data: ManualClientDataResponse;
+  legal: LegalDetails;
+  reason: string;
+}
+
 export function ContractDataTab({ expediente, participants, reload }: ExpedienteContext) {
   const { showToast } = useToast();
   const can = useCan();
@@ -45,19 +52,44 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
   const [saving, setSaving] = useState(false);
   const [detected, setDetected] = useState<DetectedData | null>(null);
   const ownerId = participants.find((p) => p.role === "OWNER")?.id ?? null;
+  // Cambios sin guardar: sobreviven a recargar la página (se descartan al guardar).
+  const draftKey = `contract-data:${expediente.id}`;
+  const savedSnapshot = useRef<string | null>(null);
 
-  const load = useCallback(() => {
-    getExpedienteExtractedFields(expediente.id)
-      .then((obs) => setDetected(buildDetectedData(obs, ownerId)))
-      .catch(() => setDetected(null));
-    getContractReadiness(expediente.id).then(setReadiness).catch(() => undefined);
-    getClientData(expediente.id).then(setData).catch((err) => showToast(errorText(err)));
-    getLegalDetails(expediente.id).then(setLegal).catch((err) => showToast(errorText(err)));
-  }, [expediente.id, ownerId, showToast]);
+  const load = useCallback(
+    (useDraft: boolean) => {
+      getExpedienteExtractedFields(expediente.id)
+        .then((obs) => setDetected(buildDetectedData(obs, ownerId)))
+        .catch(() => setDetected(null));
+      getContractReadiness(expediente.id).then(setReadiness).catch(() => undefined);
+      Promise.all([getClientData(expediente.id), getLegalDetails(expediente.id)])
+        .then(([serverData, serverLegal]) => {
+          savedSnapshot.current = JSON.stringify({ data: serverData, legal: serverLegal });
+          const draft = useDraft ? readDraft<ContractDataDraft>(draftKey) : null;
+          setData(draft?.data ?? serverData);
+          setLegal(draft?.legal ?? serverLegal);
+          if (draft) {
+            setReason(draft.reason);
+            showToast("Se recuperaron cambios que no habías guardado. Revísalos y guarda.");
+          }
+        })
+        .catch((err) => showToast(errorText(err)));
+    },
+    [expediente.id, ownerId, showToast, draftKey],
+  );
 
   useEffect(() => {
-    load();
+    load(true);
   }, [load]);
+
+  useEffect(() => {
+    if (!data || !legal || savedSnapshot.current === null) return;
+    if (JSON.stringify({ data, legal }) === savedSnapshot.current && !reason.trim()) {
+      clearDraft(draftKey);
+    } else {
+      writeDraft(draftKey, { data, legal, reason } satisfies ContractDataDraft);
+    }
+  }, [data, legal, reason, draftKey]);
 
   if (!data || !legal) return <p className="text-sm text-muted">Cargando…</p>;
 
@@ -124,8 +156,11 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
       });
       await updateLegalDetails(expediente.id, legal, reason.trim());
       showToast("Datos del contrato guardados.");
+      // Lo guardado pasa a ser la referencia: así el efecto de borrador no lo vuelve a escribir.
+      savedSnapshot.current = JSON.stringify({ data, legal });
+      clearDraft(draftKey);
       setReason("");
-      load();
+      load(false);
       await reload();
     } catch (err) {
       showToast(errorText(err));

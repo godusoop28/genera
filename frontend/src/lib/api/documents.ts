@@ -1,4 +1,5 @@
 import { apiClient, uploadFiles } from "@/lib/api/client";
+import { shrinkImages } from "@/lib/image-shrink";
 import type {
   DocumentResponse,
   DocumentVersionResponse,
@@ -19,8 +20,8 @@ export function listReviews(documentId: string) {
   return apiClient.get<ReviewHistoryResponse[]>(`/internal/documents/${documentId}/reviews`);
 }
 
-export function uploadVersion(documentId: string, files: File[]) {
-  return uploadFiles<DocumentVersionResponse>(`/internal/documents/${documentId}/versions`, "files", files);
+export async function uploadVersion(documentId: string, files: File[]) {
+  return uploadFiles<DocumentVersionResponse>(`/internal/documents/${documentId}/versions`, "files", await shrinkImages(files));
 }
 
 /** overrideJustification solo aplica para aceptar por excepción un archivo con alertas. */
