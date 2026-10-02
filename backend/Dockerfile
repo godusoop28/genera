@@ -32,7 +32,9 @@ EXPOSE 8080
 # superar el límite del contenedor y Render lo reiniciaba (502) en vez de lanzar un OutOfMemoryError.
 # TieredStopAtLevel=1: solo el compilador C1; C2 usaba decenas de MB de memoria nativa al compilar código
 # nuevo (p. ej. el primer render de un PDF grande) y llevaba el proceso por encima del límite.
+# Min/MaxHeapFreeRatio: tras la recolección completa que hace MemoryRelief al terminar cada trabajo pesado, el
+# heap se encoge y le regresa al sistema lo que no usa (si no, se quedaba comprometido en 199 MB para siempre).
 # glibc crea un arena de malloc por hilo y infla la memoria nativa del JVM en contenedores chicos.
 ENV MALLOC_ARENA_MAX=2
-ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=40 -XX:+UseSerialGC -Xss512k -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=48m -XX:TieredStopAtLevel=1"
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=40 -XX:+UseSerialGC -Xss512k -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=48m -XX:TieredStopAtLevel=1 -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=30"
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

@@ -4,6 +4,7 @@ import com.c21genera.documents.DocumentsApi;
 import com.c21genera.shared.jobs.BackgroundJob;
 import com.c21genera.shared.jobs.BackgroundJobQueue;
 import com.c21genera.shared.jobs.JobStatus;
+import com.c21genera.shared.jobs.MemoryRelief;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,6 +55,8 @@ public class DocumentProcessingWorker {
       if (finalStatus == JobStatus.FAILED) {
         documentsApi.markFailed(payload.documentVersionId(), "Procesamiento falló tras reintentos: " + message);
       }
+    } finally {
+      MemoryRelief.afterHeavyWork();
     }
   }
 }
