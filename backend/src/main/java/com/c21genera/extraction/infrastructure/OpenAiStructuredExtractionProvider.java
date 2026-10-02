@@ -174,6 +174,7 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
     ExtractionConsolidator consolidator = new ExtractionConsolidator();
     Set<Integer> analyzed = new LinkedHashSet<>();
     List<Map<String, Object>> firstBatchImages = List.of();
+    boolean awkwardLayout = false;
 
     for (int i = 0; i < plan.batches().size(); i++) {
       List<Integer> pages = plan.batches().get(i).pages();
@@ -189,8 +190,18 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
         // luego reducir duplicaba la memoria de cada página (E2E 02/10). Con 1-2 páginas (una credencial) se
         // conserva la resolución alta: el recorte al contenido la necesita para los caracteres chicos.
         int pageDpi = pages.size() > 2 ? Math.min(dpi, dpiForModel(document, page)) : dpi;
-        BufferedImage rendered = fitForModel(enlargeSmall(cropToContent(renderImage(renderer, page, pageDpi))));
-        if (textLooksVertical(rendered)) {
+        BufferedImage raw = renderImage(renderer, page, pageDpi);
+        if (i == 0 && !longDocument && pages.size() <= MAX_ENHANCED_PAGES) {
+          // Página inclinada: la IA lee con más errores aunque diga estar segura (E2E 02/10).
+          awkwardLayout |= Math.abs(DifficultImages.skewAngle(raw)) >= AWKWARD_TILT_DEGREES;
+        }
+        BufferedImage rendered = fitForModel(enlargeSmall(cropToContent(raw)));
+        raw = null;
+        boolean sidewaysPage = textLooksVertical(rendered);
+        if (i == 0) {
+          awkwardLayout |= sidewaysPage;
+        }
+        if (sidewaysPage) {
           // Documento acostado (p. ej. credencial fotografiada con el celular vertical): se mandan solo las
           // dos versiones giradas, una de ellas derecha. Con la original de lado también, la IA mezclaba
           // lecturas y cambiaba caracteres de la clave de elector (E2E 02/10).
@@ -218,7 +229,7 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       }
     }
     if (!longDocument && !firstBatchImages.isEmpty()) {
-      improveDifficultReading(type, document, fieldNames, plan.pagesTotal(), consolidator, firstBatchImages);
+      improveDifficultReading(type, document, fieldNames, plan.pagesTotal(), consolidator, firstBatchImages, awkwardLayout);
     }
     addCoverageWarning(consolidator, fieldNames, analyzed.size(), plan.pagesTotal());
     return withCounts(consolidator, analyzed.size(), plan.pagesTotal());
@@ -231,6 +242,10 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
   /** Lado mayor con el que se renderiza la página para la versión mejorada (de sobra para una foto normalizada). */
   private static final int ENHANCED_RENDER_LONG_SIDE = 1800;
   private static final int MAX_ENHANCED_PAGES = 2;
+  /** Inclinación a partir de la cual los identificadores siempre se confirman. */
+  private static final double AWKWARD_TILT_DEGREES = 1.5;
+  /** Tope de confianza de cualquier dato de un documento que la IA consideró ilegible. */
+  static final double ILLEGIBLE_MAX_CONFIDENCE = 0.7;
 
   /**
    * Segunda oportunidad para un documento corto que la primera lectura no
@@ -257,10 +272,16 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       List<String> fieldNames,
       int pagesTotal,
       ExtractionConsolidator consolidator,
-      List<Map<String, Object>> originalImages)
+      List<Map<String, Object>> originalImages,
+      boolean awkwardLayout)
       throws Exception {
     Map<String, FieldResult> current = byName(consolidator);
     Set<String> doubtful = doubtfulFields(fieldNames, current);
+    if (awkwardLayout) {
+      // De lado o inclinada: la confianza de la IA no es fiable (leyó "RDXACL..." con 0.88). Todo
+      // identificador leído se confirma con una segunda lectura independiente.
+      IDENTIFIERS.stream().filter(fieldNames::contains).forEach(doubtful::add);
+    }
     boolean illegible = Boolean.FALSE.equals(consolidator.legible());
     boolean fewFields = consolidator.foundOf(fieldNames) * 2 < fieldNames.size();
     if (!illegible && !fewFields && doubtful.isEmpty()) {
@@ -281,9 +302,6 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
     if (illegible || fewFields || doubtful.contains("birthDate")) {
       ExtractionResult second = callQuietly(type, withPrompt(enhancedPrompt(type, fieldNames, pages, pagesTotal), enhanced));
       if (second != null) {
-        if (Boolean.TRUE.equals(second.assessment().legible())) {
-          consolidator.markLegible();
-        }
         for (FieldResult f : second.fields()) {
           if (readings.containsKey(f.fieldName())) {
             readings.get(f.fieldName()).add(f);
@@ -295,7 +313,9 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       }
     }
 
-    for (List<Map<String, Object>> images : List.of(enhanced, originalImages)) {
+    // Hasta tres relecturas dirigidas (mejorada, original, mejorada): la IA no es determinista, así que
+    // repetir sobre la misma imagen también es una lectura independiente.
+    for (List<Map<String, Object>> images : List.of(enhanced, originalImages, enhanced)) {
       List<String> pending = readings.keySet().stream().filter(f -> !hasConsensus(f, readings.get(f))).toList();
       if (pending.isEmpty()) {
         break;
@@ -327,6 +347,17 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
                 + (distinct.size() == 1
                     ? ": se leyó \"" + distinct.getFirst() + "\" pero con confianza baja"
                     : ": las lecturas no coinciden (" + String.join(" / ", distinct) + ")"));
+      }
+    }
+    if (illegible) {
+      // La primera lectura dijo "ilegible": aunque la versión mejorada se haya leído, el documento sigue
+      // marcado como difícil (queda en revisión) y ningún dato pasa de "revisar". Dos lecturas de los mismos
+      // píxeles borrosos se equivocan igual (E2E 02/10: "1985-02-14" en vez de 1985-03-14 en ambas), así
+      // que un consenso no basta para darlo por bueno.
+      for (FieldResult f : byName(consolidator).values()) {
+        if (f.confidence() > ILLEGIBLE_MAX_CONFIDENCE) {
+          consolidator.replace(new FieldResult(f.fieldName(), f.value(), ILLEGIBLE_MAX_CONFIDENCE, f.page()));
+        }
       }
     }
     if (illegible || unresolved) {

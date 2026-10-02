@@ -348,8 +348,11 @@ class OpenAiExtractionStrategyTest {
     ExtractionResult result = provider.extract(DocumentTypeCode.INE, pdf(1, null), List.of("fullName", "birthDate"));
 
     assertThat(requests.get(1)).contains("versión MEJORADA").contains("escala de grises");
-    assertThat(result.assessment().legible()).isTrue();
+    // Se recupera el dato, pero el documento sigue "difícil de leer" (en revisión) y nada pasa de 0.7:
+    // la versión mejorada viene de los mismos píxeles borrosos.
+    assertThat(result.assessment().legible()).isFalse();
     assertThat(find(result, "birthDate").value()).isEqualTo("1985-03-14");
+    assertThat(result.fields()).allSatisfy(f -> assertThat(f.confidence()).isLessThanOrEqualTo(0.7));
     assertThat(result.warnings()).anyMatch(w -> w.startsWith("Lectura difícil"));
   }
 

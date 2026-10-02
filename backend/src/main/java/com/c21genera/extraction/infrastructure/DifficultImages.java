@@ -2,7 +2,9 @@ package com.c21genera.extraction.infrastructure;
 
 import java.awt.Color;
 import java.awt.Graphics2D;
+import java.awt.Rectangle;
 import java.awt.RenderingHints;
+import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,15 +36,51 @@ final class DifficultImages {
   private static final double MAX_SCALE = 4.0;
   private static final int INK = 170;
 
-  /** Franjas mejoradas de la página, de arriba a abajo. */
+  /** Texto borroso (mucho gris intermedio): solo entonces se enfoca. Calibrado: nítido ~0.12, borroso ~0.5. */
+  static final double SOFT_TEXT = 0.3;
+
+  /**
+   * Franjas mejoradas de la página, de arriba a abajo. El resultado se dibuja en
+   * UNA sola transformación (enderezar + recortar + ampliar) desde la página
+   * original: girar primero y ampliar después interpolaba dos veces y rompía las
+   * letras de una foto con texto sin suavizado (E2E 02/10: el "8" de la clave de
+   * la INE inclinada parecía una "s").
+   */
   static List<BufferedImage> enhancedBands(BufferedImage page) {
     BufferedImage gray = autoContrast(grayscale(page));
     double angle = skewAngle(gray);
-    BufferedImage straight = Math.abs(angle) >= 0.4 ? rotateDegrees(gray, -angle) : gray;
-    BufferedImage content = cropToText(straight);
-    // Se enfoca el recorte (chico) antes de ampliarlo: enfocar la imagen ya ampliada costaría ~16x memoria.
-    double scale = Math.max(1.0, Math.min(MAX_SCALE, (double) TARGET_WIDTH / content.getWidth()));
-    return bands(scale(sharpen(content, 1), scale));
+    boolean tilted = Math.abs(angle) >= 0.4;
+    AffineTransform toStraight = tilted ? rotation(gray.getWidth(), gray.getHeight(), -angle) : new AffineTransform();
+    // La imagen enderezada solo se usa para ubicar el texto; el resultado se vuelve a tomar del original.
+    Rectangle box = textBox(tilted ? rotateDegrees(gray, -angle) : gray);
+    double scale = Math.max(1.0, Math.min(MAX_SCALE, (double) TARGET_WIDTH / box.width));
+    BufferedImage source = softness(gray) > SOFT_TEXT ? sharpen(gray, 1) : gray;
+
+    BufferedImage out = new BufferedImage((int) Math.round(box.width * scale), (int) Math.round(box.height * scale), BufferedImage.TYPE_INT_RGB);
+    Graphics2D g = out.createGraphics();
+    g.setColor(Color.WHITE);
+    g.fillRect(0, 0, out.getWidth(), out.getHeight());
+    g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+    g.scale(scale, scale);
+    g.translate(-box.x, -box.y);
+    g.transform(toStraight);
+    g.drawImage(source, 0, 0, null);
+    g.dispose();
+    return bands(out);
+  }
+
+  /** La misma transformación que {@link #rotateDegrees}: gira sobre el centro y deja todo a la vista. */
+  static AffineTransform rotation(int w, int h, double degrees) {
+    double rad = Math.toRadians(degrees);
+    double sin = Math.abs(Math.sin(rad));
+    double cos = Math.abs(Math.cos(rad));
+    int nw = (int) Math.ceil(w * cos + h * sin);
+    int nh = (int) Math.ceil(h * cos + w * sin);
+    AffineTransform t = new AffineTransform();
+    t.translate(nw / 2.0, nh / 2.0);
+    t.rotate(rad);
+    t.translate(-w / 2.0, -h / 2.0);
+    return t;
   }
 
   /**
@@ -53,6 +91,16 @@ final class DifficultImages {
    * enderezar siempre queda una inclinación residual de décimas de grado).
    */
   static BufferedImage cropToText(BufferedImage gray) {
+    Rectangle box = textBox(gray);
+    BufferedImage cropped = new BufferedImage(box.width, box.height, BufferedImage.TYPE_INT_RGB);
+    Graphics2D g = cropped.createGraphics();
+    g.drawImage(gray, 0, 0, box.width, box.height, box.x, box.y, box.x + box.width, box.y + box.height, null);
+    g.dispose();
+    return cropped;
+  }
+
+  /** Rectángulo del texto (sin líneas), con margen; la imagen completa si no hay texto distinguible. */
+  static Rectangle textBox(BufferedImage gray) {
     int w = gray.getWidth();
     int h = gray.getHeight();
     int step = Math.max(1, Math.min(w, h) / 700);
@@ -85,18 +133,14 @@ final class DifficultImages {
       }
     }
     if (maxX < 0) {
-      return gray; // Sin texto distinguible: se manda tal cual y que la IA lo diga.
+      return new Rectangle(0, 0, w, h); // Sin texto distinguible: se manda tal cual y que la IA lo diga.
     }
     int pad = Math.max(10, Math.min(w, h) / 60);
     int x0 = Math.max(0, minX * step - pad);
     int y0 = Math.max(0, minY * step - pad);
     int x1 = Math.min(w, (maxX + 1) * step + pad);
     int y1 = Math.min(h, (maxY + 1) * step + pad);
-    BufferedImage cropped = new BufferedImage(x1 - x0, y1 - y0, BufferedImage.TYPE_INT_RGB);
-    Graphics2D g = cropped.createGraphics();
-    g.drawImage(gray, 0, 0, x1 - x0, y1 - y0, x0, y0, x1, y1, null);
-    g.dispose();
-    return cropped;
+    return new Rectangle(x0, y0, x1 - x0, y1 - y0);
   }
 
   private static void markLongRuns(boolean[][] ink, boolean[][] line, int index, int length, int minRun, boolean horizontal) {
@@ -132,6 +176,29 @@ final class DifficultImages {
       }
     }
     return false;
+  }
+
+  /**
+   * Qué tan "suave" es la tinta: de los píxeles de tinta o su borde (gris < 230),
+   * la fracción que es gris intermedio (60-200). Texto nítido o con aliasing:
+   * casi todo es negro o blanco (valor bajo); texto borroso: mucho gris (alto).
+   */
+  static double softness(BufferedImage gray) {
+    long inkish = 0;
+    long mid = 0;
+    int step = Math.max(1, Math.max(gray.getWidth(), gray.getHeight()) / 1200);
+    for (int y = 0; y < gray.getHeight(); y += step) {
+      for (int x = 0; x < gray.getWidth(); x += step) {
+        int l = gray.getRGB(x, y) & 0xFF;
+        if (l < 230) {
+          inkish++;
+          if (l > 60 && l < 200) {
+            mid++;
+          }
+        }
+      }
+    }
+    return inkish == 0 ? 0 : (double) mid / inkish;
   }
 
   static BufferedImage grayscale(BufferedImage source) {
@@ -192,7 +259,8 @@ final class DifficultImages {
     List<int[]> ink = new ArrayList<>();
     for (int y = 0; y < gray.getHeight(); y += step) {
       for (int x = 0; x < gray.getWidth(); x += step) {
-        if ((gray.getRGB(x, y) & 0xFF) < INK) {
+        // Luminancia: así sirve igual para la página en color que para la versión en grises.
+        if (luminance(gray.getRGB(x, y)) < INK) {
           ink.add(new int[] {x / step, y / step});
         }
       }

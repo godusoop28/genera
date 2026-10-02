@@ -21,7 +21,8 @@ public final class FieldFormats {
   /** Cómo debe verse cada identificador, para pedirle a la IA que lo relea. */
   public static final Map<String, String> DESCRIPTION =
       Map.of(
-          "curp", "18 caracteres: 4 letras, 6 dígitos de fecha AAMMDD, H o M, 5 letras, 1 letra o dígito y 1 dígito verificador",
+          "curp",
+          "18 caracteres: 4 letras (la segunda es vocal), 6 dígitos de fecha AAMMDD, H o M, 2 letras de entidad, 3 consonantes, 1 letra o dígito y 1 dígito verificador",
           "rfc", "12 (persona moral) o 13 (persona física) caracteres: 3 o 4 letras, 6 dígitos de fecha AAMMDD y 3 de homoclave",
           "electorKey", "18 caracteres: 6 letras, 8 dígitos (fecha AAMMDD y 2 de estado), H o M y 3 dígitos");
 
