@@ -190,6 +190,33 @@ class OpenAiExtractionStrategyTest {
   }
 
   @Test
+  void whiteMarginsAreCroppedSoSmallTextKeepsItsResolution() {
+    var page = new java.awt.image.BufferedImage(1800, 2400, java.awt.image.BufferedImage.TYPE_INT_RGB);
+    var g = page.createGraphics();
+    g.setColor(java.awt.Color.WHITE);
+    g.fillRect(0, 0, 1800, 2400);
+    g.setColor(java.awt.Color.BLACK);
+    g.fillRect(100, 1900, 600, 400); // la credencial ocupa una esquina
+    g.dispose();
+
+    var cropped = OpenAiStructuredExtractionProvider.cropToContent(page);
+
+    assertThat(cropped.getWidth()).isBetween(600, 700);
+    assertThat(cropped.getHeight()).isBetween(400, 470);
+  }
+
+  @Test
+  void aPageAlreadyFullOfContentIsNotCropped() {
+    var page = new java.awt.image.BufferedImage(1000, 1400, java.awt.image.BufferedImage.TYPE_INT_RGB);
+    var g = page.createGraphics();
+    g.setColor(java.awt.Color.GRAY);
+    g.fillRect(0, 0, 1000, 1400);
+    g.dispose();
+
+    assertThat(OpenAiStructuredExtractionProvider.cropToContent(page)).isSameAs(page);
+  }
+
+  @Test
   void rotatingSwapsWidthAndHeight() {
     var image = new java.awt.image.BufferedImage(90, 140, java.awt.image.BufferedImage.TYPE_INT_RGB);
 

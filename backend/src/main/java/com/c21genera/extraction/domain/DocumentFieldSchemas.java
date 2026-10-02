@@ -44,7 +44,10 @@ public final class DocumentFieldSchemas {
         concat(List.of("grantorFullName", "attorneyFullName", "instrumentNumber", "instrumentDate"), NOTARY, List.of("publicRegistryFolio")));
     SCHEMAS.put(
         DocumentTypeCode.CONDOMINIUM_REGIME,
-        concat(List.of("propertyAddress", "deedNumber", "deedDate"), NOTARY, List.of("registryDate", "regimeRegistrationFolio")));
+        concat(
+            List.of("propertyAddress", "unitNumber", "undividedPercentage", "deedNumber", "deedDate"),
+            NOTARY,
+            List.of("registryDate", "regimeRegistrationFolio")));
     SCHEMAS.put(DocumentTypeCode.WATER_RECEIPT, List.of("fullName", "address", "issueDate", "serviceNumber"));
     SCHEMAS.put(DocumentTypeCode.ELECTRICITY_RECEIPT, List.of("fullName", "address", "issueDate", "serviceNumber"));
     SCHEMAS.put(DocumentTypeCode.CADASTRAL_PLAN, List.of("ownerFullName", "propertyAddress", "cadastralKey", "landArea", "builtArea"));
@@ -158,6 +161,8 @@ public final class DocumentFieldSchemas {
           Map.entry("instrumentNumber", "número del instrumento notarial"),
           Map.entry("instrumentDate", "fecha del instrumento"),
           Map.entry("regimeRegistrationFolio", "folio real de la constitución del régimen de condominio"),
+          Map.entry("unitNumber", "unidad privativa (departamento, casa o local; p. ej. DEPTO 4-B)"),
+          Map.entry("undividedPercentage", "porcentaje de indiviso de la unidad"),
           Map.entry("spouseFullName", "nombre del cónyuge"),
           Map.entry("marriageDate", "fecha del matrimonio"),
           Map.entry("maritalRegime", "régimen matrimonial (sociedad conyugal o separación de bienes)"),

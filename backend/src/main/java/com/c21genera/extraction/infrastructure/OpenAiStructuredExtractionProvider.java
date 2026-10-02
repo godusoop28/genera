@@ -183,7 +183,7 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       List<Map<String, Object>> content = new ArrayList<>();
       content.add(text(userPrompt(type, wanted, fieldNames, pages, plan.pagesTotal(), i > 0)));
       for (int page : pages) {
-        BufferedImage rendered = renderImage(renderer, page, dpi);
+        BufferedImage rendered = cropToContent(renderImage(renderer, page, dpi));
         content.add(text("Página " + page + ":"));
         content.add(image(encode(rendered)));
         if (CARD_TYPES.contains(type) && rendered.getHeight() > rendered.getWidth() * 1.15) {
@@ -434,6 +434,53 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
     // JPEG en vez de PNG: una página escaneada pesa ~10 veces menos y la IA la lee igual.
     ImageIO.write(image, "jpg", out);
     return Base64.getEncoder().encodeToString(out.toByteArray());
+  }
+
+  /** Brillo por debajo del cual un píxel cuenta como tinta/contenido (no papel ni fondo blanco). */
+  private static final int INK_THRESHOLD = 200;
+
+  /**
+   * Recorta el margen sin contenido. OpenAI reduce cada imagen a ~768 px por su
+   * lado corto: si el texto ocupa una esquina de la página (una credencial
+   * fotografiada sobre una hoja blanca, una foto con mucho fondo), esos píxeles
+   * se gastaban en blanco y caracteres pequeños se confundían (E2E 02/10: la
+   * clave de elector salía con una letra cambiada). Deja un margen del 3% y no
+   * recorta si el contenido ya ocupa casi toda la imagen.
+   */
+  static BufferedImage cropToContent(BufferedImage source) {
+    int w = source.getWidth();
+    int h = source.getHeight();
+    int step = Math.max(1, Math.min(w, h) / 600);
+    int minX = w, minY = h, maxX = -1, maxY = -1;
+    for (int y = 0; y < h; y += step) {
+      for (int x = 0; x < w; x += step) {
+        int rgb = source.getRGB(x, y);
+        int lum = (((rgb >> 16) & 0xFF) + ((rgb >> 8) & 0xFF) + (rgb & 0xFF)) / 3;
+        if (lum < INK_THRESHOLD) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    if (maxX < 0) {
+      return source; // Página en blanco: que la IA lo diga.
+    }
+    int padX = Math.max(8, (maxX - minX) * 3 / 100);
+    int padY = Math.max(8, (maxY - minY) * 3 / 100);
+    int x0 = Math.max(0, minX - padX);
+    int y0 = Math.max(0, minY - padY);
+    int x1 = Math.min(w, maxX + padX + step);
+    int y1 = Math.min(h, maxY + padY + step);
+    if ((long) (x1 - x0) * (y1 - y0) > 0.85 * w * h) {
+      return source;
+    }
+    BufferedImage cropped = new BufferedImage(x1 - x0, y1 - y0, BufferedImage.TYPE_INT_RGB);
+    Graphics2D g = cropped.createGraphics();
+    g.drawImage(source, 0, 0, x1 - x0, y1 - y0, x0, y0, x1, y1, null);
+    g.dispose();
+    return cropped;
   }
 
   static BufferedImage rotate(BufferedImage source, boolean clockwise) {

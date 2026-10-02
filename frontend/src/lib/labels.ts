@@ -230,6 +230,8 @@ export const extractedFieldLabels: Record<string, string> = {
   dates: "Fechas",
   referenceNumbers: "Números de referencia",
   summary: "De qué trata",
+  unitNumber: "Unidad privativa",
+  undividedPercentage: "Porcentaje de indiviso",
 };
 
 /** Nombre legible de un dato leído: los extra traen su propia etiqueta ("extra.Sección electoral"). */
