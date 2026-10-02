@@ -296,7 +296,9 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
     // La IA marcó con "?" caracteres que no distinguió: el documento tiene partes ilegibles aunque lo
     // haya considerado legible. Se trata igual que uno ilegible (E2E 02/10: la INE borrosa trajo la clave
     // con "?" y, en la misma lectura, un apellido inventado con confianza 0.84).
-    boolean unreadableCharacters = current.values().stream().anyMatch(f -> f.value() != null && f.value().contains("?"));
+    // Solo cuentan los campos del esquema: un dato extra ilegible (un sello) no vuelve difícil el documento.
+    boolean unreadableCharacters =
+        current.values().stream().anyMatch(f -> fieldNames.contains(f.fieldName()) && f.value() != null && f.value().contains("?"));
     boolean hardDocument = illegible || unreadableCharacters;
     if (hardDocument) {
       for (String key : List.of("fullName", "birthDate")) {
@@ -311,7 +313,8 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       return;
     }
     List<Integer> pages = pagesToEnhance(doubtful, current, pagesTotal);
-    List<Map<String, Object>> enhanced = enhancedImages(document, pages);
+    EnhancedPages enhancedPages = enhancedImages(document, pages);
+    List<Map<String, Object>> enhanced = enhancedPages.content();
 
     Map<String, List<FieldResult>> readings = new LinkedHashMap<>();
     for (String field : doubtful) {
@@ -372,7 +375,11 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
                     : ": las lecturas no coinciden (" + String.join(" / ", distinct) + ")"));
       }
     }
-    if (hardDocument) {
+    // Un "?" aislado en una página NÍTIDA que las relecturas resolvieron por consenso no vuelve difícil el
+    // documento (E2E 02/10: el PDF de 38.9 MB, leído 4/4, quedaba todo en 0.7 y en revisión). En una página
+    // BORROSA sí: ahí dos lecturas de los mismos píxeles se equivocan igual y el consenso no es prueba.
+    boolean stayHard = illegible || (unreadableCharacters && (enhancedPages.blurry() || unresolved));
+    if (stayHard) {
       // E2E 02/10: la INE borrosa terminaba como "extracción completa" con todos sus datos dudosos.
       consolidator.markHardToRead();
       // La primera lectura dijo "ilegible" (o marcó caracteres que no distinguió): aunque la versión mejorada se haya leído, el documento sigue
@@ -385,7 +392,7 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
         }
       }
     }
-    if (hardDocument || unresolved) {
+    if (stayHard || unresolved) {
       consolidator.addWarning(
           "Lectura difícil: además del original se leyó una versión mejorada (enderezada, con más contraste y ampliada); revisa los datos contra el archivo");
     }
@@ -448,7 +455,11 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
     return pages.stream().limit(MAX_ENHANCED_PAGES).toList();
   }
 
-  private List<Map<String, Object>> enhancedImages(PDDocument document, List<Integer> pages) throws Exception {
+  /** Versión mejorada de las páginas y si alguna tiene el texto borroso. */
+  private record EnhancedPages(List<Map<String, Object>> content, boolean blurry) {}
+
+  private EnhancedPages enhancedImages(PDDocument document, List<Integer> pages) throws Exception {
+    boolean blurry = false;
     PDFRenderer renderer = new PDFRenderer(document);
     List<Map<String, Object>> content = new ArrayList<>();
     for (int page : pages) {
@@ -459,7 +470,9 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       boolean sideways = textLooksVertical(cropToContent(rendered));
       List<BufferedImage> candidates = sideways ? List.of(rotate(rendered, true), rotate(rendered, false)) : List.of(rendered);
       for (int c = 0; c < candidates.size(); c++) {
-        List<BufferedImage> bands = DifficultImages.enhancedBands(candidates.get(c));
+        DifficultImages.Enhanced variant = DifficultImages.enhance(candidates.get(c));
+        blurry |= variant.softness() > DifficultImages.SOFT_TEXT;
+        List<BufferedImage> bands = variant.bands();
         String orientation = !sideways ? "" : c == 0 ? ", girada 90° a la derecha" : ", girada 90° a la izquierda";
         for (int b = 0; b < bands.size(); b++) {
           content.add(text("Página " + page + orientation + ", versión mejorada, franja " + (b + 1) + " de " + bands.size() + ":"));
@@ -467,7 +480,7 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
         }
       }
     }
-    return content;
+    return new EnhancedPages(content, blurry);
   }
 
   private String enhancedPrompt(DocumentTypeCode type, List<String> fieldNames, List<Integer> pages, int pagesTotal) {

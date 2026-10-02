@@ -380,6 +380,26 @@ class OpenAiExtractionStrategyTest {
   }
 
   @Test
+  void aStrayUnreadableCharacterOnASharpPageResolvedByConsensusIsNotForcedToReview() throws Exception {
+    // E2E 02/10: PDF de 38.9 MB nítido, una lectura con "?" que las relecturas resolvieron; todo quedaba en 0.7.
+    var answers = new java.util.concurrent.atomic.AtomicInteger();
+    var provider =
+        provider(
+            body -> {
+              String key = answers.getAndIncrement() == 0 ? "RDCACL850314?7H900" : "RDCACL85031417H900";
+              return new Object[] {200, json("credencial INE", true, field("electorKey", key, 0.9, 1), "", "")};
+            },
+            0);
+
+    ExtractionResult result = provider.extract(DocumentTypeCode.INE, pdf(1, null), List.of("electorKey"));
+
+    // La página de prueba está en blanco (nada borroso): el consenso se respeta.
+    assertThat(find(result, "electorKey").value()).isEqualTo("RDCACL85031417H900");
+    assertThat(find(result, "electorKey").confidence()).isEqualTo(0.9);
+    assertThat(result.assessment().legible()).isTrue();
+  }
+
+  @Test
   void aCoherentReadingIsNotProcessedAgain() throws Exception {
     var provider =
         provider(

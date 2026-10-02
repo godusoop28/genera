@@ -46,15 +46,23 @@ final class DifficultImages {
    * letras de una foto con texto sin suavizado (E2E 02/10: el "8" de la clave de
    * la INE inclinada parecía una "s").
    */
+  /** Franjas mejoradas y qué tan borroso es el texto de la página ({@link #softness}). */
+  record Enhanced(List<BufferedImage> bands, double softness) {}
+
   static List<BufferedImage> enhancedBands(BufferedImage page) {
+    return enhance(page).bands();
+  }
+
+  static Enhanced enhance(BufferedImage page) {
     BufferedImage gray = autoContrast(grayscale(page));
+    double soft = softness(gray);
     double angle = skewAngle(gray);
     boolean tilted = Math.abs(angle) >= 0.4;
     AffineTransform toStraight = tilted ? rotation(gray.getWidth(), gray.getHeight(), -angle) : new AffineTransform();
     // La imagen enderezada solo se usa para ubicar el texto; el resultado se vuelve a tomar del original.
     Rectangle box = textBox(tilted ? rotateDegrees(gray, -angle) : gray);
     double scale = Math.max(1.0, Math.min(MAX_SCALE, (double) TARGET_WIDTH / box.width));
-    BufferedImage source = softness(gray) > SOFT_TEXT ? sharpen(gray, 1) : gray;
+    BufferedImage source = soft > SOFT_TEXT ? sharpen(gray, 1) : gray;
 
     BufferedImage out = new BufferedImage((int) Math.round(box.width * scale), (int) Math.round(box.height * scale), BufferedImage.TYPE_INT_RGB);
     Graphics2D g = out.createGraphics();
@@ -66,7 +74,7 @@ final class DifficultImages {
     g.transform(toStraight);
     g.drawImage(source, 0, 0, null);
     g.dispose();
-    return bands(out);
+    return new Enhanced(bands(out), soft);
   }
 
   /** La misma transformación que {@link #rotateDegrees}: gira sobre el centro y deja todo a la vista. */
