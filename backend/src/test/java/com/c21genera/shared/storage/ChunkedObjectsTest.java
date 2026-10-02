@@ -87,4 +87,21 @@ class ChunkedObjectsTest {
 
     assertThat(raw.objects).isEmpty();
   }
+
+  @Test
+  void streamingStoreProducesTheSameObjectsAsTheByteArrayStore() throws Exception {
+    byte[] big = new byte[20 * 1024 * 1024 + 123];
+    new java.util.Random(7).nextBytes(big);
+    FileStorage.StoredObjectMetadata fromBytes = objects.store("a.pdf", big);
+    FileStorage.StoredObjectMetadata fromStream = objects.store("b.pdf", new java.io.ByteArrayInputStream(big));
+
+    assertThat(fromStream.size()).isEqualTo(fromBytes.size());
+    assertThat(fromStream.sha256()).isEqualTo(fromBytes.sha256());
+    assertThat(objects.get("b.pdf").readAllBytes()).isEqualTo(big);
+
+    byte[] small = new byte[] {1, 2, 3};
+    objects.store("c.jpg", new java.io.ByteArrayInputStream(small));
+    assertThat(objects.isChunked("c.jpg")).isFalse();
+    assertThat(objects.get("c.jpg").readAllBytes()).isEqualTo(small);
+  }
 }

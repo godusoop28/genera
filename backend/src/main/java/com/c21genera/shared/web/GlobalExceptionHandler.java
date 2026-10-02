@@ -104,6 +104,12 @@ public class GlobalExceptionHandler {
     ProblemDetail problem =
         ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, "Ocurrió un error inesperado.");
     problem.setProperty("code", "INTERNAL_ERROR");
+    // Solo el tipo de la causa raíz (sin mensaje): permite diagnosticar sin acceso a los logs del servidor.
+    Throwable root = ex;
+    while (root.getCause() != null && root.getCause() != root) {
+      root = root.getCause();
+    }
+    problem.setProperty("errorType", root.getClass().getSimpleName());
     attachTraceId(problem, request);
     return problem;
   }

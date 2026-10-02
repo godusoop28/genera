@@ -57,6 +57,45 @@ public final class ChunkedObjects {
     this.backendLink = backendLink;
   }
 
+  /**
+   * Igual que {@link #store(String, byte[])} pero leyendo el contenido una parte a la vez:
+   * un archivo de 40 MB ya no se copia entero en memoria (E2E 02/10: 500 al subir 38.9 MB).
+   */
+  public FileStorage.StoredObjectMetadata store(String key, InputStream content) throws java.io.IOException {
+    MessageDigest digest = sha256();
+    byte[] first = content.readNBytes(maxObjectBytes);
+    byte[] next = content.readNBytes(maxObjectBytes);
+    if (next.length == 0) {
+      digest.update(first);
+      raw.put(key, first);
+      chunkedCache.put(key, false);
+      return new FileStorage.StoredObjectMetadata(key, first.length, HexFormat.of().formatHex(digest.digest()));
+    }
+    long size = 0;
+    int parts = 0;
+    byte[] part = first;
+    while (part.length > 0) {
+      digest.update(part);
+      raw.put(partId(key, parts), part);
+      size += part.length;
+      parts++;
+      part = next;
+      next = part.length == 0 ? part : content.readNBytes(maxObjectBytes);
+    }
+    String sha256 = HexFormat.of().formatHex(digest.digest());
+    raw.put(key, (MAGIC + "\n" + size + "\n" + parts + "\n" + sha256 + "\n").getBytes(StandardCharsets.UTF_8));
+    chunkedCache.put(key, true);
+    return new FileStorage.StoredObjectMetadata(key, size, sha256);
+  }
+
+  private static MessageDigest sha256() {
+    try {
+      return MessageDigest.getInstance("SHA-256");
+    } catch (NoSuchAlgorithmException e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
   public FileStorage.StoredObjectMetadata store(String key, byte[] content) {
     String sha256 = sha256Hex(content);
     if (content.length <= maxObjectBytes) {

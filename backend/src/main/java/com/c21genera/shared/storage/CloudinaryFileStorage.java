@@ -49,7 +49,7 @@ public class CloudinaryFileStorage implements FileStorage {
   @Override
   public StoredObjectMetadata store(String storageKey, InputStream content, long contentLength, String contentType) {
     try {
-      return objects.store(storageKey, content.readAllBytes());
+      return objects.store(storageKey, content);
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
