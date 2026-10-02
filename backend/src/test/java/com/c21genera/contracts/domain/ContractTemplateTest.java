@@ -142,6 +142,27 @@ class ContractTemplateTest {
   }
 
   @Test
+  void aNotaryNameThatAlreadyCarriesItsTitleIsNotDuplicated() {
+    // E2E 02/10: la escritura dice "LIC. ANDRES PRUEBA DEMO" y el contrato decía "ante la fe del Lic. LIC. ANDRES...".
+    assertThat(ContractTemplate.withoutTitle("LIC. ANDRES PRUEBA DEMO")).isEqualTo("ANDRES PRUEBA DEMO");
+    assertThat(ContractTemplate.withoutTitle("Licenciada Norma Elvia Martel Mota")).isEqualTo("Norma Elvia Martel Mota");
+    assertThat(ContractTemplate.withoutTitle("Roberto Díaz Soto")).isEqualTo("Roberto Díaz Soto");
+
+    LegalDetails legal =
+        new LegalDetails(
+            null, null, new LegalDetails.DeedData("12,345", LocalDate.of(2022, 4, 18), "LIC. ANDRES PRUEBA DEMO", "18", "Jiutepec, Morelos", null),
+            null, null, housingChecklist(), "portales");
+    ExpedienteSummary s =
+        summary(
+            PersonType.FISICA, SignerCharacter.PROPIETARIO, AccreditationType.ESCRITURA_PUBLICA, false, PropertyCaseType.HOUSING,
+            List.of(person("OWNER", "Carlos Eduardo Rodríguez Calderón", 1, CivilStatus.SOLTERO)), legal);
+
+    String text = text(ContractTemplate.build(input(s, completeClientData()), false));
+
+    assertThat(text).contains("ante la fe del Lic. ANDRES PRUEBA DEMO").doesNotContain("Lic. LIC.");
+  }
+
+  @Test
   void missingDataIsListedAndMarkedInTheDocument() {
     ExpedienteSummary s =
         summary(

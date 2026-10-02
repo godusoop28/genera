@@ -147,8 +147,9 @@ class OpenAiExtractionStrategyTest {
     ExtractionResult result = provider.extract(DocumentTypeCode.INE, pdf(2, null), DocumentFieldSchemas.fieldsFor(DocumentTypeCode.INE));
 
     assertThat(requests).hasSize(1);
-    assertThat(count(requests.getFirst(), "\"type\":\"image_url\"")).isEqualTo(2);
-    assertThat(requests.getFirst()).contains("Página 1:").contains("Página 2:");
+    // Dos páginas verticales de una credencial: cada una va también girada ±90° (foto con el celular vertical).
+    assertThat(count(requests.getFirst(), "\"type\":\"image_url\"")).isEqualTo(6);
+    assertThat(requests.getFirst()).contains("Página 1:").contains("Página 2:").contains("Página 1 girada 90° a la derecha");
     assertThat(find(result, "birthDate").page()).isEqualTo(2);
   }
 
@@ -177,6 +178,23 @@ class OpenAiExtractionStrategyTest {
     assertThat(result.fields()).extracting(FieldResult::fieldName).containsExactlyInAnyOrder("fullName", "curp", "birthDate");
     assertThat(find(result, "birthDate").confidence()).isEqualTo(0.3);
     assertThat(find(result, "electorKey")).isNull();
+  }
+
+  @Test
+  void aLongDocumentPageIsNotSentRotated() throws Exception {
+    var provider = provider(body -> new Object[] {200, json("escritura", true, field("deedNumber", "1", 0.9, 1), "", "")}, 0);
+
+    provider.extract(DocumentTypeCode.DEED, pdf(1, null), List.of("deedNumber"));
+
+    assertThat(requests.getFirst()).doesNotContain("girada 90°");
+  }
+
+  @Test
+  void rotatingSwapsWidthAndHeight() {
+    var image = new java.awt.image.BufferedImage(90, 140, java.awt.image.BufferedImage.TYPE_INT_RGB);
+
+    assertThat(OpenAiStructuredExtractionProvider.rotate(image, true).getWidth()).isEqualTo(140);
+    assertThat(OpenAiStructuredExtractionProvider.rotate(image, false).getHeight()).isEqualTo(90);
   }
 
   // --- Categoría equivocada ----------------------------------------------

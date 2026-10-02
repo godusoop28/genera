@@ -167,6 +167,7 @@ const ID_DOCUMENT: Record<string, { type: ParticipantDetails["idDocumentType"]; 
 
 export function buildDetectedData(observations: ExpedienteObservationResponse[], ownerParticipantId: string | null): DetectedData {
   const result: DetectedData = { legal: {}, participants: {} };
+  const ineHolders = new Map<string, Detected>();
   const sorted = [...observations].sort((a, b) => {
     const rank = (t: string) => (PRIORITY.indexOf(t) === -1 ? PRIORITY.length : PRIORITY.indexOf(t));
     // Lo confirmado por una persona va primero; después, el documento de mayor rango.
@@ -204,8 +205,15 @@ export function buildDetectedData(observations: ExpedienteObservationResponse[],
       if (target.key === "idDocumentNumber" && id) {
         bucket.idDocumentType ??= { value: id.type ?? "", source: detected.source, confirmed: detected.confirmed };
         bucket.idDocumentIssuer ??= { value: id.issuer, source: detected.source, confirmed: detected.confirmed };
+        if (o.documentType === "INE") ineHolders.set(participantId, detected);
       }
     }
+  }
+  // La credencial del INE solo se expide a ciudadanos mexicanos: si ningún documento dice la
+  // nacionalidad (un pasaporte sí la trae y tiene prioridad), se deduce de la INE; no se inventa.
+  for (const [participantId, ine] of ineHolders) {
+    const bucket = (result.participants[participantId] ??= {});
+    bucket.nationality ??= { value: "Mexicana", source: ine.source, confirmed: ine.confirmed };
   }
   return result;
 }

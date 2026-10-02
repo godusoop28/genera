@@ -250,7 +250,7 @@ public final class ContractTemplate {
               t(" de "),
               value(c == null ? null : c.notaryPlace(), "lugar de la notaría o correduría"),
               t(", el Licenciado "),
-              value(c == null ? null : c.notaryName(), "nombre del notario o corredor"),
+              value(c == null ? null : withoutTitle(c.notaryName()), "nombre del notario o corredor"),
               t(", instrumento que consta inscrito en el Registro Público de Comercio de "),
               value(c == null ? null : c.commerceRegistryPlace(), "lugar del Registro Público de Comercio"),
               t(" bajo el folio mercantil "),
@@ -323,7 +323,7 @@ public final class ContractTemplate {
     spans.add(t(" de "));
     spans.add(value(r == null ? null : r.notaryPlace(), "lugar de la notaría del poder"));
     spans.add(t(", el Licenciado "));
-    spans.add(value(r == null ? null : r.notaryName(), "nombre del notario del poder"));
+    spans.add(value(r == null ? null : withoutTitle(r.notaryName()), "nombre del notario del poder"));
     if (r != null && notBlank(r.registryPlace()) && notBlank(r.registryFolio())) {
       spans.add(t(", mismo que consta inscrito en el Registro Público de Comercio de "));
       spans.add(b(r.registryPlace()));
@@ -382,7 +382,7 @@ public final class ContractTemplate {
       spans.add(t(", otorgada el "));
       spans.add(value(d == null ? null : date(d.date()), "fecha de la escritura"));
       spans.add(t(", ante la fe del Lic. "));
-      spans.add(value(d == null ? null : d.notaryName(), "nombre del notario de la escritura"));
+      spans.add(value(d == null ? null : withoutTitle(d.notaryName()), "nombre del notario de la escritura"));
       spans.add(t(", Notario Público número "));
       spans.add(value(d == null ? null : d.notaryNumber(), "número de notaría de la escritura"));
       spans.add(t(" de "));
@@ -415,7 +415,7 @@ public final class ContractTemplate {
                   t(" de "),
                   value(p == null ? null : p.notaryPlace(), "lugar de la notaría de la ratificación"),
                   t(", el Licenciado "),
-                  value(p == null ? null : p.notaryName(), "nombre del notario de la ratificación"),
+                  value(p == null ? null : withoutTitle(p.notaryName()), "nombre del notario de la ratificación"),
                   t(", ratificación debidamente inscrita el "),
                   value(p == null ? null : date(p.registryDate()), "fecha de inscripción de la ratificación"),
                   t(" en el Registro Público de la Propiedad de "),
@@ -448,7 +448,7 @@ public final class ContractTemplate {
             t(" de "),
             value(c == null ? null : c.notaryPlace(), "lugar de la notaría del régimen de condominio"),
             t(", el Licenciado "),
-            value(c == null ? null : c.notaryName(), "nombre del notario del régimen de condominio"),
+            value(c == null ? null : withoutTitle(c.notaryName()), "nombre del notario del régimen de condominio"),
             t(" y debidamente inscrita el "),
             value(c == null ? null : date(c.registryDate()), "fecha de inscripción del régimen de condominio"),
             t(" en el Registro Público de la Propiedad de localidad bajo el folio real "),
@@ -859,6 +859,21 @@ public final class ContractTemplate {
       return t("No aplica");
     }
     return b(String.valueOf(value));
+  }
+
+  private static final java.util.regex.Pattern LEADING_TITLE =
+      java.util.regex.Pattern.compile("^(?:(?:lic(?:enciad[oa])?|lcdo|lcda|ldo|lda|notari[oa](?:\\s+p[uú]blic[oa])?|mtr[oa]|dr[a]?)\\.?\\s+)+", java.util.regex.Pattern.CASE_INSENSITIVE);
+
+  /**
+   * El contrato ya dice "ante la fe del Lic." / "el Licenciado": si el documento trae el nombre con su
+   * título ("LIC. ANDRES PRUEBA DEMO") quedaba "Lic. LIC. ANDRES..." (E2E 02/10).
+   */
+  static String withoutTitle(String name) {
+    if (name == null) {
+      return null;
+    }
+    String stripped = LEADING_TITLE.matcher(name.strip()).replaceFirst("").strip();
+    return stripped.isEmpty() ? name.strip() : stripped;
   }
 
   private Span money(BigDecimal amount, String missingDescription) {

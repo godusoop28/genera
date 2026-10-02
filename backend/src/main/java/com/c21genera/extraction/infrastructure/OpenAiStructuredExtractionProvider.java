@@ -10,6 +10,8 @@ import com.c21genera.shared.domain.DocumentTypeLabels;
 import com.c21genera.shared.pdf.PdfFiles;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.net.http.HttpClient;
 import java.time.Duration;
@@ -71,8 +73,10 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       Tareas, en este orden:
       1) Identifica qué documento parece ser realmente (detectedDocumentKind), aunque no sea el solicitado.
       2) Transcribe cada campo solicitado que puedas leer, con su confianza (0 a 1) y la página donde lo \
-      viste. Si un dato se lee a medias, transcríbelo con confianza baja: una confianza baja significa \
-      "revisar", nunca lo omitas por eso. Si un dato no aparece, no lo incluyas.
+      viste. Si un dato se ve pero dudas de algún carácter, transcríbelo de todas formas con confianza \
+      menor a 0.5: una confianza baja significa "revisar", NUNCA lo omitas por falta de certeza. Solo si \
+      un dato no aparece en absoluto, no lo incluyas. Si te llega la misma página girada, usa la versión \
+      en la que el texto se lee derecho.
       3) Agrega en otherFields cualquier otro dato útil que veas (p. ej. sección electoral, volumen de la \
       escritura, medidas y colindancias, número de acta).
       4) Escribe en warnings lo que el revisor debe saber (p. ej. "solo se ve el frente", "la página 3 está \
@@ -113,6 +117,8 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
   /** Tope de caracteres de texto nativo por petición (documentos con texto). */
   private static final int TEXT_CHAR_BUDGET = 120_000;
   private static final int MAX_EXTRA_FIELDS = 20;
+  /** Documentos tipo tarjeta: naturalmente horizontales aunque la foto se tome vertical. */
+  private static final Set<DocumentTypeCode> CARD_TYPES = Set.of(DocumentTypeCode.INE, DocumentTypeCode.PASSPORT);
 
   private final RestClient restClient;
   private final AiProperties properties;
@@ -177,8 +183,17 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       List<Map<String, Object>> content = new ArrayList<>();
       content.add(text(userPrompt(type, wanted, fieldNames, pages, plan.pagesTotal(), i > 0)));
       for (int page : pages) {
+        BufferedImage rendered = renderImage(renderer, page, dpi);
         content.add(text("Página " + page + ":"));
-        content.add(image(render(renderer, page, dpi)));
+        content.add(image(encode(rendered)));
+        if (CARD_TYPES.contains(type) && rendered.getHeight() > rendered.getWidth() * 1.15) {
+          // Credencial fotografiada con el celular vertical: queda acostada dentro de la imagen y el
+          // texto pequeño de lado costaba leerlo (E2E 02/10: la clave de elector no se transcribía).
+          content.add(text("Página " + page + " girada 90° a la derecha (misma imagen, para leer el texto derecho):"));
+          content.add(image(encode(rotate(rendered, true))));
+          content.add(text("Página " + page + " girada 90° a la izquierda (misma imagen):"));
+          content.add(image(encode(rotate(rendered, false))));
+        }
       }
       try {
         consolidator.add(call(type, content));
@@ -407,11 +422,30 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
   }
 
   private static String render(PDFRenderer renderer, int page, int dpi) throws Exception {
-    var image = renderer.renderImageWithDPI(page - 1, dpi, ImageType.RGB);
+    return encode(renderImage(renderer, page, dpi));
+  }
+
+  private static BufferedImage renderImage(PDFRenderer renderer, int page, int dpi) throws Exception {
+    return renderer.renderImageWithDPI(page - 1, dpi, ImageType.RGB);
+  }
+
+  private static String encode(BufferedImage image) throws Exception {
     var out = new ByteArrayOutputStream();
     // JPEG en vez de PNG: una página escaneada pesa ~10 veces menos y la IA la lee igual.
     ImageIO.write(image, "jpg", out);
     return Base64.getEncoder().encodeToString(out.toByteArray());
+  }
+
+  static BufferedImage rotate(BufferedImage source, boolean clockwise) {
+    int w = source.getWidth();
+    int h = source.getHeight();
+    BufferedImage rotated = new BufferedImage(h, w, BufferedImage.TYPE_INT_RGB);
+    Graphics2D g = rotated.createGraphics();
+    g.translate(clockwise ? h : 0, clockwise ? 0 : w);
+    g.rotate(clockwise ? Math.PI / 2 : -Math.PI / 2);
+    g.drawImage(source, 0, 0, null);
+    g.dispose();
+    return rotated;
   }
 
   private static Map<String, Object> text(String text) {
