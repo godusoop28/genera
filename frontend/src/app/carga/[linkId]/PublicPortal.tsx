@@ -447,7 +447,7 @@ function DocumentsStep({
       <Card>
         <CardHeader
           title="Documentos"
-          description="Sube una foto clara (vertical, con buena luz, el documento completo y sin reflejos) de cada documento. Puedes subir varias fotos si tiene varias páginas."
+          description="Sube una foto clara (vertical, con buena luz, el documento completo y sin reflejos) o el PDF de cada documento. Puedes subir varios archivos si tiene varias páginas."
         />
         {documents === null ? (
           <p className="text-sm text-muted">Cargando…</p>
@@ -564,12 +564,12 @@ function PublicDocumentRow({
         <div className="flex items-center gap-2">
           {doc.processing ? (
             <Badge tone="info">
-              <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> Verificando la foto
+              <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> Verificando el archivo
             </Badge>
           ) : (
             <Badge tone={status.tone}>{status.text}</Badge>
           )}
-          <input ref={fileInputRef} type="file" accept="image/jpeg,image/png" multiple className="hidden" onChange={handleFileSelected} />
+          <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,application/pdf" multiple className="hidden" onChange={handleFileSelected} />
           {canUpload ? (
             <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
               {uploading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4" aria-hidden />}
@@ -586,7 +586,7 @@ function PublicDocumentRow({
       ) : null}
       {doc.qualityIssue ? (
         <p className="mt-2 rounded-md bg-warning-bg px-3 py-2 text-sm text-warning-text">
-          <strong>La foto no se pudo leer:</strong> {doc.qualityIssue}
+          <strong>El archivo no se pudo leer:</strong> {doc.qualityIssue}
         </p>
       ) : null}
       {doc.looksLikeWrongDocument ? (

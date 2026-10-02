@@ -7,7 +7,7 @@ const checklist = [
   { title: "Nitidez", description: "Fotos nítidas, sin movimiento ni desenfoque." },
   { title: "Sin reflejos excesivos", description: "Evita brillos que cubran el texto." },
   { title: "Texto visible", description: "Todo el contenido debe ser legible." },
-  { title: "Formato admitido", description: "Formatos aceptados: JPG y PNG." },
+  { title: "Formato admitido", description: "Formatos aceptados: JPG, PNG y PDF." },
   { title: "Conversión a PDF", description: "Las fotografías se convertirán automáticamente a PDF." },
 ];
 

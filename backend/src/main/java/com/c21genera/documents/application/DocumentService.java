@@ -185,7 +185,7 @@ public class DocumentService implements DocumentsApi {
 
   public record UploadedFileContent(byte[] content, String originalFilename) {}
 
-  /** Público (fotos JPG/PNG) o interno (permite PDF). Ver AGENTS §32/§94. */
+  /** Público o interno: fotos JPG/PNG o PDF (según app.upload). Ver AGENTS §32/§94. */
   public DocumentVersion uploadVersion(UUID documentId, List<UploadedFileContent> files, UploadedVia via, Actor actor) {
     Document document = get(documentId);
     if (files == null || files.isEmpty()) {

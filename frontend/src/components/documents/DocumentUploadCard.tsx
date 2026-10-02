@@ -280,11 +280,11 @@ export function DocumentUploadCard({
         {hasFiles && !isError ? (
           <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-medium text-dark-gold hover:underline">
             <ImagePlus className="h-3.5 w-3.5" aria-hidden />
-            {isDone ? "Agregar más fotografías" : "Agregar otra fotografía"}
+            {isDone ? "Agregar más archivos" : "Agregar otro archivo"}
             <input
               ref={inputRef}
               type="file"
-              accept="image/jpeg,image/png"
+              accept="image/jpeg,image/png,application/pdf"
               multiple
               className="hidden"
               onChange={handleAddFiles}
@@ -323,14 +323,14 @@ function EmptyDropzone({
   return (
     <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border px-4 py-6 text-center transition-colors hover:border-gold/50 hover:bg-app-bg/60">
       <Upload className="h-5 w-5 text-muted" aria-hidden />
-      <span className="text-sm font-medium text-obsessed">Tomar o seleccionar fotografía</span>
+      <span className="text-sm font-medium text-obsessed">Tomar fotografía o seleccionar archivo</span>
       <span className="text-xs text-muted">
-        Formatos aceptados: JPG y PNG · puedes seleccionar varias a la vez
+        Formatos aceptados: JPG, PNG y PDF · puedes seleccionar varios a la vez
       </span>
       <input
         ref={inputRef}
         type="file"
-        accept="image/jpeg,image/png"
+        accept="image/jpeg,image/png,application/pdf"
         multiple
         className="hidden"
         onChange={onSelect}
