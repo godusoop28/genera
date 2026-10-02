@@ -25,19 +25,19 @@ import type {
   SigningLinkResponse,
 } from "@/lib/api/types";
 import { errorText } from "@/lib/errors";
+import { frontendLink } from "@/lib/share-links";
 import { contractStatusLabels, contractStatusTone, formatDate, formatDateTime, formatMoney } from "@/lib/labels";
 import { useCan } from "@/lib/permissions";
 import { CircleAlert, Copy, Download, FileText, Loader2, PenLine, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ExpedienteContext } from "./page";
 
-export function ContractTab({ expediente, reload }: ExpedienteContext) {
+export function ContractTab({ expediente, reload, freshSigningLinks: links, setFreshSigningLinks: setLinks }: ExpedienteContext) {
   const { showToast } = useToast();
   const can = useCan();
   const [readiness, setReadiness] = useState<ContractReadinessResponse | null>(null);
   const [calc, setCalc] = useState<ContractCalculationsResponse | null>(null);
   const [contracts, setContracts] = useState<ContractGenerationResponse[] | null>(null);
-  const [links, setLinks] = useState<SigningLinkResponse[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [signing, setSigning] = useState<ContractGenerationResponse | null>(null);
   const [showSuperseded, setShowSuperseded] = useState(false);
@@ -63,7 +63,7 @@ export function ContractTab({ expediente, reload }: ExpedienteContext) {
     setBusy(mode);
     try {
       const result = await generateContract(expediente.id, mode);
-      setLinks(result.signingLinks);
+      setLinks(result.signingLinks.map(withFrontendUrl));
       showToast(
         mode === "draft"
           ? "Borrador generado. Está marcado como INCOMPLETO y no se puede firmar."
@@ -151,7 +151,7 @@ export function ContractTab({ expediente, reload }: ExpedienteContext) {
           onDownload={download}
           onSignIntermediary={() => setSigning(c)}
           onChanged={refresh}
-          onNewLink={(link) => setLinks((prev) => [...prev.filter((l) => l.signatureId !== link.signatureId), link])}
+          onNewLink={(link) => setLinks((prev) => [...prev.filter((l) => l.signatureId !== link.signatureId), withFrontendUrl(link)])}
         />
       ))}
 
@@ -358,6 +358,10 @@ function ContractCard({
       {c.status === "DELIVERED" ? <p className="mt-3 text-sm text-success-text">Entregado al cliente el {formatDateTime(c.deliveredAt)} ({c.deliveryMethod}).</p> : null}
     </Card>
   );
+}
+
+function withFrontendUrl(link: SigningLinkResponse): SigningLinkResponse {
+  return { ...link, url: frontendLink(link.url, "firma") };
 }
 
 function SigningLinks({ links }: { links: SigningLinkResponse[] }) {

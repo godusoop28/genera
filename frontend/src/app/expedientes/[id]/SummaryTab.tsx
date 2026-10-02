@@ -13,6 +13,7 @@ import { acceptProperty, correctExpediente, rejectProperty, signReception, type 
 import { generatePublicLink, getPublicLinkStatus, revokePublicLink } from "@/lib/api/public-link";
 import type { PublicLinkStatusResponse } from "@/lib/api/types";
 import { errorText } from "@/lib/errors";
+import { frontendLink } from "@/lib/share-links";
 import {
   accreditationLabels,
   formatDate,
@@ -27,11 +28,10 @@ import { Copy, FileSignature, Link2, Pencil, ShieldOff, ThumbsDown, ThumbsUp } f
 import { useCallback, useEffect, useState } from "react";
 import type { ExpedienteContext } from "./page";
 
-export function SummaryTab({ expediente, reload }: ExpedienteContext) {
+export function SummaryTab({ expediente, reload, freshPublicLink: newLink, setFreshPublicLink: setNewLink }: ExpedienteContext) {
   const { showToast } = useToast();
   const can = useCan();
   const [linkStatus, setLinkStatus] = useState<PublicLinkStatusResponse | null>(null);
-  const [newLink, setNewLink] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -63,7 +63,7 @@ export function SummaryTab({ expediente, reload }: ExpedienteContext) {
     setBusy(true);
     try {
       const link = await generatePublicLink(expediente.id);
-      setNewLink(link.url);
+      setNewLink(frontendLink(link.url, "carga"));
       showToast("Liga generada. Cópiala y compártela con el cliente; cualquier liga anterior dejó de funcionar.");
       loadLink();
       await reload();

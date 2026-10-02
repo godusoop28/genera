@@ -8,10 +8,10 @@ import { useToast } from "@/components/ui/Toast";
 import { ApiError } from "@/lib/api/client";
 import { getExpediente, getParticipants } from "@/lib/api/expedientes";
 import { backendStatusLabels, backendStatusNextStep, backendStatusTone } from "@/lib/api/status-labels";
-import type { ExpedienteResponse, ParticipantResponse } from "@/lib/api/types";
+import type { ExpedienteResponse, ParticipantResponse, SigningLinkResponse } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { ArrowRight, RefreshCw } from "lucide-react";
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { ConsistencyTab } from "./ConsistencyTab";
 import { ContractDataTab } from "./ContractDataTab";
 import { ContractTab } from "./ContractTab";
@@ -39,6 +39,14 @@ export interface ExpedienteContext {
   participants: ParticipantResponse[];
   /** Vuelve a cargar el expediente (estatus, participantes) después de una acción. */
   reload: () => Promise<void>;
+  /**
+   * Ligas recién generadas (solo se muestran una vez). Viven aquí y no en cada
+   * pestaña porque reload() vuelve a montar la pestaña y se perderían.
+   */
+  freshPublicLink: string | null;
+  setFreshPublicLink: (url: string | null) => void;
+  freshSigningLinks: SigningLinkResponse[];
+  setFreshSigningLinks: Dispatch<SetStateAction<SigningLinkResponse[]>>;
 }
 
 export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes/[id]">) {
@@ -51,6 +59,8 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
   const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [version, setVersion] = useState(0);
+  const [freshPublicLink, setFreshPublicLink] = useState<string | null>(null);
+  const [freshSigningLinks, setFreshSigningLinks] = useState<SigningLinkResponse[]>([]);
 
   const reload = useCallback(
     () =>
@@ -108,7 +118,15 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
   }
 
   const next = backendStatusNextStep[expediente.status];
-  const context: ExpedienteContext = { expediente, participants, reload };
+  const context: ExpedienteContext = {
+    expediente,
+    participants,
+    reload,
+    freshPublicLink,
+    setFreshPublicLink,
+    freshSigningLinks,
+    setFreshSigningLinks,
+  };
 
   return (
     <PageContainer title={expediente.ownerDisplayName} subtitle={expediente.propertyAddress ?? undefined}>
