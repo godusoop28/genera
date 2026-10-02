@@ -2,6 +2,7 @@ package com.c21genera.extraction.infrastructure;
 
 import com.c21genera.extraction.domain.DocumentFieldSchemas;
 import com.c21genera.extraction.domain.ExtractionConsolidator;
+import com.c21genera.extraction.domain.FieldFormats;
 import com.c21genera.extraction.domain.PagePlanner;
 import com.c21genera.extraction.domain.StructuredExtractionProvider;
 import com.c21genera.shared.config.AiProperties;
@@ -171,6 +172,7 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
     int dpi = longDocument ? LONG_DOCUMENT_DPI : SHORT_DOCUMENT_DPI;
     ExtractionConsolidator consolidator = new ExtractionConsolidator();
     Set<Integer> analyzed = new LinkedHashSet<>();
+    List<Map<String, Object>> firstBatchImages = List.of();
 
     for (int i = 0; i < plan.batches().size(); i++) {
       List<Integer> pages = plan.batches().get(i).pages();
@@ -180,20 +182,25 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       }
       List<Map<String, Object>> content = new ArrayList<>();
       content.add(text(userPrompt(type, wanted, fieldNames, pages, plan.pagesTotal(), i > 0)));
+      List<Map<String, Object>> pageImages = new ArrayList<>();
       for (int page : pages) {
         BufferedImage rendered = enlargeSmall(cropToContent(renderImage(renderer, page, dpi)));
         if (textLooksVertical(rendered)) {
           // Documento acostado (p. ej. credencial fotografiada con el celular vertical): se mandan solo las
           // dos versiones giradas, una de ellas derecha. Con la original de lado también, la IA mezclaba
           // lecturas y cambiaba caracteres de la clave de elector (E2E 02/10).
-          content.add(text("Página " + page + " (venía de lado; aquí girada 90° a la derecha):"));
-          content.add(image(encode(rotate(rendered, true))));
-          content.add(text("Página " + page + " (la misma, girada 90° a la izquierda):"));
-          content.add(image(encode(rotate(rendered, false))));
+          pageImages.add(text("Página " + page + " (venía de lado; aquí girada 90° a la derecha):"));
+          pageImages.add(image(encode(rotate(rendered, true))));
+          pageImages.add(text("Página " + page + " (la misma, girada 90° a la izquierda):"));
+          pageImages.add(image(encode(rotate(rendered, false))));
         } else {
-          content.add(text("Página " + page + ":"));
-          content.add(image(encode(rendered)));
+          pageImages.add(text("Página " + page + ":"));
+          pageImages.add(image(encode(rendered)));
         }
+      }
+      content.addAll(pageImages);
+      if (i == 0) {
+        firstBatchImages = pageImages;
       }
       try {
         consolidator.add(call(type, content));
@@ -205,8 +212,44 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
         consolidator.addWarning("No se pudieron revisar las páginas " + describePages(pages) + " (la IA no respondió); reprocésalo con IA si faltan datos");
       }
     }
+    if (!longDocument && !firstBatchImages.isEmpty()) {
+      rereadInvalidIdentifiers(type, consolidator, firstBatchImages);
+    }
     addCoverageWarning(consolidator, fieldNames, analyzed.size(), plan.pagesTotal());
     return withCounts(consolidator, analyzed.size(), plan.pagesTotal());
+  }
+
+  /**
+   * Una CURP, RFC o clave de elector que no cumple su formato es casi seguro una
+   * mala lectura: se le pide a la IA una sola vez que relea esos campos carácter
+   * por carácter, diciéndole el formato. Si la nueva lectura sí cumple, la
+   * reemplaza; si no, la marca la guarda de confianza baja (ver
+   * DocumentFieldExtractionService).
+   */
+  private void rereadInvalidIdentifiers(DocumentTypeCode type, ExtractionConsolidator consolidator, List<Map<String, Object>> images) {
+    Map<String, String> invalid = new LinkedHashMap<>();
+    for (FieldResult f : consolidator.result(null, null).fields()) {
+      FieldFormats.problem(f.fieldName(), f.value()).ifPresent(problem -> invalid.put(f.fieldName(), problem));
+    }
+    if (invalid.isEmpty()) {
+      return;
+    }
+    StringBuilder prompt = new StringBuilder("Vuelve a leer SOLO estos campos del documento, carácter por carácter, y transcribe exactamente lo que dice:\n");
+    invalid.forEach((field, problem) -> prompt.append("- ").append(field).append(": ").append(problem).append(".\n"));
+    prompt.append("Si de verdad no se distingue algún carácter, transcribe lo que veas con confianza baja.");
+    List<Map<String, Object>> content = new ArrayList<>();
+    content.add(text(prompt.toString()));
+    content.addAll(images);
+    try {
+      ExtractionResult reread = call(type, content);
+      for (FieldResult f : reread.fields()) {
+        if (invalid.containsKey(f.fieldName()) && FieldFormats.problem(f.fieldName(), f.value()).isEmpty()) {
+          consolidator.replace(f);
+        }
+      }
+    } catch (AiUnavailableException e) {
+      // La primera lectura se conserva con confianza baja.
+    }
   }
 
   private ExtractionResult extractFromText(

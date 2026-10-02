@@ -63,6 +63,11 @@ public final class ExtractionConsolidator {
     }
   }
 
+  /** Una relectura dirigida corrigió el campo: reemplaza el valor anterior aunque tuviera más confianza. */
+  public void replace(FieldResult field) {
+    best.put(field.fieldName(), field);
+  }
+
   public void addWarning(String warning) {
     warnings.add(warning);
   }

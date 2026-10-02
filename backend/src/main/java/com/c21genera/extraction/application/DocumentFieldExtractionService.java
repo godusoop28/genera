@@ -112,7 +112,8 @@ public class DocumentFieldExtractionService implements ExtractionApi {
    * procesado antes (reproceso), lo detectado antes se reemplaza, pero un dato
    * que el staff confirmó o corrigió nunca se pisa.
    */
-  void saveResult(ExtractDocumentFieldsPayload payload, ExtractionResult result) {
+  void saveResult(ExtractDocumentFieldsPayload payload, ExtractionResult extracted) {
+    ExtractionResult result = guardIdentifierFormats(extracted);
     Instant now = clock.instant();
     observationRepository.deleteByDocumentVersionIdAndConfirmedValueIsNull(payload.documentVersionId());
     observationRepository.flush();
@@ -162,6 +163,26 @@ public class DocumentFieldExtractionService implements ExtractionApi {
             fieldsFound));
 
     runConsistencyCheck(payload.expedienteId());
+  }
+
+  /**
+   * Una CURP, RFC o clave de elector con formato inválido nunca se presenta como
+   * confiable, venga del proveedor que venga: confianza máxima 0.3 ("revisar") y
+   * un aviso para el revisor (E2E 02/10).
+   */
+  static ExtractionResult guardIdentifierFormats(ExtractionResult result) {
+    List<FieldResult> fields = new ArrayList<>();
+    List<String> warnings = new ArrayList<>(result.warnings());
+    for (FieldResult f : result.fields()) {
+      var problem = com.c21genera.extraction.domain.FieldFormats.problem(f.fieldName(), f.value());
+      if (problem.isPresent()) {
+        fields.add(new FieldResult(f.fieldName(), f.value(), Math.min(f.confidence(), 0.3), f.page()));
+        warnings.add("Revisa " + DocumentFieldSchemas.describe(List.of(f.fieldName())).getFirst() + ": " + problem.get());
+      } else {
+        fields.add(f);
+      }
+    }
+    return new ExtractionResult(fields, result.assessment(), warnings, result.pagesAnalyzed(), result.pagesTotal());
   }
 
   private static String truncate(String value, int max) {

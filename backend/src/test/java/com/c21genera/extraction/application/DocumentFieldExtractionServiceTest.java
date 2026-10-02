@@ -131,6 +131,22 @@ class DocumentFieldExtractionServiceTest {
   }
 
   @Test
+  void anIdentifierWithAnInvalidFormatIsNeverPresentedAsReliable() {
+    ExtractionResult guarded =
+        DocumentFieldExtractionService.guardIdentifierFormats(
+            new ExtractionResult(
+                List.of(new FieldResult("electorKey", "RDCAL8503147H900", 0.9, 1), new FieldResult("curp", "ROCC850314HMSDLR07", 0.96, 1)),
+                ContentAssessment.unknown(),
+                List.of()));
+
+    assertThat(guarded.fields()).filteredOn(f -> f.fieldName().equals("electorKey")).singleElement()
+        .satisfies(f -> assertThat(f.confidence()).isEqualTo(0.3));
+    assertThat(guarded.fields()).filteredOn(f -> f.fieldName().equals("curp")).singleElement()
+        .satisfies(f -> assertThat(f.confidence()).isEqualTo(0.96));
+    assertThat(guarded.warnings()).singleElement().asString().contains("clave de elector").contains("16 caracteres");
+  }
+
+  @Test
   void reprocessingReplacesAiDataButNeverOverwritesWhatTheStaffConfirmed() {
     ExtractedFieldObservation confirmed =
         new ExtractedFieldObservation(expedienteId, documentId, versionId, "curp", "PELJ800101HMSRPN0I", FieldOrigin.AI_EXTRACTED, 0.5, Instant.EPOCH);

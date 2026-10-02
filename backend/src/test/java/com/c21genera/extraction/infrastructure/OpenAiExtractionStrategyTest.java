@@ -285,6 +285,23 @@ class OpenAiExtractionStrategyTest {
     assertThat(OpenAiStructuredExtractionProvider.rotate(image, false).getHeight()).isEqualTo(90);
   }
 
+  @Test
+  void anIdentifierWithAnInvalidFormatIsReReadOnce() throws Exception {
+    var provider =
+        provider(
+            body ->
+                body.contains("Vuelve a leer SOLO estos campos")
+                    ? new Object[] {200, json("credencial INE", true, field("electorKey", "RDCACL85031417H900", 0.9, 1), "", "")}
+                    : new Object[] {200, json("credencial INE", true, field("electorKey", "RDCAL8503147H900", 0.8, 1), "", "")},
+            0);
+
+    ExtractionResult result = provider.extract(DocumentTypeCode.INE, pdf(1, null), List.of("electorKey"));
+
+    assertThat(requests).hasSize(2);
+    assertThat(requests.get(1)).contains("18 caracteres: 6 letras");
+    assertThat(find(result, "electorKey").value()).isEqualTo("RDCACL85031417H900");
+  }
+
   // --- Categoría equivocada ----------------------------------------------
 
   @Test
