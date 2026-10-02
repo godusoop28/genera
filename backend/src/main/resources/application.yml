@@ -1,6 +1,12 @@
 spring:
   application:
     name: c21genera-backend
+  modulith:
+    events:
+      # Si el servidor se reinicia entre el commit y la entrega de un evento asíncrono (p. ej.
+      # "documento procesado" -> encolar la extracción), el evento queda incompleto en
+      # event_publication; con esto se vuelve a entregar al arrancar en vez de perderse (E2E 02/10).
+      republish-outstanding-events-on-restart: true
   main:
     # El free tier de Render (0.1 CPU) hace que el arranque completo tarde
     # varios minutos; lazy-init evita crear beans que no se tocan al
@@ -51,6 +57,9 @@ server:
     include-stacktrace: never
 
 management:
+  info:
+    env:
+      enabled: true
   endpoints:
     web:
       exposure:
@@ -60,6 +69,12 @@ management:
       probes:
         enabled: true
       show-details: never
+
+# /actuator/info muestra qué commit está desplegado (Render define RENDER_GIT_COMMIT): permite
+# confirmar que un fix ya está en producción antes de volver a probar.
+info:
+  app:
+    commit: ${RENDER_GIT_COMMIT:local}
 
 springdoc:
   api-docs:
