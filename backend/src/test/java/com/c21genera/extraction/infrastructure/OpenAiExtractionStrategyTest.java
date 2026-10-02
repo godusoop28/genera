@@ -302,6 +302,15 @@ class OpenAiExtractionStrategyTest {
     assertThat(find(result, "electorKey").value()).isEqualTo("RDCACL85031417H900");
   }
 
+  @Test
+  void pagesAreNeverSentLargerThanTheModelUses() {
+    var big = new java.awt.image.BufferedImage(1870, 2420, java.awt.image.BufferedImage.TYPE_INT_RGB);
+    var fitted = OpenAiStructuredExtractionProvider.fitForModel(big);
+    assertThat(Math.max(fitted.getWidth(), fitted.getHeight())).isEqualTo(2048);
+    var small = new java.awt.image.BufferedImage(1000, 600, java.awt.image.BufferedImage.TYPE_INT_RGB);
+    assertThat(OpenAiStructuredExtractionProvider.fitForModel(small)).isSameAs(small);
+  }
+
   // --- Categoría equivocada ----------------------------------------------
 
   @Test

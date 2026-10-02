@@ -184,7 +184,7 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       content.add(text(userPrompt(type, wanted, fieldNames, pages, plan.pagesTotal(), i > 0)));
       List<Map<String, Object>> pageImages = new ArrayList<>();
       for (int page : pages) {
-        BufferedImage rendered = enlargeSmall(cropToContent(renderImage(renderer, page, dpi)));
+        BufferedImage rendered = fitForModel(enlargeSmall(cropToContent(renderImage(renderer, page, dpi))));
         if (textLooksVertical(rendered)) {
           // Documento acostado (p. ej. credencial fotografiada con el celular vertical): se mandan solo las
           // dos versiones giradas, una de ellas derecha. Con la original de lado también, la IA mezclaba
@@ -474,6 +474,25 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
 
   /** Imágenes hasta este tamaño van en PNG (sin pérdida); más grandes, en JPEG de alta calidad. */
   private static final long PNG_MAX_PIXELS = 3_000_000L;
+
+  /** OpenAI reduce toda imagen a 2048 px de lado mayor: más resolución solo gasta memoria (E2E 02/10, 502 por memoria). */
+  static final int MODEL_MAX_SIDE = 2048;
+
+  static BufferedImage fitForModel(BufferedImage image) {
+    int longSide = Math.max(image.getWidth(), image.getHeight());
+    if (longSide <= MODEL_MAX_SIDE) {
+      return image;
+    }
+    double scale = (double) MODEL_MAX_SIDE / longSide;
+    int w = Math.max(1, (int) Math.round(image.getWidth() * scale));
+    int h = Math.max(1, (int) Math.round(image.getHeight() * scale));
+    BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+    java.awt.Graphics2D g = out.createGraphics();
+    g.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+    g.drawImage(image, 0, 0, w, h, null);
+    g.dispose();
+    return out;
+  }
 
   private static String encode(BufferedImage image) throws Exception {
     return Base64.getEncoder().encodeToString(encodeBytes(image));

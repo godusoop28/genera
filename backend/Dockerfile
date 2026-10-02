@@ -27,5 +27,7 @@ EXPOSE 8080
 # La instancia gratuita de Render tiene 512 MB: sin esto la JVM solo usa el 25%
 # (~128 MB) de heap y el arranque se queda sin memoria. SerialGC y pilas más
 # chicas reducen la memoria fuera del heap.
-ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70 -XX:+UseSerialGC -Xss512k -XX:MaxMetaspaceSize=192m"
+# Heap al 55% de los 512 MB de Render: con 70% el heap + metaspace + memoria nativa (decodificación de
+# imágenes) superaba el límite del contenedor y Render lo reiniciaba (502) en vez de lanzar un OutOfMemoryError.
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=55 -XX:+UseSerialGC -Xss512k -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=48m"
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

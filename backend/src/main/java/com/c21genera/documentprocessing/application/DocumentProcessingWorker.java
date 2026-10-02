@@ -47,11 +47,12 @@ public class DocumentProcessingWorker {
     try {
       processor.process(payload);
       queue.markDone(job);
-    } catch (Exception e) {
+    } catch (Exception | OutOfMemoryError e) {
       log.error("Fallo procesando documentVersionId={}", payload.documentVersionId(), e);
-      JobStatus finalStatus = queue.markFailedOrRetry(job, e.getMessage());
+      String message = e instanceof OutOfMemoryError ? "El archivo es demasiado grande para procesarlo con la memoria disponible" : e.getMessage();
+      JobStatus finalStatus = queue.markFailedOrRetry(job, message);
       if (finalStatus == JobStatus.FAILED) {
-        documentsApi.markFailed(payload.documentVersionId(), "Procesamiento falló tras reintentos: " + e.getMessage());
+        documentsApi.markFailed(payload.documentVersionId(), "Procesamiento falló tras reintentos: " + message);
       }
     }
   }

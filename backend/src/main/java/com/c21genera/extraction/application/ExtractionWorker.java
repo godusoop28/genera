@@ -45,9 +45,12 @@ public class ExtractionWorker {
     try {
       service.extract(payload);
       queue.markDone(job);
-    } catch (Exception e) {
+    } catch (Exception | OutOfMemoryError e) {
+      // OutOfMemoryError: un documento que no cabe en memoria falla solo él (con reintentos), en vez de
+      // dejar el servidor inestable (E2E 02/10).
       log.error("Fallo extrayendo campos para documentVersionId={}", payload.documentVersionId(), e);
-      if (queue.markFailedOrRetry(job, e.getMessage()) == JobStatus.FAILED) {
+      String message = e instanceof OutOfMemoryError ? "El documento es demasiado grande para analizarlo con la memoria disponible" : e.getMessage();
+      if (queue.markFailedOrRetry(job, message) == JobStatus.FAILED) {
         service.recordCheckFailed(payload);
       }
     }
