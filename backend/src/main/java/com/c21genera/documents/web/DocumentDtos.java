@@ -128,7 +128,13 @@ public final class DocumentDtos {
         if (v.getAiAssessedAt() == null && !v.isAiCheckFailed()) {
           yield "PROCESSING";
         }
-        if (!v.blockingIssues().isEmpty() || !v.warnings().isEmpty()) {
+        // Requiere atención solo lo que el revisor debe decidir: ilegible, parece otro documento,
+        // la IA no respondió o la calidad es mejorable. Las notas informativas de la IA
+        // ("no se observa la fecha de emisión") no cambian el estado: eso es extracción parcial.
+        if (!v.blockingIssues().isEmpty()
+            || Boolean.FALSE.equals(v.getAiTypeMatches())
+            || v.isAiCheckFailed()
+            || "ACCEPTED_WITH_WARNINGS".equals(v.getQualityLevel())) {
           yield "REQUIRES_REVIEW";
         }
         Integer expected = v.getAiFieldsExpected();

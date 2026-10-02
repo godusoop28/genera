@@ -84,7 +84,9 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       la hace ilegible: legible=true si se pueden leer los datos principales.
       - legible=false solo si de verdad no se puede leer el contenido principal.
       - matchesExpectedType=false solo si el archivo es claramente OTRO documento o no es un documento. \
-      Aun así, extrae los datos que veas: NO dejes fields vacío por eso.
+      Si el contenido corresponde al tipo solicitado, responde true aunque el diseño o formato no sea el \
+      oficial que conoces (otro estado o emisor, formato antiguo, copia, impresión, versión de muestra o \
+      sin fotografía). Aun así, extrae los datos que veas: NO dejes fields vacío por eso.
       - Pequeñas diferencias de escritura, abreviaturas o el orden de nombre y apellidos no son errores.
 
       REGLAS DE SEGURIDAD (obligatorias, no negociables):

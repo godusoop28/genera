@@ -111,6 +111,49 @@ class HeuristicDocumentQualityAnalyzerTest {
   }
 
   @Test
+  void aCleanWhiteDocumentWithLittleTextHasNoFalseWarnings() throws IOException {
+    // Como los fixtures de QA: hoja blanca de 1400x900 con seis renglones cortos (brillo ~251, contraste ~26).
+    BufferedImage sparse = new BufferedImage(1400, 900, BufferedImage.TYPE_INT_RGB);
+    var g = sparse.createGraphics();
+    g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+    g.setColor(Color.WHITE);
+    g.fillRect(0, 0, 1400, 900);
+    g.setColor(Color.BLACK);
+    g.setFont(new Font("SansSerif", Font.PLAIN, 14));
+    for (int i = 0; i < 6; i++) {
+      g.drawString("CURP: ROCC850314HMSDLR07 - DATO DE PRUEBA", 100, 180 + i * 90);
+    }
+    g.drawRect(30, 30, 1340, 840);
+    g.dispose();
+
+    QualityResult result = analyze(sparse, DocumentTypeCode.INE);
+
+    assertThat(result.level()).isEqualTo(QualityLevel.ACCEPTED);
+  }
+
+  /** Fixtures ficticios del paquete de QA (E2E 02/10): mismas imágenes que se subieron a producción. */
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.CsvSource({
+    "INE_FOTO_HORIZONTAL_LEGIBLE.jpg, true",
+    "INE_FOTO_VERTICAL_LEGIBLE.jpg, true",
+    "INE_INCLINADA_LEGIBLE.jpg, true",
+    "INE_LIGERAMENTE_BORROSA_PERO_LEGIBLE.jpg, true",
+    "INE_REALMENTE_ILEGIBLE_DEBE_FALLAR.jpg, false"
+  })
+  void qaFixturesAreAcceptedUnlessTrulyIllegible(String file, boolean acceptable) throws IOException {
+    try (var in = getClass().getResourceAsStream("/qa-fixtures/" + file)) {
+      byte[] jpeg = in.readAllBytes();
+      BufferedImage image = ImageIO.read(new java.io.ByteArrayInputStream(jpeg));
+      QualityResult result = analyzer.analyze(jpeg, "image/jpeg", image.getWidth(), image.getHeight(), DocumentTypeCode.INE);
+
+      assertThat(result.acceptable()).as(file).isEqualTo(acceptable);
+      if (acceptable) {
+        assertThat(result.issues()).as("sin advertencias falsas en " + file).isEmpty();
+      }
+    }
+  }
+
+  @Test
   void rejectsATinyImageAndAnEmptyFile() {
     assertThat(analyzer.analyze(new byte[] {1, 2, 3}, "image/jpeg", 200, 240, DocumentTypeCode.DEED).level()).isEqualTo(QualityLevel.UNREADABLE);
     assertThat(analyzer.analyze(new byte[0], "image/jpeg", 1200, 1600, DocumentTypeCode.DEED).level()).isEqualTo(QualityLevel.UNREADABLE);

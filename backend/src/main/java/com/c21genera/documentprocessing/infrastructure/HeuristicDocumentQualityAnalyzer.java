@@ -30,21 +30,21 @@ public class HeuristicDocumentQualityAnalyzer implements DocumentQualityAnalyzer
   // Se lee, pero el texto pequeño (CURP, folios) puede costar trabajo.
   private static final int LOW_RESOLUTION_PX = 700;
 
-  // Calibrado con BlurDetectorTest: una foto de documento nítida con texto
-  // denso da ~11 000, una muy borrosa ~340; una imagen reducida a 1/16 y
-  // vuelta a ampliar (texto convertido en manchas) queda por debajo de 25.
-  private static final double UNREADABLE_SHARPNESS = 25.0;
-  private static final double SOFT_SHARPNESS = 120.0;
+  // Nitidez del texto (BlurDetector.textSharpness), calibrada en E2E 02/10 con los fixtures de
+  // QA: nítidas ~6 000-7 000, ligeramente borrosa pero legible ~790, ilegible ~3; texto de 28 px
+  // reducido a 1/16 (manchas) ~50 por los artefactos JPEG.
+  private static final double UNREADABLE_SHARPNESS = 60.0;
+  private static final double SOFT_SHARPNESS = 400.0;
 
   // Una imagen en blanco, gris uniforme o sin contraste (p. ej. foto de una
   // pared, tapada o totalmente sobreexpuesta) tiene una desviación del brillo
-  // casi nula; cualquier documento con texto visible queda muy por encima.
+  // casi nula; cualquier documento con texto visible queda por encima. (El
+  // contraste global no se usa para advertencias: una hoja blanca con poco
+  // texto tiene contraste global bajo y se lee perfecto.)
   private static final double UNREADABLE_CONTRAST = 6.0;
-  private static final double LOW_CONTRAST = 18.0;
 
   private static final double UNREADABLE_DARKNESS = 20.0;
   private static final double DARK = 60.0;
-  private static final double OVEREXPOSED = 240.0;
 
   @Override
   public QualityResult analyze(byte[] normalizedImage, String mimeType, int widthPx, int heightPx, DocumentTypeCode documentType) {
@@ -77,7 +77,7 @@ public class HeuristicDocumentQualityAnalyzer implements DocumentQualityAnalyzer
     if (luminance.mean() < UNREADABLE_DARKNESS) {
       return QualityResult.unreadable(List.of("La foto está prácticamente negra: tómala con luz"));
     }
-    double sharpness = BlurDetector.laplacianVariance(image);
+    double sharpness = BlurDetector.textSharpness(image);
     if (sharpness < UNREADABLE_SHARPNESS) {
       return QualityResult.unreadable(List.of("La foto está tan borrosa que no se distingue el texto: vuelve a tomarla con buen enfoque"));
     }
@@ -87,12 +87,6 @@ public class HeuristicDocumentQualityAnalyzer implements DocumentQualityAnalyzer
     }
     if (luminance.mean() < DARK) {
       warnings.add("La foto está oscura");
-    } else if (luminance.mean() > OVEREXPOSED && luminance.standardDeviation() < 2 * LOW_CONTRAST) {
-      // Una hoja blanca bien escaneada también es muy clara: solo es "reflejo" si además casi no hay contraste.
-      warnings.add("La foto está muy clara o con reflejo");
-    }
-    if (luminance.standardDeviation() < LOW_CONTRAST) {
-      warnings.add("La foto tiene poco contraste");
     }
     return QualityResult.withWarnings(warnings);
   }

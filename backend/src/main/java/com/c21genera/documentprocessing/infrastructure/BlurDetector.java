@@ -46,6 +46,63 @@ final class BlurDetector {
     return (sumSquares / count) - (mean * mean);
   }
 
+  private static final int TILE = 32;
+  /** Un recuadro "tiene texto" si su brillo varía al menos esto (en blanco/gris uniforme no varía). */
+  private static final double TILE_MIN_STDDEV = 12.0;
+
+  /**
+   * Nitidez del TEXTO, no de la hoja: varianza del Laplaciano en los recuadros
+   * de 32x32 que tienen contenido, percentil 90. El promedio de toda la imagen
+   * castigaba a los documentos con poco texto (una INE en una hoja blanca daba
+   * "borrosa" aunque se leyera perfecto) porque el blanco diluía el valor.
+   * Calibración (E2E 02/10, fixtures de QA): nítidas ~6 000-7 000, ligeramente
+   * borrosa ~790, ilegible ~3, sin recuadros con contenido 0.
+   */
+  static double textSharpness(BufferedImage image) {
+    BufferedImage scaled = downscale(image, MAX_DIMENSION_FOR_ANALYSIS);
+    int width = scaled.getWidth();
+    int height = scaled.getHeight();
+    if (width < TILE + 2 || height < TILE + 2) {
+      return laplacianVariance(image);
+    }
+    int[] gray = toGrayscale(scaled);
+    java.util.List<Double> tiles = new java.util.ArrayList<>();
+    for (int ty = 1; ty + TILE < height - 1; ty += TILE) {
+      for (int tx = 1; tx + TILE < width - 1; tx += TILE) {
+        double sum = 0;
+        double sumSq = 0;
+        for (int y = ty; y < ty + TILE; y++) {
+          for (int x = tx; x < tx + TILE; x++) {
+            int v = gray[y * width + x];
+            sum += v;
+            sumSq += (double) v * v;
+          }
+        }
+        int n = TILE * TILE;
+        double mean = sum / n;
+        if (Math.sqrt(Math.max(0, sumSq / n - mean * mean)) < TILE_MIN_STDDEV) {
+          continue;
+        }
+        double lSum = 0;
+        double lSq = 0;
+        for (int y = ty; y < ty + TILE; y++) {
+          for (int x = tx; x < tx + TILE; x++) {
+            int lap = gray[(y - 1) * width + x] + gray[(y + 1) * width + x] + gray[y * width + x - 1] + gray[y * width + x + 1] - 4 * gray[y * width + x];
+            lSum += lap;
+            lSq += (double) lap * lap;
+          }
+        }
+        double lMean = lSum / n;
+        tiles.add(lSq / n - lMean * lMean);
+      }
+    }
+    if (tiles.isEmpty()) {
+      return 0;
+    }
+    java.util.Collections.sort(tiles);
+    return tiles.get((int) Math.floor(0.9 * (tiles.size() - 1)));
+  }
+
   /** Brillo medio (0-255) y desviación estándar del brillo: detecta fotos en blanco, grises o casi negras. */
   record Luminance(double mean, double standardDeviation) {}
 
