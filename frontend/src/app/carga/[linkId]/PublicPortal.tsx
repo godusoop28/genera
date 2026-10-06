@@ -136,6 +136,11 @@ export function PublicPortal({ token }: { token: string }) {
     void stepTransport.save(JSON.stringify({ step: next, maxReached: reached })).catch(() => undefined);
   };
 
+  // El paso guardado puede ser "Listo" de un envío anterior; si el equipo
+  // devolvió o rechazó un documento, el cliente cae en "Documentos" para
+  // volver a subirlo.
+  const shownStep = expediente?.status === "CORRECTIONS_REQUESTED" && step === 5 ? 4 : step;
+
   if (invalid) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-app-bg px-4 text-center">
@@ -193,14 +198,14 @@ export function PublicPortal({ token }: { token: string }) {
         ) : null}
 
         <div className="mt-8 rounded-2xl border border-border bg-card p-5">
-          <Stepper steps={steps} currentStep={step} maxReachedStep={maxReached} onStepClick={goTo} />
+          <Stepper steps={steps} currentStep={shownStep} maxReachedStep={maxReached} onStepClick={goTo} />
         </div>
 
         <div className="mt-8">
-          {step === 1 ? <ConfirmStep expediente={expediente} onContinue={() => goTo(initialStepFor(expediente.status))} /> : null}
-          {step === 2 ? <PrivacyStep token={token} onContinue={() => goTo(3)} /> : null}
-          {step === 3 ? <ClientDataStep token={token} personType={expediente.personType} onContinue={() => goTo(4)} /> : null}
-          {step === 4 ? (
+          {shownStep === 1 ? <ConfirmStep expediente={expediente} onContinue={() => goTo(initialStepFor(expediente.status))} /> : null}
+          {shownStep === 2 ? <PrivacyStep token={token} onContinue={() => goTo(3)} /> : null}
+          {shownStep === 3 ? <ClientDataStep token={token} personType={expediente.personType} onContinue={() => goTo(4)} /> : null}
+          {shownStep === 4 ? (
             <DocumentsStep
               token={token}
               status={expediente.status}
@@ -210,7 +215,7 @@ export function PublicPortal({ token }: { token: string }) {
               }}
             />
           ) : null}
-          {step === 5 ? <ConfirmationStep expediente={expediente} /> : null}
+          {shownStep === 5 ? <ConfirmationStep expediente={expediente} /> : null}
         </div>
       </main>
 
