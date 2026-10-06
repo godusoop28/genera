@@ -35,7 +35,7 @@ export interface CreateExpedienteRequest extends ExpedienteConfiguration {
 }
 
 export function listExpedientes(page = 0, size = 20) {
-  return apiClient.get<PageResponse<ExpedienteResponse>>(`/internal/expedientes?page=${page}&size=${size}`);
+  return apiClient.get<PageResponse<ExpedienteResponse>>(`/internal/expedientes?page=${page}&size=${size}&sort=createdAt,desc`);
 }
 
 export function createExpediente(request: CreateExpedienteRequest) {

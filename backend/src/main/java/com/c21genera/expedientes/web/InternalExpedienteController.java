@@ -21,6 +21,7 @@ import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -73,7 +74,8 @@ public class InternalExpedienteController {
   @GetMapping
   @PreAuthorize("hasAnyAuthority('EXPEDIENT_VIEW_ALL', 'EXPEDIENT_VIEW_OWN')")
   public PageResponse<ExpedienteResponse> list(
-      @PageableDefault(size = 20) Pageable pageable, @AuthenticationPrincipal Jwt jwt) {
+      @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
+      @AuthenticationPrincipal Jwt jwt) {
     CurrentUser currentUser = CurrentUser.from(jwt);
     Pageable capped = Pagination.cap(pageable);
     var page =

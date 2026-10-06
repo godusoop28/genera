@@ -43,11 +43,16 @@ export default function ExpedientesPage() {
   const [filter, setFilter] = useState<FilterId>("todos");
   const [expedientes, setExpedientes] = useState<ExpedienteResponse[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadedPages, setLoadedPages] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const load = useCallback(() => {
     listExpedientes()
       .then((page) => {
         setExpedientes(page.items);
+        setLoadedPages(1);
+        setTotalPages(page.totalPages);
         setError(null);
       })
       .catch((err) => {
@@ -62,6 +67,21 @@ export default function ExpedientesPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const loadMore = () => {
+    setLoadingMore(true);
+    listExpedientes(loadedPages)
+      .then((page) => {
+        setExpedientes((prev) => {
+          const seen = new Set((prev ?? []).map((e) => e.id));
+          return [...(prev ?? []), ...page.items.filter((e) => !seen.has(e.id))];
+        });
+        setLoadedPages(loadedPages + 1);
+        setTotalPages(page.totalPages);
+      })
+      .catch(() => setError("No se pudieron cargar más expedientes. Intenta de nuevo."))
+      .finally(() => setLoadingMore(false));
+  };
 
   const filtered = useMemo(
     () => (expedientes ?? []).filter((e) => matchesFilter(e.status, filter)),
@@ -166,6 +186,14 @@ export default function ExpedientesPage() {
           ))}
         </div>
       )}
+
+      {expedientes !== null && loadedPages < totalPages ? (
+        <div className="mt-6 flex justify-center">
+          <Button variant="secondary" size="md" onClick={loadMore} disabled={loadingMore}>
+            {loadingMore ? "Cargando…" : "Cargar más expedientes"}
+          </Button>
+        </div>
+      ) : null}
     </PageContainer>
   );
 }
