@@ -17,11 +17,14 @@ import com.c21genera.publicaccess.PublicAccessTokenApi;
 import com.c21genera.publicaccess.PublicLinkRevokedException;
 import com.c21genera.shared.events.Actor;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -115,6 +118,27 @@ public class PublicExpedienteController {
     UUID expedienteId = resolve(token);
     ExpedienteParticipant p = expedienteService.declareCivilStatus(expedienteId, participantId, request.civilStatus(), request.maritalRegime());
     return new PublicParticipantResponse(p.getId(), p.getRole().name(), maskName(p.getFullName()), p.getCivilStatus(), p.details().maritalRegime());
+  }
+
+  public record OwnerNameRequest(@NotBlank @Size(max = 200) String fullName) {}
+
+  /** El cliente agrega un copropietario que faltó; se le piden sus documentos en el paso Documentos. */
+  @PostMapping("/participants")
+  public PublicParticipantResponse addCoOwner(@PathVariable String token, @Valid @RequestBody OwnerNameRequest request) {
+    ExpedienteParticipant p = expedienteService.addCoOwnerByClient(resolve(token), request.fullName());
+    return new PublicParticipantResponse(p.getId(), p.getRole().name(), maskName(p.getFullName()), p.getCivilStatus(), p.details().maritalRegime());
+  }
+
+  @PutMapping("/participants/{participantId}")
+  public PublicParticipantResponse renameOwner(
+      @PathVariable String token, @PathVariable UUID participantId, @Valid @RequestBody OwnerNameRequest request) {
+    ExpedienteParticipant p = expedienteService.renameOwnerByClient(resolve(token), participantId, request.fullName());
+    return new PublicParticipantResponse(p.getId(), p.getRole().name(), maskName(p.getFullName()), p.getCivilStatus(), p.details().maritalRegime());
+  }
+
+  @DeleteMapping("/participants/{participantId}")
+  public void removeCoOwner(@PathVariable String token, @PathVariable UUID participantId) {
+    expedienteService.removeCoOwnerByClient(resolve(token), participantId);
   }
 
   public record SubmitResponse(boolean submitted, ExpedienteStatus status) {}

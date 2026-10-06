@@ -341,6 +341,66 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
   }
 
   // ---------------------------------------------------------------------
+  // Titulares capturados por el cliente desde su liga
+  // ---------------------------------------------------------------------
+
+  private static final String CLIENT_CORRECTION_REASON = "Corrección del cliente desde su liga";
+
+  /**
+   * El cliente solo corrige titulares mientras se reciben o revisan sus
+   * documentos; una vez aprobados (contrato en preparación) lo hace el asesor.
+   */
+  private Expediente clientEditable(UUID expedienteId) {
+    Expediente expediente = get(expedienteId);
+    if (expediente.getPersonType() != PersonType.FISICA) {
+      throw new UnprocessableException(
+          "NOT_APPLICABLE", "En persona moral los titulares los corrige tu asesor.");
+    }
+    switch (expediente.getStatus()) {
+      case WAITING_DOCUMENTS, DOCUMENTS_RECEIVED, UNDER_REVIEW, CORRECTIONS_REQUESTED -> {
+        return expediente;
+      }
+      default ->
+          throw new com.c21genera.shared.domain.ConflictException(
+              "CLIENT_EDIT_CLOSED", "Tus documentos ya fueron aprobados; pide a tu asesor que corrija los titulares.");
+    }
+  }
+
+  /** El cliente agrega un copropietario; documents pide sus documentos (ver publishRequirements). */
+  public ExpedienteParticipant addCoOwnerByClient(UUID expedienteId, String fullName) {
+    clientEditable(expedienteId);
+    return addParticipant(
+        expedienteId,
+        new ParticipantInput(ParticipantRole.CO_OWNER, fullName, null),
+        Actor.client(),
+        CLIENT_CORRECTION_REASON);
+  }
+
+  /** El cliente corrige el nombre de un titular (propietario o copropietario); conserva rol y demás datos. */
+  public ExpedienteParticipant renameOwnerByClient(UUID expedienteId, UUID participantId, String fullName) {
+    clientEditable(expedienteId);
+    ExpedienteParticipant participant = participantOf(expedienteId, participantId);
+    if (!participant.isOwner()) {
+      throw new UnprocessableException("NOT_APPLICABLE", "Solo puedes corregir el nombre de los propietarios.");
+    }
+    return updateParticipant(
+        expedienteId,
+        participantId,
+        new ParticipantInput(participant.getRole(), fullName, participant.details()),
+        Actor.client(),
+        CLIENT_CORRECTION_REASON);
+  }
+
+  /** El cliente quita un copropietario registrado de más; el propietario principal no se puede quitar. */
+  public void removeCoOwnerByClient(UUID expedienteId, UUID participantId) {
+    clientEditable(expedienteId);
+    if (participantOf(expedienteId, participantId).getRole() != ParticipantRole.CO_OWNER) {
+      throw new UnprocessableException("NOT_APPLICABLE", "Solo puedes quitar copropietarios.");
+    }
+    removeParticipant(expedienteId, participantId, Actor.client(), CLIENT_CORRECTION_REASON);
+  }
+
+  // ---------------------------------------------------------------------
   // API pública del módulo
   // ---------------------------------------------------------------------
 
@@ -458,6 +518,12 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
     switch (expediente.getStatus()) {
       case DOCUMENTS_APPROVED, RECEPTION_SIGNED, CONTRACT_PREPARATION, READY_FOR_SIGNATURE ->
           expediente.transitionToIfAllowed(ExpedienteStatus.CORRECTIONS_REQUESTED);
+      // Ya los había enviado: sin esto el cliente seguiría viendo "Listo" y
+      // nunca subiría los documentos nuevos (p. ej. de un copropietario agregado).
+      case DOCUMENTS_RECEIVED, UNDER_REVIEW -> {
+        expediente.transitionToIfAllowed(ExpedienteStatus.UNDER_REVIEW);
+        expediente.transitionToIfAllowed(ExpedienteStatus.CORRECTIONS_REQUESTED);
+      }
       default -> {
         /* aún no se había aprobado la documentación: nada que revertir */
       }

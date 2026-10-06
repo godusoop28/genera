@@ -49,6 +49,19 @@ export function listPublicParticipants(token: string) {
   return apiClient.get<PublicParticipantResponse[]>(`/public/expedientes/${token}/participants`);
 }
 
+/** El cliente agrega un copropietario que faltó; se le piden sus documentos. */
+export function addPublicCoOwner(token: string, fullName: string) {
+  return apiClient.post<PublicParticipantResponse>(`/public/expedientes/${token}/participants`, { fullName });
+}
+
+export function renamePublicOwner(token: string, participantId: string, fullName: string) {
+  return apiClient.put<PublicParticipantResponse>(`/public/expedientes/${token}/participants/${participantId}`, { fullName });
+}
+
+export function removePublicCoOwner(token: string, participantId: string) {
+  return apiClient.delete<void>(`/public/expedientes/${token}/participants/${participantId}`);
+}
+
 export function declareCivilStatus(
   token: string,
   participantId: string,

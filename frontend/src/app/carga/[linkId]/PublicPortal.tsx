@@ -13,12 +13,15 @@ import { ORG_OFFICE_ADDRESS, ORG_OFFICE_MAPS_URL } from "@/data/organization";
 import { PRIVACY_CONSENT_TEXT, PRIVACY_SECONDARY_OPT_OUT_TEXT } from "@/data/privacy-reference";
 import { ApiError } from "@/lib/api/client";
 import {
+  addPublicCoOwner,
   declareCivilStatus,
   getClientData,
   getPublicExpediente,
   listPublicDocuments,
   listPublicParticipants,
   recordPrivacyConsent,
+  removePublicCoOwner,
+  renamePublicOwner,
   submitDocuments,
   updateClientData,
   uploadPublicDocumentVersion,
@@ -35,8 +38,8 @@ import { readDraft, writeDraft } from "@/lib/drafts";
 import { DraftSync, type DraftSaveState } from "@/lib/draft-sync";
 import { ACCEPTED_FILE_TYPES, UploadValidationError } from "@/lib/upload-limits";
 import { publicDraftTransport, sessionDraftStore } from "@/lib/use-server-draft";
-import { civilStatusLabels, label, maritalRegimeLabels, returnReasonLabels } from "@/lib/labels";
-import { AlertTriangle, CheckCircle2, HelpCircle, Loader2, MapPin, ShieldCheck, Upload } from "lucide-react";
+import { civilStatusLabels, label, maritalRegimeLabels, participantRoleLabels, returnReasonLabels } from "@/lib/labels";
+import { AlertTriangle, CheckCircle2, HelpCircle, Loader2, MapPin, Pencil, Plus, ShieldCheck, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const steps = ["Confirmar", "Aviso de privacidad", "Tus datos", "Documentos", "Listo"];
@@ -45,6 +48,14 @@ function initialStepFor(status: PublicExpedienteResponse["status"]): number {
   if (status === "DRAFT" || status === "WAITING_PRIVACY") return 2;
   if (status === "WAITING_DOCUMENTS" || status === "CORRECTIONS_REQUESTED") return 4;
   return 5;
+}
+
+/** Mientras se reciben o revisan sus documentos el cliente puede corregir a los propietarios (igual que el backend). */
+function canEditOwners(expediente: PublicExpedienteResponse): boolean {
+  return (
+    expediente.personType === "FISICA" &&
+    ["WAITING_DOCUMENTS", "DOCUMENTS_RECEIVED", "UNDER_REVIEW", "CORRECTIONS_REQUESTED"].includes(expediente.status)
+  );
 }
 
 /** Qué ve el cliente sobre el avance de su trámite, en lenguaje sencillo. */
@@ -204,7 +215,15 @@ export function PublicPortal({ token }: { token: string }) {
         <div className="mt-8">
           {shownStep === 1 ? <ConfirmStep expediente={expediente} onContinue={() => goTo(initialStepFor(expediente.status))} /> : null}
           {shownStep === 2 ? <PrivacyStep token={token} onContinue={() => goTo(3)} /> : null}
-          {shownStep === 3 ? <ClientDataStep token={token} personType={expediente.personType} onContinue={() => goTo(4)} /> : null}
+          {shownStep === 3 ? (
+            <ClientDataStep
+              token={token}
+              personType={expediente.personType}
+              ownersEditable={canEditOwners(expediente)}
+              onOwnersChanged={() => void loadExpediente()}
+              onContinue={() => goTo(4)}
+            />
+          ) : null}
           {shownStep === 4 ? (
             <DocumentsStep
               token={token}
@@ -215,7 +234,9 @@ export function PublicPortal({ token }: { token: string }) {
               }}
             />
           ) : null}
-          {shownStep === 5 ? <ConfirmationStep expediente={expediente} /> : null}
+          {shownStep === 5 ? (
+            <ConfirmationStep expediente={expediente} onEditOwners={canEditOwners(expediente) ? () => goTo(3) : undefined} />
+          ) : null}
         </div>
       </main>
 
@@ -325,10 +346,14 @@ interface ClientDataDraft {
 function ClientDataStep({
   token,
   personType,
+  ownersEditable,
+  onOwnersChanged,
   onContinue,
 }: {
   token: string;
   personType: PublicExpedienteResponse["personType"];
+  ownersEditable: boolean;
+  onOwnersChanged: () => void;
   onContinue: () => void;
 }) {
   const [loaded, setLoaded] = useState(false);
@@ -399,6 +424,46 @@ function ClientDataStep({
 
   const civilStatusMissing = personType === "FISICA" && participants.some((p) => !p.civilStatus);
 
+  // Corrección de propietarios: se guarda al momento en el servidor, que
+  // recalcula qué documentos pedir (p. ej. los del copropietario agregado).
+  const [ownerBusy, setOwnerBusy] = useState(false);
+  const [ownerError, setOwnerError] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  const [newCoOwner, setNewCoOwner] = useState<string | null>(null);
+
+  const runOwnerChange = async (change: () => Promise<void>) => {
+    setOwnerBusy(true);
+    setOwnerError(null);
+    try {
+      await change();
+      onOwnersChanged();
+    } catch (err) {
+      setOwnerError(err instanceof ApiError ? err.message : "No se pudo guardar el cambio. Intenta de nuevo.");
+    } finally {
+      setOwnerBusy(false);
+    }
+  };
+
+  const addCoOwner = (fullName: string) =>
+    runOwnerChange(async () => {
+      const added = await addPublicCoOwner(token, fullName.trim());
+      setParticipants((prev) => [...prev, added]);
+      setNewCoOwner(null);
+    });
+
+  const renameOwner = (id: string, fullName: string) =>
+    runOwnerChange(async () => {
+      const updated = await renamePublicOwner(token, id, fullName.trim());
+      setParticipant(id, { displayName: updated.displayName });
+      setRenaming(null);
+    });
+
+  const removeCoOwner = (id: string) =>
+    runOwnerChange(async () => {
+      await removePublicCoOwner(token, id);
+      setParticipants((prev) => prev.filter((p) => p.id !== id));
+    });
+
   const handleContinue = async () => {
     setSubmitting(true);
     setError(null);
@@ -450,12 +515,67 @@ function ClientDataStep({
 
           {personType === "FISICA" && participants.length > 0 ? (
             <div className="border-t border-border pt-4">
-              <p className="text-sm font-medium text-obsessed">Estado civil de cada propietario</p>
-              <p className="mb-3 text-xs text-muted">Si alguno está casado se le pedirá su acta de matrimonio.</p>
+              <p className="text-sm font-medium text-obsessed">Propietarios y su estado civil</p>
+              <p className="mb-3 text-xs text-muted">
+                Si alguno está casado se le pedirá su acta de matrimonio.
+                {ownersEditable
+                  ? " Si falta o sobra un propietario, o un nombre está mal, corrígelo aquí: te pediremos los documentos que hagan falta."
+                  : ""}
+              </p>
               <div className="flex flex-col gap-3">
                 {participants.map((p) => (
                   <div key={p.id} className="grid gap-2 rounded-lg border border-border p-3 sm:grid-cols-3 sm:items-center">
-                    <span className="text-sm font-medium text-obsessed">{p.displayName}</span>
+                    {renaming?.id === p.id ? (
+                      <div className="flex flex-col gap-2 sm:col-span-3 sm:flex-row sm:items-center">
+                        <input
+                          autoFocus
+                          value={renaming.name}
+                          onChange={(e) => setRenaming({ id: p.id, name: e.target.value })}
+                          placeholder="Nombre completo correcto"
+                          className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-gold"
+                        />
+                        <div className="flex gap-2">
+                          <Button size="sm" disabled={!renaming.name.trim() || ownerBusy} onClick={() => void renameOwner(p.id, renaming.name)}>
+                            Guardar
+                          </Button>
+                          <Button variant="secondary" size="sm" disabled={ownerBusy} onClick={() => setRenaming(null)}>
+                            Cancelar
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <span className="block text-sm font-medium text-obsessed">{p.displayName}</span>
+                        <span className="text-xs text-muted">{participantRoleLabels[p.role]}</span>
+                      </div>
+                      {ownersEditable && renaming?.id !== p.id ? (
+                        <div className="flex shrink-0 gap-1">
+                          <button
+                            type="button"
+                            title="Corregir nombre"
+                            aria-label={`Corregir nombre de ${p.displayName}`}
+                            disabled={ownerBusy}
+                            onClick={() => setRenaming({ id: p.id, name: "" })}
+                            className="rounded-md p-1.5 text-muted hover:bg-app-bg hover:text-obsessed"
+                          >
+                            <Pencil className="h-4 w-4" aria-hidden />
+                          </button>
+                          {p.role === "CO_OWNER" ? (
+                            <button
+                              type="button"
+                              title="Quitar copropietario"
+                              aria-label={`Quitar a ${p.displayName}`}
+                              disabled={ownerBusy}
+                              onClick={() => void removeCoOwner(p.id)}
+                              className="rounded-md p-1.5 text-muted hover:bg-danger-bg hover:text-danger-text"
+                            >
+                              <Trash2 className="h-4 w-4" aria-hidden />
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
                     <select
                       value={p.civilStatus ?? ""}
                       onChange={(e) => setParticipant(p.id, { civilStatus: (e.target.value || null) as BackendCivilStatus | null })}
@@ -485,6 +605,34 @@ function ClientDataStep({
                   </div>
                 ))}
               </div>
+              {ownersEditable ? (
+                newCoOwner === null ? (
+                  <Button variant="secondary" size="sm" className="mt-3" disabled={ownerBusy} onClick={() => setNewCoOwner("")}>
+                    <Plus className="h-4 w-4" aria-hidden />
+                    Agregar copropietario
+                  </Button>
+                ) : (
+                  <div className="mt-3 flex flex-col gap-2 rounded-lg border border-gold/40 p-3 sm:flex-row sm:items-center">
+                    <input
+                      autoFocus
+                      value={newCoOwner}
+                      onChange={(e) => setNewCoOwner(e.target.value)}
+                      placeholder="Nombre completo del copropietario"
+                      className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-gold"
+                    />
+                    <div className="flex gap-2">
+                      <Button size="sm" disabled={!newCoOwner.trim() || ownerBusy} onClick={() => void addCoOwner(newCoOwner)}>
+                        {ownerBusy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+                        Agregar
+                      </Button>
+                      <Button variant="secondary" size="sm" disabled={ownerBusy} onClick={() => setNewCoOwner(null)}>
+                        Cancelar
+                      </Button>
+                    </div>
+                  </div>
+                )
+              ) : null}
+              {ownerError ? <p className="mt-2 text-sm text-danger-text">{ownerError}</p> : null}
             </div>
           ) : null}
 
@@ -733,7 +881,7 @@ function PublicDocumentRow({
   );
 }
 
-function ConfirmationStep({ expediente }: { expediente: PublicExpedienteResponse }) {
+function ConfirmationStep({ expediente, onEditOwners }: { expediente: PublicExpedienteResponse; onEditOwners?: () => void }) {
   return (
     <Card>
       <CardHeader title="Estado de tu trámite" />
@@ -741,6 +889,15 @@ function ConfirmationStep({ expediente }: { expediente: PublicExpedienteResponse
       <p className="mt-3 text-sm text-muted">
         Te avisaremos por correo cuando haya algo que hacer. Si necesitas corregir un documento, vuelve a esta misma liga.
       </p>
+      {onEditOwners ? (
+        <div className="mt-4 border-t border-border pt-4">
+          <p className="text-sm text-muted">¿Falta o sobra un propietario, o un nombre está mal?</p>
+          <Button variant="secondary" size="sm" className="mt-2" onClick={onEditOwners}>
+            <Pencil className="h-4 w-4" aria-hidden />
+            Corregir propietarios
+          </Button>
+        </div>
+      ) : null}
     </Card>
   );
 }
