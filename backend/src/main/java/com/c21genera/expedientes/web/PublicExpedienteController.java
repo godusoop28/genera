@@ -92,17 +92,17 @@ public class PublicExpedienteController {
     return PublicClientDataResponse.from(updated);
   }
 
-  /** Solo titulares persona física: cada uno declara su estado civil (define si se pide acta de matrimonio). */
+  /**
+   * Todos los que comparecen, con nombre enmascarado: el paso Documentos dice
+   * de quién es cada documento (p. ej. dos representantes legales). Los
+   * titulares persona física además declaran aquí su estado civil.
+   */
   public record PublicParticipantResponse(UUID id, String role, String displayName, CivilStatus civilStatus, MaritalRegime maritalRegime) {}
 
   @GetMapping("/participants")
   public List<PublicParticipantResponse> participants(@PathVariable String token) {
     UUID expedienteId = resolve(token);
-    if (expedienteService.get(expedienteId).getPersonType() != PersonType.FISICA) {
-      return List.of();
-    }
     return expedienteService.participantsOf(expedienteId).stream()
-        .filter(ExpedienteParticipant::isOwner)
         .map(
             p ->
                 new PublicParticipantResponse(

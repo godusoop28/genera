@@ -17,9 +17,10 @@ import java.util.List;
  *
  * <p>Las reglas dependen de:
  * <ul>
- *   <li>Cada participante, individualmente: identificación de cada persona
- *       física que comparece; constancia fiscal y, si está casado, acta de
- *       matrimonio de cada propietario/copropietario.</li>
+ *   <li>Cada participante, individualmente: identificación y comprobante
+ *       de domicilio de cada persona física que comparece (titulares,
+ *       representante legal o apoderado); constancia fiscal y, si está
+ *       casado, acta de matrimonio de cada propietario/copropietario.</li>
  *   <li>Tipo de persona: una persona moral no tiene INE ni estado civil;
  *       en su lugar se piden acta constitutiva, constancia fiscal de la
  *       sociedad y los poderes de su representante legal.</li>
@@ -62,6 +63,9 @@ public final class DocumentRequirementPolicy {
         // representante legal o apoderado).
         specs.add(
             new RequiredDocumentSpec("ine-" + participant.getId(), DocumentTypeCode.INE, true, false, participant.getId()));
+        specs.add(
+            new RequiredDocumentSpec(
+                "domicilio-" + participant.getId(), DocumentTypeCode.PROOF_OF_ADDRESS, true, false, participant.getId()));
       }
 
       if (participant.isOwner()) {

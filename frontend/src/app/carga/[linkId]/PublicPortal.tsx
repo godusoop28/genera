@@ -393,7 +393,9 @@ function ClientDataStep({
         }
         setEmail(draft?.email ?? d.email ?? "");
         setPhone(draft?.phone ?? d.phone ?? "");
-        setParticipants(p.map((participant) => ({ ...participant, ...(draft?.civil?.[participant.id] ?? {}) })));
+        // Solo los titulares persona física declaran estado civil aquí.
+        const owners = personType === "FISICA" ? p.filter((participant) => participant.role === "OWNER" || participant.role === "CO_OWNER") : [];
+        setParticipants(owners.map((participant) => ({ ...participant, ...(draft?.civil?.[participant.id] ?? {}) })));
         setError(null);
         setLoaded(true);
       })
@@ -406,7 +408,7 @@ function ClientDataStep({
       active = false;
       void sync.flush().finally(() => sync.dispose());
     };
-  }, [token, draftKey, loadAttempt]);
+  }, [token, draftKey, loadAttempt, personType]);
 
   useEffect(() => {
     if (!loaded) return;

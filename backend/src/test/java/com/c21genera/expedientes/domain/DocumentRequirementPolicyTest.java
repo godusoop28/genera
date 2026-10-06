@@ -200,4 +200,30 @@ class DocumentRequirementPolicyTest {
 
     assertThat(specs.stream().map(RequiredDocumentSpec::requirementCode).distinct().count()).isEqualTo(specs.size());
   }
+
+  /** EXP-2026-000022: se agregó un segundo representante legal y solo se le pedía su INE. */
+  @Test
+  void everyPersonWhoAppearsNeedsHisIdAndProofOfAddress() {
+    List<ExpedienteParticipant> participants =
+        List.of(
+            person(ParticipantRole.OWNER, "Banco de alimentos A.C.", 1, null),
+            person(ParticipantRole.LEGAL_REPRESENTATIVE, "Jose Arturo Sanchez Macin", 2, null),
+            person(ParticipantRole.LEGAL_REPRESENTATIVE, "Juan Carlos Sanchez Macin", 3, null));
+
+    List<RequiredDocumentSpec> specs =
+        compute(
+            participants,
+            SignerCharacter.REPRESENTANTE_LEGAL,
+            PersonType.MORAL,
+            AccreditationType.ESCRITURA_PUBLICA,
+            false,
+            PropertyCaseType.HOUSING);
+
+    assertThat(required(specs, DocumentTypeCode.INE)).isEqualTo(2);
+    assertThat(required(specs, DocumentTypeCode.PROOF_OF_ADDRESS)).isEqualTo(2);
+    assertThat(specs)
+        .filteredOn(s -> s.type() == DocumentTypeCode.PROOF_OF_ADDRESS)
+        .extracting(RequiredDocumentSpec::participantId)
+        .containsExactly(participants.get(1).getId(), participants.get(2).getId());
+  }
 }
