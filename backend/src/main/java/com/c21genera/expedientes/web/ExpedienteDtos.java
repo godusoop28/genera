@@ -20,6 +20,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -80,6 +81,8 @@ public final class ExpedienteDtos {
       // Opcionales: se leen de la escritura / certificado de libertad de gravamen / predial.
       PropertyLegalStatus declaredLegalStatus,
       String propertyAddress,
+      // Para que el cliente reconozca su liga (no es el domicilio legal; ese sale de los documentos).
+      @Size(max = 120) String propertyReference,
       @NotEmpty List<@Valid ParticipantRequest> participants,
       LegalDetails legalDetails) {}
 
@@ -150,6 +153,7 @@ public final class ExpedienteDtos {
       PropertyCaseType propertyCaseType,
       PropertyLegalStatus declaredLegalStatus,
       String propertyAddress,
+      String propertyReference,
       String decisionReason,
       UUID decidedByUserId,
       Instant decidedAt,
@@ -172,6 +176,7 @@ public final class ExpedienteDtos {
           e.getPropertyCaseType(),
           e.getDeclaredLegalStatus(),
           e.getPropertyAddress(),
+          e.getPropertyReference(),
           e.getDecisionReason(),
           e.getDecidedByUserId(),
           e.getDecidedAt(),

@@ -82,6 +82,7 @@ export interface ExpedienteResponse {
   propertyCaseType: BackendPropertyCaseType;
   declaredLegalStatus: BackendPropertyLegalStatus;
   propertyAddress: string | null;
+  propertyReference: string | null;
   decisionReason: string | null;
   decidedByUserId: string | null;
   decidedAt: string | null;

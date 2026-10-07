@@ -23,6 +23,7 @@ import com.c21genera.documents.infrastructure.FileValidator.ValidatedFile;
 import com.c21genera.documents.infrastructure.StorageKeys;
 import com.c21genera.shared.config.AiProperties;
 import com.c21genera.shared.domain.ConflictException;
+import com.c21genera.shared.domain.DocumentTypeCode;
 import com.c21genera.shared.domain.NotFoundException;
 import com.c21genera.shared.domain.RequiredDocumentSpec;
 import com.c21genera.shared.domain.ReviewDecision;
@@ -503,6 +504,15 @@ public class DocumentService implements DocumentsApi {
 
   public Document markNotApplicable(UUID documentId, String justification, Actor actor) {
     Document document = get(documentId);
+    // Revisión cliente 07/10: la identificación no se omite con una razón genérica. Si la
+    // persona no tiene INE, se carga otra identificación oficial en este espacio y quien
+    // revisa la acepta con su justificación (queda en el historial).
+    if (document.getType() == DocumentTypeCode.INE) {
+      throw new UnprocessableException(
+          "IDENTIFICATION_NOT_OMITTABLE",
+          "La identificación no puede marcarse como \"No aplica\". Si la persona no tiene INE, carga otra identificación oficial"
+              + " vigente (pasaporte, cédula profesional o tarjeta de residente) y acéptala en la revisión explicando el motivo.");
+    }
     Completeness before = completenessOf(document.getExpedienteId());
     String cleaned = blankToNull(justification);
     if (cleaned == null || cleaned.length() < MIN_JUSTIFICATION_LENGTH) {

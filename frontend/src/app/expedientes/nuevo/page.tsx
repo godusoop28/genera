@@ -4,6 +4,7 @@ import { ParticipantFields } from "@/components/expediente/ParticipantFields";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
 import { SaveStatus } from "@/components/ui/SaveStatus";
 import { Select } from "@/components/ui/Select";
 import { StateMessage } from "@/components/ui/StateMessage";
@@ -31,6 +32,7 @@ import {
   Landmark,
   Loader2,
   Map as MapIcon,
+  MapPin,
   Pencil,
   Plus,
   ReceiptText,
@@ -55,6 +57,9 @@ interface NewExpedienteDraft {
   accreditationType: BackendAccreditationType;
   propertyCaseType: BackendPropertyCaseType;
   condominiumRegime: boolean;
+  propertyReference?: string;
+  /** Paso en el que se iba, para retomarlo al recargar. */
+  step?: StepId;
 }
 
 const person = (role: ParticipantRequest["role"]): ParticipantRequest => ({ role, fullName: "" });
@@ -93,7 +98,9 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
   const router = useRouter();
   const { update: updateDraft } = serverDraft;
 
-  const [step, setStep] = useState<StepId>(1);
+  const [step, setStep] = useState<StepId>(draft?.step ?? 1);
+  // Al recuperar un borrador a la mitad se ofrece seguir ahí o revisar desde el inicio.
+  const [resumed, setResumed] = useState(Boolean(draft?.step && draft.step > 1));
   const [personType, setPersonType] = useState<BackendPersonType>(draft?.personType ?? "FISICA");
   const [signedByAttorney, setSignedByAttorney] = useState(draft?.signedByAttorney ?? false);
   const [owners, setOwners] = useState<ParticipantRequest[]>(draft?.owners ?? [person("OWNER")]);
@@ -102,7 +109,11 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
   const [accreditationType, setAccreditationType] = useState<BackendAccreditationType>(draft?.accreditationType ?? "ESCRITURA_PUBLICA");
   const [propertyCaseType, setPropertyCaseType] = useState<BackendPropertyCaseType>(draft?.propertyCaseType ?? "HOUSING");
   const [condominiumRegime, setCondominiumRegime] = useState(draft?.condominiumRegime ?? false);
+  const [propertyReference, setPropertyReference] = useState(draft?.propertyReference ?? "");
   const [showErrors, setShowErrors] = useState(false);
+  // Campos que el usuario ya visitó: su error se muestra al salir de ellos, sin esperar a "Continuar".
+  const [touched, setTouched] = useState<Set<string>>(() => new Set());
+  const touch = (key: string) => setTouched((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
   const [submitting, setSubmitting] = useState(false);
   const [created, setCreated] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,8 +135,10 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
       accreditationType,
       propertyCaseType,
       condominiumRegime,
+      propertyReference,
+      step,
     } satisfies NewExpedienteDraft);
-  }, [updateDraft, personType, signedByAttorney, owners, representatives, attorney, accreditationType, propertyCaseType, condominiumRegime]);
+  }, [updateDraft, personType, signedByAttorney, owners, representatives, attorney, accreditationType, propertyCaseType, condominiumRegime, propertyReference, step]);
 
   const isMoral = personType === "MORAL";
   const participants = useMemo<ParticipantRequest[]>(() => {
@@ -138,9 +151,26 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
     () => previewRequirements({ personType, signedByAttorney, accreditationType, condominiumRegime, propertyCaseType, participants }),
     [personType, signedByAttorney, accreditationType, condominiumRegime, propertyCaseType, participants],
   );
+  const requiredPreview = preview.filter((i) => i.kind === "required");
+  const conditionalPreview = preview.filter((i) => i.kind === "conditional");
+  const optionalPreview = preview.filter((i) => i.kind === "optional");
 
   const clientValid = participants.every((p) => p.fullName.trim().length > 0);
-  const nameError = (value: string) => (showErrors && !value.trim() ? "Captura el nombre completo." : undefined);
+  const propertyValid = propertyReference.trim().length > 0;
+  const showError = (key: string, value: string) => (showErrors || touched.has(key)) && !value.trim();
+  // Cada mensaje nombra el dato concreto que falta (antes todos decían "Captura el nombre completo").
+  const nameError = (key: string, value: string, message: string) => (showError(key, value) ? message : undefined);
+  const missingNames = [
+    ...(isMoral ? owners.slice(0, 1) : owners).flatMap((o, i) =>
+      o.fullName.trim() ? [] : [isMoral ? "la razón social de la empresa" : i === 0 ? "el nombre del propietario principal" : `el nombre del copropietario ${i + 1}`],
+    ),
+    ...(isMoral
+      ? representatives.flatMap((r, i) => (r.fullName.trim() ? [] : [`el nombre del representante legal${representatives.length > 1 ? ` ${i + 1}` : ""}`]))
+      : signedByAttorney && !attorney.fullName.trim()
+        ? ["el nombre del apoderado"]
+        : []),
+  ];
+  const missingNamesText = missingNames.length > 0 ? `Falta capturar ${missingNames.join(", ")}.` : "";
   const setOwner = (index: number, value: ParticipantRequest) => setOwners((prev) => prev.map((o, i) => (i === index ? value : o)));
 
   const goTo = (next: StepId) => {
@@ -156,7 +186,12 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
   const next = () => {
     if (step === 1 && !clientValid) {
       setShowErrors(true);
-      setError("Captura el nombre de cada persona para continuar.");
+      setError(missingNamesText);
+      return;
+    }
+    if (step === 2 && !propertyValid) {
+      setShowErrors(true);
+      setError("Captura una referencia del inmueble para que el cliente lo reconozca.");
       return;
     }
     setShowErrors(false);
@@ -166,10 +201,10 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
   const handleCreate = async () => {
     if (submittingRef.current || created) return;
     setError(null);
-    if (!clientValid) {
+    if (!clientValid || !propertyValid) {
       setShowErrors(true);
-      goTo(1);
-      setError("Captura el nombre de cada persona antes de crear el expediente.");
+      goTo(clientValid ? 2 : 1);
+      setError(clientValid ? "Captura una referencia del inmueble antes de crear el expediente." : missingNamesText);
       return;
     }
     submittingRef.current = true;
@@ -181,6 +216,7 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
         accreditationType,
         condominiumRegime,
         propertyCaseType,
+        propertyReference: propertyReference.trim(),
         // Solo el nombre: estado civil, contacto, domicilio y situación jurídica
         // se piden al cliente en su liga o se leen de sus documentos.
         participants: participants.map((p) => ({ role: p.role, fullName: p.fullName.trim() })),
@@ -206,6 +242,29 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
       subtitle="Solo lo necesario para saber qué documentos pedir. El domicilio, la situación jurídica y los demás datos se leen de los documentos o los captura el cliente en su liga."
     >
       <Stepper current={step} onSelect={(s) => (s < step ? goTo(s) : undefined)} />
+
+      {resumed ? (
+        <div className="mt-4 flex flex-col gap-3 rounded-xl border border-gold/40 bg-gold/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" role="status">
+          <p className="text-sm text-obsessed">
+            Recuperamos tu borrador en el paso <strong>{steps[step - 1].label}</strong>.
+          </p>
+          <div className="flex shrink-0 gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setResumed(false);
+                goTo(1);
+              }}
+            >
+              Revisar desde el inicio
+            </Button>
+            <Button variant="dark" size="sm" onClick={() => setResumed(false)}>
+              Continuar donde me quedé
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-6 grid grid-cols-1 gap-6 pb-28 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="flex min-w-0 flex-col gap-6">
@@ -301,7 +360,12 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
                         onChange={(v) => setOwner(index, v)}
                         personType={personType}
                         nameOnly
-                        nameError={nameError(owner.fullName)}
+                        nameError={nameError(
+                          `owner-${index}`,
+                          owner.fullName,
+                          isMoral ? "Captura la razón social de la empresa." : index === 0 ? "Captura el nombre del propietario principal." : "Captura el nombre del copropietario.",
+                        )}
+                        onNameBlur={() => touch(`owner-${index}`)}
                       />
                     </fieldset>
                   ))}
@@ -332,7 +396,8 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
                             onChange={(v) => setRepresentatives((prev) => prev.map((r, i) => (i === index ? v : r)))}
                             personType={personType}
                             nameOnly
-                            nameError={nameError(rep.fullName)}
+                            nameError={nameError(`rep-${index}`, rep.fullName, "Captura el nombre del representante legal.")}
+                            onNameBlur={() => touch(`rep-${index}`)}
                           />
                         </fieldset>
                       ))
@@ -351,7 +416,14 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
                   {!isMoral && signedByAttorney ? (
                     <fieldset className="rounded-xl border border-border p-4">
                       <legend className="mb-3 text-sm font-semibold text-obsessed">Apoderado</legend>
-                      <ParticipantFields value={attorney} onChange={setAttorney} personType={personType} nameOnly nameError={nameError(attorney.fullName)} />
+                      <ParticipantFields
+                        value={attorney}
+                        onChange={setAttorney}
+                        personType={personType}
+                        nameOnly
+                        nameError={nameError("attorney", attorney.fullName, "Captura el nombre del apoderado.")}
+                        onNameBlur={() => touch("attorney")}
+                      />
                     </fieldset>
                   ) : null}
                 </div>
@@ -362,6 +434,18 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
           {step === 2 ? (
             <Card className="animate-fade-in">
               <CardHeader title="Inmueble" description="Con esto se define qué documentos del inmueble se piden." />
+              <Input
+                label="Referencia para que el cliente reconozca el inmueble"
+                value={propertyReference}
+                onChange={(e) => setPropertyReference(e.target.value)}
+                onBlur={() => touch("propertyReference")}
+                maxLength={120}
+                placeholder="Ej. Casa en Coto Austriaco, Zapopan"
+                hint="El cliente la ve al abrir su liga, antes de entregar datos. Sin número exterior ni datos completos: el domicilio legal se toma de los documentos."
+                error={showError("propertyReference", propertyReference) ? "Captura una referencia del inmueble." : undefined}
+                containerClassName="mb-4"
+                required
+              />
               <div className="grid gap-4 sm:grid-cols-2">
                 <Select
                   label="Tipo de inmueble"
@@ -425,13 +509,15 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
                 ))}
               </ReviewSection>
               <ReviewSection title="Inmueble" onEdit={() => goTo(2)}>
+                <ReviewRow label="Referencia para el cliente" value={propertyReference.trim() || "—"} />
                 <ReviewRow label="Tipo de inmueble" value={propertyTypeLabels[propertyCaseType]} />
                 <ReviewRow label="Acreditación" value={accreditationLabels[accreditationType]} />
                 <ReviewRow label="Régimen de condominio" value={condominiumRegime ? "Sí" : "No"} />
               </ReviewSection>
               <p className="mt-4 text-sm text-muted">
-                Al crear el expediente se registran <strong className="text-obsessed">{preview.length} documentos previstos</strong>. Después podrás generar la
-                liga para que el cliente los cargue.
+                Al crear el expediente se registran <strong className="text-obsessed">{requiredPreview.length} documentos obligatorios</strong>
+                {conditionalPreview.length > 0 ? `, ${conditionalPreview.length} que dependen de lo que declare el cliente` : ""}
+                {optionalPreview.length > 0 ? ` y ${optionalPreview.length} opcionales` : ""}. Después podrás generar la liga para que el cliente los cargue.
               </p>
             </Card>
           ) : null}
@@ -443,11 +529,26 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
               title={<span id="docs-previstos">Documentos previstos</span>}
               description="Se ajustan con lo que capturas, según las reglas del sistema."
             />
-            <ul className="flex flex-col gap-2">
-              {preview.map((item, i) => (
-                <PreviewRow key={`${item.type}-${i}`} item={item} />
-              ))}
-            </ul>
+            {(
+              [
+                ["Obligatorios", requiredPreview],
+                ["Solo si aplica", conditionalPreview],
+                ["Opcionales", optionalPreview],
+              ] as const
+            ).map(([title, items]) =>
+              items.length > 0 ? (
+                <section key={title} className="mt-3 first-of-type:mt-0">
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                    {title} ({items.length})
+                  </h3>
+                  <ul className="flex flex-col gap-2">
+                    {items.map((item, i) => (
+                      <PreviewRow key={`${item.type}-${i}`} item={item} />
+                    ))}
+                  </ul>
+                </section>
+              ) : null,
+            )}
             <p className="mt-4 flex items-start gap-2 rounded-xl bg-warning-bg px-3 py-2.5 text-sm text-warning-text">
               <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
               Lo que no aplique a este caso se puede marcar como “No aplica”, con justificación, durante la revisión.
@@ -543,6 +644,7 @@ function Stepper({ current, onSelect }: { current: StepId; onSelect: (step: Step
 
 const previewIcons: Record<string, typeof FileText> = {
   INE: IdCard,
+  PROOF_OF_ADDRESS: MapPin,
   TAX_STATUS_CERTIFICATE: Landmark,
   MARRIAGE_CERTIFICATE: Heart,
   INCORPORATION_DEED: Building2,

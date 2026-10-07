@@ -33,6 +33,8 @@ export interface ExpedienteConfiguration {
 export interface CreateExpedienteRequest extends Omit<ExpedienteConfiguration, "declaredLegalStatus" | "propertyAddress"> {
   declaredLegalStatus?: BackendPropertyLegalStatus;
   propertyAddress?: string;
+  /** Referencia corta para que el cliente reconozca su liga (no es el domicilio legal). */
+  propertyReference?: string;
   participants: ParticipantRequest[];
   legalDetails?: LegalDetails;
 }

@@ -18,6 +18,7 @@ import {
   getClientData,
   getPublicExpediente,
   listPublicDocuments,
+  reportNotRecognized,
   listPublicParticipants,
   recordPrivacyConsent,
   removePublicCoOwner,
@@ -88,6 +89,7 @@ export function PublicPortal({ token }: { token: string }) {
   const [step, setStep] = useState(savedStep?.step ?? 1);
   const [maxReached, setMaxReached] = useState(savedStep ? Math.max(savedStep.step, savedStep.maxReached) : 1);
   const [invalid, setInvalid] = useState(false);
+  const [notRecognized, setNotRecognized] = useState(false);
   const [connectionError, setConnectionError] = useState(false);
 
   const loadExpediente = useCallback(
@@ -152,6 +154,20 @@ export function PublicPortal({ token }: { token: string }) {
   // volver a subirlo.
   const shownStep = expediente?.status === "CORRECTIONS_REQUESTED" && step === 5 ? 4 : step;
 
+  if (notRecognized) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-app-bg px-4 text-center">
+        <div className="max-w-md">
+          <ShieldCheck className="mx-auto mb-3 h-8 w-8 text-dark-gold" aria-hidden />
+          <p className="text-sm font-medium text-obsessed">Gracias por avisarnos. Desactivamos esta liga.</p>
+          <p className="mt-2 text-sm text-muted">
+            Nadie podrá cargar datos ni documentos en ella. Si esperabas una liga de CENTURY 21 Genera, pide a tu asesor que te envíe la correcta.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (invalid) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-app-bg px-4 text-center">
@@ -213,7 +229,14 @@ export function PublicPortal({ token }: { token: string }) {
         </div>
 
         <div className="mt-8">
-          {shownStep === 1 ? <ConfirmStep expediente={expediente} onContinue={() => goTo(initialStepFor(expediente.status))} /> : null}
+          {shownStep === 1 ? (
+            <ConfirmStep
+              token={token}
+              expediente={expediente}
+              onContinue={() => goTo(initialStepFor(expediente.status))}
+              onNotRecognized={() => setNotRecognized(true)}
+            />
+          ) : null}
           {shownStep === 2 ? <PrivacyStep token={token} onContinue={() => goTo(3)} /> : null}
           {shownStep === 3 ? (
             <ClientDataStep
@@ -248,7 +271,33 @@ export function PublicPortal({ token }: { token: string }) {
 }
 
 /** El cliente confirma que la liga es suya antes de ver o cargar nada (evita cargar documentos en el expediente equivocado). */
-function ConfirmStep({ expediente, onContinue }: { expediente: PublicExpedienteResponse; onContinue: () => void }) {
+function ConfirmStep({
+  token,
+  expediente,
+  onContinue,
+  onNotRecognized,
+}: {
+  token: string;
+  expediente: PublicExpedienteResponse;
+  onContinue: () => void;
+  onNotRecognized: () => void;
+}) {
+  const [confirmingNotMine, setConfirmingNotMine] = useState(false);
+  const [reporting, setReporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const reportNotMine = async () => {
+    setReporting(true);
+    setError(null);
+    try {
+      await reportNotRecognized(token);
+      onNotRecognized();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "No pudimos registrar tu aviso. Intenta de nuevo o avisa a tu asesor.");
+      setReporting(false);
+    }
+  };
+
   return (
     <Card>
       <CardHeader title="Confirma que este es tu expediente" description="Mostramos los datos parcialmente para proteger tu privacidad." />
@@ -259,19 +308,47 @@ function ConfirmStep({ expediente, onContinue }: { expediente: PublicExpedienteR
         </div>
         <div className="rounded-lg bg-app-bg p-3">
           <dt className="text-xs text-muted">Inmueble</dt>
-          <dd className="font-medium text-obsessed">{expediente.maskedPropertyAddress}</dd>
+          <dd className="font-medium text-obsessed">{expediente.maskedPropertyAddress || "Sin referencia registrada"}</dd>
         </div>
       </dl>
       <p className="mt-4 text-sm text-muted">{clientStatusText[expediente.status]}</p>
-      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-between">
-        <p className="flex items-start gap-2 text-sm text-muted">
-          <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-dark-gold" aria-hidden />
-          ¿No reconoces estos datos? No continúes y avisa a tu asesor: la liga podría no ser para ti.
-        </p>
-        <Button size="lg" onClick={onContinue}>
-          Sí, es mi expediente
-        </Button>
-      </div>
+      {confirmingNotMine ? (
+        <div className="mt-5 rounded-xl border border-warning-text/30 bg-warning-bg p-4" role="region" aria-label="Confirmar que no reconoces el expediente">
+          <p className="text-sm font-medium text-warning-text">¿Seguro que este expediente no es tuyo?</p>
+          <p className="mt-1 text-sm text-warning-text">
+            Desactivaremos esta liga para que nadie cargue datos en ella y tu asesor verá tu aviso. Si sí era tuya, tendrá que enviarte una nueva.
+          </p>
+          {error ? (
+            <p role="alert" className="mt-2 text-sm font-medium text-danger-text">
+              {error}
+            </p>
+          ) : null}
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button variant="secondary" onClick={() => setConfirmingNotMine(false)} disabled={reporting}>
+              Cancelar
+            </Button>
+            <Button variant="dark" onClick={reportNotMine} disabled={reporting} aria-busy={reporting}>
+              {reporting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+              Sí, desactivar esta liga
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="flex items-start gap-2 text-sm text-muted">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-dark-gold" aria-hidden />
+            Si no reconoces al titular o el inmueble, no continúes: la liga podría no ser para ti.
+          </p>
+          <div className="flex shrink-0 flex-col-reverse gap-2 sm:flex-row">
+            <Button variant="secondary" size="lg" onClick={() => setConfirmingNotMine(true)}>
+              No reconozco este expediente
+            </Button>
+            <Button size="lg" onClick={onContinue}>
+              Sí, es mi expediente
+            </Button>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

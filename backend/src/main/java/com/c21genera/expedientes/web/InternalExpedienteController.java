@@ -65,6 +65,7 @@ public class InternalExpedienteController {
                 request.propertyCaseType(),
                 request.declaredLegalStatus(),
                 request.propertyAddress(),
+                request.propertyReference(),
                 request.participants().stream().map(ExpedienteDtos.ParticipantRequest::toInput).toList(),
                 request.legalDetails(),
                 currentUser.toActor()));

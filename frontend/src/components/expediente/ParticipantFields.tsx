@@ -15,6 +15,8 @@ interface ParticipantFieldsProps {
   nameOnly?: boolean;
   /** Error de validación del nombre (p. ej. "Captura el nombre"). */
   nameError?: string;
+  /** Al salir del campo de nombre: permite mostrar su error sin esperar a "Continuar". */
+  onNameBlur?: () => void;
 }
 
 const emptyOption = { label: "Selecciona…", value: "" };
@@ -24,7 +26,7 @@ const emptyOption = { label: "Selecciona…", value: "" };
  * moral) no tiene estado civil ni identificación personal; el estado civil
  * solo aplica a titulares persona física.
  */
-export function ParticipantFields({ value, onChange, personType, detailed = false, nameOnly = false, nameError }: ParticipantFieldsProps) {
+export function ParticipantFields({ value, onChange, personType, detailed = false, nameOnly = false, nameError, onNameBlur }: ParticipantFieldsProps) {
   const isCompany = personType === "MORAL" && value.role === "OWNER";
   const isOwner = value.role === "OWNER" || value.role === "CO_OWNER";
   const set = <K extends keyof ParticipantRequest>(key: K, v: ParticipantRequest[K]) => onChange({ ...value, [key]: v });
@@ -36,6 +38,7 @@ export function ParticipantFields({ value, onChange, personType, detailed = fals
         label={isCompany ? "Razón social" : "Nombre completo (como aparece en su identificación)"}
         value={value.fullName}
         onChange={(e) => set("fullName", e.target.value)}
+        onBlur={onNameBlur}
         placeholder={isCompany ? "Ej. Inmobiliaria del Sol, S.A. de C.V." : "Ej. Juan Pérez López"}
         containerClassName="sm:col-span-2"
         error={nameError}

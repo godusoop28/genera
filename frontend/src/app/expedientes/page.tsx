@@ -438,8 +438,8 @@ function ExpedienteCard({ item }: { item: ExpedienteOverviewItem }) {
       <div className="mt-4 space-y-3 border-t border-border pt-4">
         <p className="flex items-start gap-2 text-sm text-muted">
           <MapPin className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-          <span className="line-clamp-2 break-words" title={e.propertyAddress ?? undefined}>
-            {e.propertyAddress || "Domicilio pendiente (se toma de los documentos)"}
+          <span className="line-clamp-2 break-words" title={e.propertyAddress ?? e.propertyReference ?? undefined}>
+            {e.propertyAddress || e.propertyReference || "Domicilio pendiente (se toma de los documentos)"}
           </span>
         </p>
         <div className="flex items-start gap-2">
@@ -495,8 +495,8 @@ function ExpedienteList({ items }: { items: ExpedienteOverviewItem[] }) {
                     {e.ownerDisplayName || "Sin nombre"}
                   </p>
                   <p className="font-mono text-xs text-muted">{e.folio}</p>
-                  <p className="truncate text-xs text-muted" title={e.propertyAddress ?? undefined}>
-                    {e.propertyAddress || operationLabel(item)}
+                  <p className="truncate text-xs text-muted" title={e.propertyAddress ?? e.propertyReference ?? undefined}>
+                    {e.propertyAddress || e.propertyReference || operationLabel(item)}
                   </p>
                 </div>
               </div>

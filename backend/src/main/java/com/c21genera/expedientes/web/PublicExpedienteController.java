@@ -73,7 +73,17 @@ public class PublicExpedienteController {
         expediente.getStatus(),
         expediente.getPersonType(),
         maskName(expediente.getOwnerDisplayName()),
-        maskAddress(expediente.getPropertyAddress()));
+        propertyHint(expediente.getPropertyAddress(), expediente.getPropertyReference()));
+  }
+
+  /**
+   * El cliente indica que no reconoce el expediente (la liga pudo llegar a la
+   * persona equivocada): la liga deja de funcionar de inmediato para que no se
+   * carguen datos ahí, y queda en la bitácora para que el asesor lo revise.
+   */
+  @PostMapping("/not-recognized")
+  public void notRecognized(@PathVariable String token) {
+    tokenApi.revoke(resolve(token), Actor.client(), "el cliente indicó que no reconoce el expediente");
   }
 
   @GetMapping("/client-data")
@@ -203,6 +213,18 @@ public class PublicExpedienteController {
               return masked.toString();
             })
         .collect(Collectors.joining(", "));
+  }
+
+  /**
+   * Lo que el cliente ve del inmueble: el domicilio enmascarado si ya se leyó de
+   * los documentos; si no, la referencia corta que capturó el asesor al crear el
+   * expediente (ya pensada para mostrarse, sin número ni datos completos).
+   */
+  static String propertyHint(String address, String reference) {
+    if (!isBlank(address)) {
+      return maskAddress(address);
+    }
+    return isBlank(reference) ? "" : reference.strip();
   }
 
   /** Solo el inicio de la calle y el municipio/estado; nunca el domicilio completo. */

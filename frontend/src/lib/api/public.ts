@@ -74,6 +74,11 @@ export function declareCivilStatus(
   });
 }
 
+/** El cliente no reconoce el expediente: la liga se desactiva y queda en la bitácora para el asesor. */
+export function reportNotRecognized(token: string) {
+  return apiClient.post<void>(`/public/expedientes/${token}/not-recognized`);
+}
+
 export function submitDocuments(token: string) {
   return apiClient.post<SubmitDocumentsResponse>(`/public/expedientes/${token}/submit`);
 }

@@ -37,17 +37,28 @@ import {
   extractedFieldLabel,
   formatDateTime,
   label,
+  participantRoleLabels,
   pipelineStatusLabels,
   pipelineStatusTone,
   returnReasonLabels,
 } from "@/lib/labels";
 import { useCan } from "@/lib/permissions";
 import { ACCEPTED_FILE_TYPES, UploadValidationError } from "@/lib/upload-limits";
+import { cn } from "@/lib/utils";
 import { AlertTriangle, ArrowRightLeft, Bot, Check, Download, History, Info, Loader2, Mail, Pencil, RefreshCw, Upload, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ExpedienteContext } from "./page";
 
 const IN_PROGRESS = ["UPLOADED", "PROCESSING"];
+
+type StatusFilter = "ALL" | "MISSING" | "TO_REVIEW" | "RETURNED";
+
+const statusFilters: Record<StatusFilter, { label: string; matches: (d: DocumentResponse) => boolean }> = {
+  ALL: { label: "Todos", matches: () => true },
+  MISSING: { label: "Faltantes", matches: (d) => d.required && d.status === "PENDING" },
+  TO_REVIEW: { label: "Por revisar", matches: (d) => d.status === "UPLOADED" || d.status === "READY_FOR_REVIEW" },
+  RETURNED: { label: "Devueltos o rechazados", matches: (d) => d.status === "RETURNED" || d.status === "REJECTED" },
+};
 
 export function DocumentsPanel({ expediente, participants, reload }: ExpedienteContext) {
   const { showToast } = useToast();
@@ -55,6 +66,7 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
   const [documents, setDocuments] = useState<DocumentResponse[] | null>(null);
   const [emailPreview, setEmailPreview] = useState<EmailPreviewResponse | null>(null);
   const [showOptional, setShowOptional] = useState(false);
+  const [filter, setFilter] = useState<StatusFilter>("ALL");
   const [reprocessingAll, setReprocessingAll] = useState(false);
   const names = Object.fromEntries(participants.map((p) => [p.id, p.fullName]));
   const canReprocess = can("DOCUMENT_ACCEPT") || can("EXTRACTED_DATA_EDIT") || can("DOCUMENT_UPLOAD");
@@ -84,8 +96,24 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
   };
 
   const visible = (documents ?? []).filter((d) => d.required || d.currentVersionNumber > 0 || d.status === "NOT_APPLICABLE" || showOptional);
-  const pendingCount = visible.filter((d) => d.required && d.status !== "ACCEPTED" && d.status !== "NOT_APPLICABLE").length;
+  const isPending = (d: DocumentResponse) => d.required && d.status !== "ACCEPTED" && d.status !== "NOT_APPLICABLE";
+  const pendingCount = visible.filter(isPending).length;
+  const requiredCount = visible.filter((d) => d.required).length;
   const withFiles = (documents ?? []).filter((d) => d.currentVersionNumber > 0 && d.status !== "NOT_APPLICABLE");
+  const filtered = visible.filter(statusFilters[filter].matches);
+  // Un expediente con varios copropietarios llega a 20+ requisitos: se agrupan por persona
+  // (en el orden del alta) y al final lo del inmueble y la empresa, para no recorrer una sola lista.
+  const groups = [
+    ...[...participants]
+      .sort((a, b) => a.ordinal - b.ordinal)
+      .map((p) => ({ key: p.id, title: p.fullName, subtitle: participantRoleLabels[p.role], docs: filtered.filter((d) => d.participantId === p.id) })),
+    {
+      key: "inmueble",
+      title: expediente.personType === "MORAL" ? "Inmueble y empresa" : "Inmueble",
+      subtitle: undefined,
+      docs: filtered.filter((d) => !d.participantId || !names[d.participantId]),
+    },
+  ].filter((g) => g.docs.length > 0);
 
   return (
     <div className="flex flex-col gap-6">
@@ -93,9 +121,14 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
         <CardHeader
           title="Documentos"
           description={
-            pendingCount > 0
-              ? `Faltan ${pendingCount} documento(s) obligatorio(s) por aceptar o marcar como "No aplica".`
-              : "Todos los documentos obligatorios están resueltos."
+            // Hasta tener la lista no se calcula nada: antes decía "todos resueltos" mientras cargaba.
+            documents === null
+              ? "Cargando requisitos…"
+              : pendingCount > 0
+                ? `Faltan ${pendingCount} documento(s) obligatorio(s) por aceptar o marcar como "No aplica".`
+                : requiredCount > 0
+                  ? "Todos los documentos obligatorios están resueltos."
+                  : "Este expediente todavía no tiene documentos obligatorios registrados."
           }
         />
         {processing ? (
@@ -128,28 +161,72 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
           </div>
         ) : null}
         {documents === null ? (
-          <p className="text-sm text-muted">Cargando documentos…</p>
+          <p className="flex items-center gap-2 text-sm text-muted">
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Cargando requisitos…
+          </p>
         ) : (
-          <div className="flex flex-col gap-3">
-            {visible.map((doc) => (
-              <DocumentRow
-                key={doc.id}
-                document={doc}
-                allDocuments={documents}
-                names={names}
-                participantName={doc.participantId ? names[doc.participantId] : undefined}
-                onChanged={onChanged}
-                canUpload={can("DOCUMENT_UPLOAD")}
-                canAccept={can("DOCUMENT_ACCEPT")}
-                canReturn={can("DOCUMENT_RETURN")}
-                canReject={can("DOCUMENT_REJECT")}
-                canOverride={can("DOCUMENT_QUALITY_OVERRIDE")}
-                canMarkNotApplicable={can("DOCUMENT_MARK_NOT_APPLICABLE")}
-                canEditData={can("EXTRACTED_DATA_EDIT")}
-                canReprocess={canReprocess}
-              />
-            ))}
-          </div>
+          <>
+            <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="Filtrar documentos">
+              {(Object.keys(statusFilters) as StatusFilter[]).map((id) => {
+                const active = filter === id;
+                const n = visible.filter(statusFilters[id].matches).length;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setFilter(id)}
+                    aria-pressed={active}
+                    className={cn(
+                      "inline-flex min-h-9 items-center gap-2 rounded-full border px-3 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/30",
+                      active ? "border-gold bg-gold text-brand-ink" : "border-border bg-card text-muted hover:border-gold/60 hover:text-obsessed",
+                    )}
+                  >
+                    {statusFilters[id].label}
+                    <span className={cn("rounded-full px-1.5 text-xs tabular-nums", active ? "bg-white/40" : "bg-app-bg")}>{n}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {groups.length === 0 ? <p className="text-sm text-muted">No hay documentos con este filtro.</p> : null}
+            <div className="flex flex-col gap-6">
+              {groups.map((group) => {
+                const groupPending = group.docs.filter(isPending).length;
+                return (
+                  <section key={group.key} aria-labelledby={`docs-${group.key}`}>
+                    <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-border pb-2">
+                      <h3 id={`docs-${group.key}`} className="min-w-0 break-words text-sm font-semibold text-obsessed">
+                        {group.title}
+                        {group.subtitle ? <span className="ml-2 text-xs font-normal text-muted">{group.subtitle}</span> : null}
+                      </h3>
+                      <span className={cn("text-xs font-medium", groupPending > 0 ? "text-warning-text" : "text-success-text")}>
+                        {groupPending > 0 ? `${groupPending} pendiente(s)` : "Sin pendientes"}
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-3">
+                      {group.docs.map((doc) => (
+                        <DocumentRow
+                          key={doc.id}
+                          document={doc}
+                          allDocuments={documents}
+                          names={names}
+                          participantName={doc.participantId ? names[doc.participantId] : undefined}
+                          onChanged={onChanged}
+                          canUpload={can("DOCUMENT_UPLOAD")}
+                          canAccept={can("DOCUMENT_ACCEPT")}
+                          canReturn={can("DOCUMENT_RETURN")}
+                          canReject={can("DOCUMENT_REJECT")}
+                          canOverride={can("DOCUMENT_QUALITY_OVERRIDE")}
+                          canMarkNotApplicable={can("DOCUMENT_MARK_NOT_APPLICABLE")}
+                          canEditData={can("EXTRACTED_DATA_EDIT")}
+                          canReprocess={canReprocess}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          </>
         )}
         <button type="button" className="mt-3 text-xs text-dark-gold hover:underline" onClick={() => setShowOptional((v) => !v)}>
           {showOptional ? "Ocultar documentos que no aplican" : "Mostrar también documentos que no aplican a este expediente"}
@@ -471,7 +548,8 @@ function DocumentRow({
                 : "Cargar en nombre del cliente"}
           </Button>
         ) : null}
-        {canMarkNotApplicable && doc.status !== "ACCEPTED" && doc.status !== "NOT_APPLICABLE" ? (
+        {/* La identificación no se omite: si no hay INE se carga otra identificación oficial y se acepta con justificación. */}
+        {canMarkNotApplicable && doc.type !== "INE" && doc.status !== "ACCEPTED" && doc.status !== "NOT_APPLICABLE" ? (
           <Button variant="ghost" size="sm" onClick={() => setNotApplicable(true)}>
             No aplica…
           </Button>

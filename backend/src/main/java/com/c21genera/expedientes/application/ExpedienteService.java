@@ -102,6 +102,7 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
       PropertyCaseType propertyCaseType,
       PropertyLegalStatus declaredLegalStatus,
       String propertyAddress,
+      String propertyReference,
       List<ParticipantInput> participants,
       LegalDetails legalDetails,
       Actor actor) {}
@@ -121,6 +122,7 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
             command.propertyCaseType(),
             command.declaredLegalStatus() != null ? command.declaredLegalStatus() : PropertyLegalStatus.EN_REVISION,
             blankToNull(command.propertyAddress()),
+            blankToNull(command.propertyReference()),
             command.actor().userId());
     if (command.legalDetails() != null) {
       expediente.replaceLegalDetailsJson(writeLegalDetails(command.legalDetails()));

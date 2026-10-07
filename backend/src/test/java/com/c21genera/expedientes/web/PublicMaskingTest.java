@@ -17,4 +17,12 @@ class PublicMaskingTest {
     assertThat(PublicExpedienteController.maskAddress("Calle Río Balsas No. Ext. 12, Col. Vista Hermosa, Cuernavaca, Morelos, C.P. 62290"))
         .isEqualTo("Calle Río Ba…, Cuernavaca, Morelos");
   }
+
+  @Test
+  void beforeTheAddressIsReadTheClientSeesTheAdvisorsReference() {
+    assertThat(PublicExpedienteController.propertyHint(null, " Casa en Coto Austriaco, Zapopan ")).isEqualTo("Casa en Coto Austriaco, Zapopan");
+    assertThat(PublicExpedienteController.propertyHint("Calle Río Balsas No. Ext. 12, Col. Vista Hermosa, Cuernavaca, Morelos, C.P. 62290", "Casa"))
+        .isEqualTo("Calle Río Ba…, Cuernavaca, Morelos");
+    assertThat(PublicExpedienteController.propertyHint(null, null)).isEmpty();
+  }
 }

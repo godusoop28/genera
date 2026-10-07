@@ -58,6 +58,10 @@ public class Expediente extends AuditableEntity {
 
   private String propertyAddress;
 
+  /** Referencia corta que captura el asesor para que el cliente reconozca su liga; no es el domicilio legal. */
+  @Column(length = 120)
+  private String propertyReference;
+
   @Column(nullable = false)
   private boolean allRequiredDocumentsUploaded;
 
@@ -85,6 +89,7 @@ public class Expediente extends AuditableEntity {
       PropertyCaseType propertyCaseType,
       PropertyLegalStatus declaredLegalStatus,
       String propertyAddress,
+      String propertyReference,
       UUID createdByUserId) {
     this.id = UUID.randomUUID();
     this.folio = folio;
@@ -97,6 +102,7 @@ public class Expediente extends AuditableEntity {
     this.propertyCaseType = propertyCaseType;
     this.declaredLegalStatus = declaredLegalStatus;
     this.propertyAddress = propertyAddress;
+    this.propertyReference = propertyReference;
     this.createdByUserId = createdByUserId;
   }
 
@@ -264,6 +270,10 @@ public class Expediente extends AuditableEntity {
 
   public String getPropertyAddress() {
     return propertyAddress;
+  }
+
+  public String getPropertyReference() {
+    return propertyReference;
   }
 
   public UUID getCreatedByUserId() {

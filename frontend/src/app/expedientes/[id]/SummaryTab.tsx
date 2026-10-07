@@ -103,6 +103,7 @@ export function SummaryTab({ expediente, reload, freshPublicLink: newLink, setFr
           <Field label="Régimen de condominio" value={expediente.condominiumRegime ? "Sí" : "No"} />
           <Field label="Situación jurídica" value={legalStatusLabels[expediente.declaredLegalStatus]} />
           <Field label="Domicilio del inmueble" value={expediente.propertyAddress || "Se tomará de la escritura o el predial"} />
+          {expediente.propertyReference ? <Field label="Referencia que ve el cliente" value={expediente.propertyReference} /> : null}
           <Field label="Creado" value={formatDateTime(expediente.createdAt)} />
           <Field label="Última actualización" value={formatDateTime(expediente.updatedAt)} />
           {expediente.decisionReason ? <Field label="Motivo de la decisión" value={expediente.decisionReason} /> : null}
