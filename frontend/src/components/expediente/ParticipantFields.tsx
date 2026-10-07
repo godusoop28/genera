@@ -11,6 +11,8 @@ interface ParticipantFieldsProps {
   personType: BackendPersonType;
   /** Muestra todos los datos que pide el contrato (identificación, nacimiento, RFC, domicilio...). */
   detailed?: boolean;
+  /** Solo el nombre: al crear el expediente lo demás se pide al cliente o se lee de sus documentos. */
+  nameOnly?: boolean;
 }
 
 const emptyOption = { label: "Selecciona…", value: "" };
@@ -20,7 +22,7 @@ const emptyOption = { label: "Selecciona…", value: "" };
  * moral) no tiene estado civil ni identificación personal; el estado civil
  * solo aplica a titulares persona física.
  */
-export function ParticipantFields({ value, onChange, personType, detailed = false }: ParticipantFieldsProps) {
+export function ParticipantFields({ value, onChange, personType, detailed = false, nameOnly = false }: ParticipantFieldsProps) {
   const isCompany = personType === "MORAL" && value.role === "OWNER";
   const isOwner = value.role === "OWNER" || value.role === "CO_OWNER";
   const set = <K extends keyof ParticipantRequest>(key: K, v: ParticipantRequest[K]) => onChange({ ...value, [key]: v });
@@ -39,6 +41,8 @@ export function ParticipantFields({ value, onChange, personType, detailed = fals
         Rol: {isCompany ? companyOwnerLabel : participantRoleLabels[value.role]}
       </p>
 
+      {nameOnly ? null : (
+        <>
       {!isCompany && isOwner && personType === "FISICA" ? (
         <>
           <Select
@@ -94,6 +98,8 @@ export function ParticipantFields({ value, onChange, personType, detailed = fals
           />
         </>
       ) : null}
+        </>
+      )}
     </div>
   );
 }

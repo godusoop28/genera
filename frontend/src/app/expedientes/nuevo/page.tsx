@@ -4,7 +4,6 @@ import { ParticipantFields } from "@/components/expediente/ParticipantFields";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
 import { SaveStatus } from "@/components/ui/SaveStatus";
 import { Select } from "@/components/ui/Select";
 import { Toggle } from "@/components/ui/Toggle";
@@ -15,40 +14,14 @@ import type {
   BackendAccreditationType,
   BackendPersonType,
   BackendPropertyCaseType,
-  BackendPropertyLegalStatus,
   ParticipantRequest,
 } from "@/lib/api/types";
 import { internalDraftTransport, useServerDraft, type ServerDraft } from "@/lib/use-server-draft";
-import { accreditationLabels, legalStatusLabels, propertyTypeLabels } from "@/lib/labels";
+import { accreditationLabels, propertyTypeLabels } from "@/lib/labels";
 import { previewRequirements } from "@/lib/requirements-preview";
 import { AlertTriangle, Plus, Save, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-
-interface AddressForm {
-  street: string;
-  exteriorNumber: string;
-  interiorNumber: string;
-  neighborhood: string;
-  municipality: string;
-  state: string;
-  zipCode: string;
-}
-
-const emptyAddress: AddressForm = {
-  street: "",
-  exteriorNumber: "",
-  interiorNumber: "",
-  neighborhood: "",
-  municipality: "",
-  state: "Morelos",
-  zipCode: "",
-};
-
-function formatAddress(a: AddressForm): string {
-  const interior = a.interiorNumber.trim() ? ` Int. ${a.interiorNumber.trim()}` : "";
-  return `${a.street.trim()} No. Ext. ${a.exteriorNumber.trim()}${interior}, Col. ${a.neighborhood.trim()}, ${a.municipality.trim()}, ${a.state.trim()}, C.P. ${a.zipCode.trim()}`;
-}
 
 const DRAFT_KEY = "nuevo-expediente";
 
@@ -61,8 +34,6 @@ interface NewExpedienteDraft {
   accreditationType: BackendAccreditationType;
   propertyCaseType: BackendPropertyCaseType;
   condominiumRegime: boolean;
-  legalStatus: BackendPropertyLegalStatus;
-  address: AddressForm;
 }
 
 const person = (role: ParticipantRequest["role"]): ParticipantRequest => ({ role, fullName: "" });
@@ -94,8 +65,6 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
   const [accreditationType, setAccreditationType] = useState<BackendAccreditationType>(draft?.accreditationType ?? "ESCRITURA_PUBLICA");
   const [propertyCaseType, setPropertyCaseType] = useState<BackendPropertyCaseType>(draft?.propertyCaseType ?? "HOUSING");
   const [condominiumRegime, setCondominiumRegime] = useState(draft?.condominiumRegime ?? false);
-  const [legalStatus, setLegalStatus] = useState<BackendPropertyLegalStatus>(draft?.legalStatus ?? "LIBRE_GRAVAMEN");
-  const [address, setAddress] = useState<AddressForm>({ ...emptyAddress, ...draft?.address });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const firstRender = useRef(true);
@@ -113,10 +82,8 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
       accreditationType,
       propertyCaseType,
       condominiumRegime,
-      legalStatus,
-      address,
     } satisfies NewExpedienteDraft);
-  }, [updateDraft, personType, signedByAttorney, owners, representatives, attorney, accreditationType, propertyCaseType, condominiumRegime, legalStatus, address]);
+  }, [updateDraft, personType, signedByAttorney, owners, representatives, attorney, accreditationType, propertyCaseType, condominiumRegime]);
 
   const participants = useMemo<ParticipantRequest[]>(() => {
     if (personType === "MORAL") return [{ ...owners[0], role: "OWNER", civilStatus: null, maritalRegime: null }, ...representatives];
@@ -129,20 +96,12 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
     [personType, signedByAttorney, accreditationType, condominiumRegime, propertyCaseType, participants],
   );
 
-  const addressComplete = (Object.keys(address) as (keyof AddressForm)[])
-    .filter((k) => k !== "interiorNumber")
-    .every((k) => address[k].trim().length > 0);
-
   const setOwner = (index: number, value: ParticipantRequest) => setOwners((prev) => prev.map((o, i) => (i === index ? value : o)));
 
   const handleCreate = async () => {
     setError(null);
     if (participants.some((p) => !p.fullName.trim())) {
       setError("Captura el nombre de cada participante.");
-      return;
-    }
-    if (!addressComplete) {
-      setError("Captura todos los campos obligatorios del domicilio del inmueble.");
       return;
     }
     setSubmitting(true);
@@ -153,9 +112,9 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
         accreditationType,
         condominiumRegime,
         propertyCaseType,
-        declaredLegalStatus: legalStatus,
-        propertyAddress: formatAddress(address),
-        participants: participants.map((p) => ({ ...p, fullName: p.fullName.trim() })),
+        // Solo el nombre: estado civil, contacto, domicilio y situación jurídica
+        // se piden al cliente en su liga o se leen de sus documentos.
+        participants: participants.map((p) => ({ role: p.role, fullName: p.fullName.trim() })),
       });
       await serverDraft.clear();
       showToast(`Expediente ${created.folio} creado.`);
@@ -170,7 +129,7 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
   return (
     <PageContainer
       title="Nuevo expediente"
-      subtitle="Captura quién vende y qué inmueble es. Con esto el sistema determina qué documentos pedirle al cliente."
+      subtitle="Solo lo necesario para saber qué documentos pedir. El domicilio, la situación jurídica y los demás datos se leen de los documentos o los captura el cliente en su liga."
       action={<SaveStatus status={serverDraft.status} lastSavedAt={serverDraft.lastSavedAt} />}
     >
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -233,6 +192,7 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
                     value={{ ...owner, role: personType === "MORAL" || index === 0 ? "OWNER" : "CO_OWNER" }}
                     onChange={(v) => setOwner(index, v)}
                     personType={personType}
+                    nameOnly
                   />
                 </div>
               ))}
@@ -257,6 +217,7 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
                         value={rep}
                         onChange={(v) => setRepresentatives((prev) => prev.map((r, i) => (i === index ? v : r)))}
                         personType={personType}
+                        nameOnly
                       />
                     </div>
                   ))
@@ -275,7 +236,7 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
               {personType === "FISICA" && signedByAttorney ? (
                 <div className="rounded-xl border border-border p-4">
                   <p className="mb-3 text-sm font-semibold text-obsessed">Apoderado</p>
-                  <ParticipantFields value={attorney} onChange={setAttorney} personType={personType} />
+                  <ParticipantFields value={attorney} onChange={setAttorney} personType={personType} nameOnly />
                 </div>
               ) : null}
             </div>
@@ -296,12 +257,6 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
                 onChange={(e) => setAccreditationType(e.target.value as BackendAccreditationType)}
                 options={Object.entries(accreditationLabels).map(([value, label]) => ({ value, label }))}
               />
-              <Select
-                label="Situación jurídica declarada (preliminar)"
-                value={legalStatus}
-                onChange={(e) => setLegalStatus(e.target.value as BackendPropertyLegalStatus)}
-                options={Object.entries(legalStatusLabels).map(([value, label]) => ({ value, label }))}
-              />
               <div className="flex items-end">
                 <Toggle
                   id="condominium-toggle"
@@ -319,20 +274,6 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
               </p>
             ) : null}
 
-            <p className="mb-3 mt-5 text-sm font-medium text-obsessed">Domicilio del inmueble</p>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <Input label="Calle" value={address.street} onChange={(e) => setAddress({ ...address, street: e.target.value })} containerClassName="lg:col-span-2" />
-              <Input label="Número exterior" value={address.exteriorNumber} onChange={(e) => setAddress({ ...address, exteriorNumber: e.target.value })} />
-              <Input
-                label="Número interior (opcional)"
-                value={address.interiorNumber}
-                onChange={(e) => setAddress({ ...address, interiorNumber: e.target.value })}
-              />
-              <Input label="Colonia" value={address.neighborhood} onChange={(e) => setAddress({ ...address, neighborhood: e.target.value })} />
-              <Input label="Municipio" value={address.municipality} onChange={(e) => setAddress({ ...address, municipality: e.target.value })} />
-              <Input label="Estado" value={address.state} onChange={(e) => setAddress({ ...address, state: e.target.value })} />
-              <Input label="Código postal" value={address.zipCode} onChange={(e) => setAddress({ ...address, zipCode: e.target.value })} />
-            </div>
           </Card>
         </div>
 

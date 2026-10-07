@@ -43,7 +43,7 @@ export const propertyTypeLabels: Record<BackendPropertyCaseType, string> = {
 export const legalStatusLabels: Record<BackendPropertyLegalStatus, string> = {
   LIBRE_GRAVAMEN: "Libre de gravamen",
   CON_GRAVAMEN: "Con gravamen",
-  EN_REVISION: "En revisión",
+  EN_REVISION: "Por confirmar con el certificado de libertad de gravamen",
 };
 
 export const participantRoleLabels: Record<BackendParticipantRole, string> = {

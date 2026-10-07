@@ -34,6 +34,13 @@ public interface ExpedienteLifecycleApi {
       BigDecimal landAreaM2,
       BigDecimal builtAreaM2) {}
 
+  /**
+   * Completa el domicilio del inmueble y la situación jurídica que no se
+   * capturaron al crear el expediente, con lo leído en sus documentos. No
+   * pisa datos ya capturados. Idempotente.
+   */
+  void completePropertyDataFromDocuments(UUID expedienteId, String propertyAddress, PropertyLegalStatus legalStatus);
+
   /** WAITING_PRIVACY -> WAITING_DOCUMENTS. Idempotente. */
   void recordPrivacyAccepted(UUID expedienteId);
 

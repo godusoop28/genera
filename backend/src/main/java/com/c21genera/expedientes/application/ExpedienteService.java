@@ -116,8 +116,8 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
             command.accreditationType(),
             command.condominiumRegime(),
             command.propertyCaseType(),
-            command.declaredLegalStatus(),
-            command.propertyAddress(),
+            command.declaredLegalStatus() != null ? command.declaredLegalStatus() : PropertyLegalStatus.EN_REVISION,
+            blankToNull(command.propertyAddress()),
             command.actor().userId());
     if (command.legalDetails() != null) {
       expediente.replaceLegalDetailsJson(writeLegalDetails(command.legalDetails()));
@@ -210,10 +210,41 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
             correction.condominiumRegime(),
             correction.propertyCaseType(),
             correction.declaredLegalStatus(),
-            correction.propertyAddress()));
+            blankToNull(correction.propertyAddress())));
     recordChanges(expediente, "Datos del expediente", before, configurationSnapshot(expediente), actor, reason);
     publishRequirements(expediente);
     return expediente;
+  }
+
+  /**
+   * El domicilio y la situación jurídica no se piden al crear el expediente:
+   * se toman de lo leído en los documentos del inmueble. Solo se llena lo que
+   * sigue vacío / "en revisión"; nunca se pisa un dato capturado por alguien.
+   */
+  @Override
+  public void completePropertyDataFromDocuments(UUID expedienteId, String propertyAddress, PropertyLegalStatus legalStatus) {
+    Expediente expediente = get(expedienteId);
+    if (!expediente.isCorrectable()) {
+      return;
+    }
+    Expediente.Configuration current = expediente.configuration();
+    boolean fillAddress = blankToNull(current.propertyAddress()) == null && blankToNull(propertyAddress) != null;
+    boolean fillStatus = current.declaredLegalStatus() == PropertyLegalStatus.EN_REVISION && legalStatus != null && legalStatus != PropertyLegalStatus.EN_REVISION;
+    if (!fillAddress && !fillStatus) {
+      return;
+    }
+    Map<String, String> before = configurationSnapshot(expediente);
+    expediente.reconfigure(
+        new Expediente.Configuration(
+            current.ownerDisplayName(),
+            current.personType(),
+            current.signerCharacter(),
+            current.accreditationType(),
+            current.condominiumRegime(),
+            current.propertyCaseType(),
+            fillStatus ? legalStatus : current.declaredLegalStatus(),
+            fillAddress ? propertyAddress.strip() : current.propertyAddress()));
+    recordChanges(expediente, "Datos del expediente", before, configurationSnapshot(expediente), Actor.system(), "Tomado de los documentos del inmueble");
   }
 
   public LegalDetails updateLegalDetails(UUID expedienteId, LegalDetails details, Actor actor, String reason) {
@@ -728,6 +759,10 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
             current.propertyCaseType(),
             current.declaredLegalStatus(),
             current.propertyAddress()));
+  }
+
+  private static String blankToNull(String value) {
+    return value == null || value.isBlank() ? null : value.strip();
   }
 
   private static UnprocessableException invalid(String message) {

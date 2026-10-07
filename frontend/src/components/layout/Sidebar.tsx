@@ -13,13 +13,15 @@ import { usePathname, useRouter } from "next/navigation";
 const navItems = [
   { href: "/expedientes", label: "Expedientes", icon: Files },
   { href: "/expedientes/nuevo", label: "Nuevo expediente", icon: FilePlus2 },
-  { href: "/usuarios", label: "Usuarios y permisos", icon: Users },
+  { href: "/usuarios", label: "Usuarios y permisos", icon: Users, permission: "USER_MANAGE" },
 ];
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
+  const can = (permission?: string) =>
+    !permission || !!user?.permissions.some((p) => p === "*" || p === permission);
 
   const handleLogout = () => {
     void logout();
@@ -33,7 +35,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <BrandLogo tone="dark" size="md" />
       </div>
       <nav className="flex-1 space-y-1 px-3 py-5">
-        {navItems.map((item) => {
+        {navItems.filter((item) => can(item.permission)).map((item) => {
           const isActive =
             item.href === "/expedientes"
               ? pathname === "/expedientes"

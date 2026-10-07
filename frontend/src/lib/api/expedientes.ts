@@ -29,7 +29,10 @@ export interface ExpedienteConfiguration {
   propertyAddress: string;
 }
 
-export interface CreateExpedienteRequest extends ExpedienteConfiguration {
+/** Al crear, el domicilio y la situación jurídica se omiten: el backend los toma de los documentos del inmueble. */
+export interface CreateExpedienteRequest extends Omit<ExpedienteConfiguration, "declaredLegalStatus" | "propertyAddress"> {
+  declaredLegalStatus?: BackendPropertyLegalStatus;
+  propertyAddress?: string;
   participants: ParticipantRequest[];
   legalDetails?: LegalDetails;
 }

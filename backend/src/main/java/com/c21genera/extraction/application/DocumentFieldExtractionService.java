@@ -5,6 +5,7 @@ import com.c21genera.documents.DocumentsApi.RequirementStatusView;
 import com.c21genera.expedientes.ExpedienteLifecycleApi;
 import com.c21genera.expedientes.ExpedienteLifecycleApi.ManualClientDataView;
 import com.c21genera.expedientes.ExpedienteSummary;
+import com.c21genera.expedientes.PropertyLegalStatus;
 import com.c21genera.extraction.ExtractionApi;
 import com.c21genera.extraction.ExtractionApi.ConflictView;
 import com.c21genera.extraction.domain.DataConflict;
@@ -22,6 +23,7 @@ import com.c21genera.extraction.domain.StructuredExtractionProvider.ExtractionRe
 import com.c21genera.extraction.domain.StructuredExtractionProvider.FieldResult;
 import com.c21genera.extraction.infrastructure.DataConflictRepository;
 import com.c21genera.extraction.infrastructure.ExtractedFieldObservationRepository;
+import com.c21genera.shared.domain.DocumentTypeCode;
 import com.c21genera.shared.domain.NotFoundException;
 import com.c21genera.shared.events.DocumentEvents.DocumentContentAssessed;
 import com.c21genera.shared.events.ExpedienteEvents.ExpedienteDataCorrected;
@@ -343,6 +345,7 @@ public class DocumentFieldExtractionService implements ExtractionApi {
           facts.add(new DocumentFacts(documentId, doc.type(), doc.participantId(), fields));
         });
 
+    completePropertyData(expedienteId, facts);
     ExpedienteSummary summary = expedienteApi.getSummary(expedienteId);
     ManualClientDataView manual = expedienteApi.getManualData(expedienteId);
     DeclaredData declared =
@@ -374,6 +377,56 @@ public class DocumentFieldExtractionService implements ExtractionApi {
     open.values().stream().filter(c -> !currentKeys.contains(c.getFieldName())).forEach(c -> c.closeBecauseDataNowMatches(now));
 
     return conflictRepository.findByExpedienteIdOrderByDetectedAtDesc(expedienteId);
+  }
+
+  /** Documentos de los que se toma el domicilio del inmueble, del más al menos confiable. */
+  private static final List<DocumentTypeCode> PROPERTY_ADDRESS_SOURCES =
+      List.of(
+          DocumentTypeCode.DEED,
+          DocumentTypeCode.LIEN_CERTIFICATE,
+          DocumentTypeCode.RPP_REGISTRATION_SLIP,
+          DocumentTypeCode.CONDOMINIUM_REGIME,
+          DocumentTypeCode.PROPERTY_TAX,
+          DocumentTypeCode.CADASTRAL_PLAN);
+
+  /**
+   * El domicilio y la situación jurídica no se piden al crear el expediente:
+   * se completan con lo leído en los documentos del inmueble (el módulo de
+   * expedientes solo llena lo que siga vacío).
+   */
+  private void completePropertyData(UUID expedienteId, List<DocumentFacts> facts) {
+    String address =
+        PROPERTY_ADDRESS_SOURCES.stream()
+            .flatMap(type -> facts.stream().filter(f -> f.type() == type))
+            .map(f -> f.fields().get("propertyAddress"))
+            .filter(v -> v != null && !v.isBlank())
+            .findFirst()
+            .orElse(null);
+    PropertyLegalStatus legalStatus =
+        facts.stream()
+            .filter(f -> f.type() == DocumentTypeCode.LIEN_CERTIFICATE)
+            .map(f -> legalStatusOf(f.fields().get("hasLiens")))
+            .filter(java.util.Objects::nonNull)
+            .findFirst()
+            .orElse(null);
+    if (address != null || legalStatus != null) {
+      expedienteApi.completePropertyDataFromDocuments(expedienteId, address, legalStatus);
+    }
+  }
+
+  /** "No", "Libre de gravamen" -> libre; "Sí, hipoteca con..." -> con gravamen; cualquier otra cosa no se interpreta. */
+  static PropertyLegalStatus legalStatusOf(String hasLiens) {
+    if (hasLiens == null) {
+      return null;
+    }
+    String v = java.text.Normalizer.normalize(hasLiens, java.text.Normalizer.Form.NFD).replaceAll("\\p{M}", "").strip().toLowerCase(java.util.Locale.ROOT);
+    if (v.startsWith("no") || v.startsWith("libre") || v.startsWith("ninguno") || v.startsWith("sin ")) {
+      return PropertyLegalStatus.LIBRE_GRAVAMEN;
+    }
+    if (v.startsWith("si") || v.startsWith("yes") || v.startsWith("hipoteca") || v.startsWith("embargo") || v.startsWith("con ")) {
+      return PropertyLegalStatus.CON_GRAVAMEN;
+    }
+    return null;
   }
 
   /** De cada documento, solo lo leído en su versión vigente (si se conoce; si no, la más reciente con datos). */

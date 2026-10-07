@@ -77,8 +77,9 @@ public final class ExpedienteDtos {
       @NotNull AccreditationType accreditationType,
       boolean condominiumRegime,
       @NotNull PropertyCaseType propertyCaseType,
-      @NotNull PropertyLegalStatus declaredLegalStatus,
-      @NotBlank String propertyAddress,
+      // Opcionales: se leen de la escritura / certificado de libertad de gravamen / predial.
+      PropertyLegalStatus declaredLegalStatus,
+      String propertyAddress,
       @NotEmpty List<@Valid ParticipantRequest> participants,
       LegalDetails legalDetails) {}
 
@@ -89,7 +90,7 @@ public final class ExpedienteDtos {
       boolean condominiumRegime,
       @NotNull PropertyCaseType propertyCaseType,
       @NotNull PropertyLegalStatus declaredLegalStatus,
-      @NotBlank String propertyAddress,
+      String propertyAddress,
       String reason) {}
 
   public record ParticipantChangeRequest(@NotNull @Valid ParticipantRequest participant, String reason) {}

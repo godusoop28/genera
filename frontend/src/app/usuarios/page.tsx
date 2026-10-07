@@ -3,6 +3,7 @@
 import { PageContainer } from "@/components/layout/PageContainer";
 import { RolePermissionMatrix } from "@/components/users/RolePermissionMatrix";
 import { UsersTable } from "@/components/users/UsersTable";
+import { useAuth } from "@/context/AuthProvider";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 
@@ -15,6 +16,16 @@ type TabId = (typeof tabs)[number]["id"];
 
 export default function UsuariosPage() {
   const [tab, setTab] = useState<TabId>("usuarios");
+  const { user } = useAuth();
+  const canManage = !!user?.permissions.some((p) => p === "*" || p === "USER_MANAGE");
+
+  if (!canManage) {
+    return (
+      <PageContainer title="Usuarios y permisos">
+        <p className="text-sm text-muted">Solo un administrador puede ver y gestionar los usuarios.</p>
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer

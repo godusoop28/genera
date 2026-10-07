@@ -14,6 +14,7 @@ import com.c21genera.documents.DocumentsApi;
 import com.c21genera.expedientes.ExpedienteLifecycleApi;
 import com.c21genera.expedientes.ExpedienteLifecycleApi.ManualClientDataView;
 import com.c21genera.expedientes.ExpedienteSummary;
+import com.c21genera.expedientes.PropertyLegalStatus;
 import com.c21genera.extraction.domain.ExtractedFieldObservation;
 import com.c21genera.extraction.domain.FieldOrigin;
 import com.c21genera.extraction.domain.StructuredExtractionProvider;
@@ -165,5 +166,40 @@ class DocumentFieldExtractionServiceTest {
     order.verify(observations).deleteByDocumentVersionIdAndConfirmedValueIsNull(versionId);
     order.verify(observations).save(any());
     assertThat(saved).extracting(ExtractedFieldObservation::getFieldName).containsExactly("fullName");
+  }
+
+  @Test
+  void theAddressAndLiensReadFromThePropertyDocumentsCompleteTheExpediente() {
+    UUID deedId = UUID.randomUUID();
+    UUID lienId = UUID.randomUUID();
+    when(documentsApi.requirementStatusOf(expedienteId))
+        .thenReturn(
+            List.of(
+                new DocumentsApi.RequirementStatusView(lienId, DocumentTypeCode.LIEN_CERTIFICATE, null, true, "UPLOADED"),
+                new DocumentsApi.RequirementStatusView(deedId, DocumentTypeCode.DEED, null, true, "UPLOADED")));
+    when(observations.findByExpedienteIdOrderByFieldNameAsc(expedienteId))
+        .thenReturn(
+            List.of(
+                observation(lienId, "propertyAddress", "LOTE 4 MZ 2 COL. CENTRO"),
+                observation(lienId, "hasLiens", "No reporta gravámenes"),
+                observation(deedId, "propertyAddress", "Calle Río Balsas 12, Col. Vista Hermosa, Cuernavaca")));
+
+    service.runConsistencyCheck(expedienteId);
+
+    // La escritura manda sobre el certificado para el domicilio.
+    verify(expedienteApi)
+        .completePropertyDataFromDocuments(expedienteId, "Calle Río Balsas 12, Col. Vista Hermosa, Cuernavaca", PropertyLegalStatus.LIBRE_GRAVAMEN);
+  }
+
+  @Test
+  void theLienAnswerIsOnlyInterpretedWhenItIsClear() {
+    assertThat(DocumentFieldExtractionService.legalStatusOf("NO")).isEqualTo(PropertyLegalStatus.LIBRE_GRAVAMEN);
+    assertThat(DocumentFieldExtractionService.legalStatusOf("Libre de gravamen")).isEqualTo(PropertyLegalStatus.LIBRE_GRAVAMEN);
+    assertThat(DocumentFieldExtractionService.legalStatusOf("Sí, hipoteca a favor de BBVA")).isEqualTo(PropertyLegalStatus.CON_GRAVAMEN);
+    assertThat(DocumentFieldExtractionService.legalStatusOf("Ilegible")).isNull();
+  }
+
+  private ExtractedFieldObservation observation(UUID document, String field, String value) {
+    return new ExtractedFieldObservation(expedienteId, document, UUID.nameUUIDFromBytes(document.toString().getBytes()), field, value, FieldOrigin.AI_EXTRACTED, 0.9, Instant.EPOCH, 1);
   }
 }
