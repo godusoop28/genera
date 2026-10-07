@@ -19,15 +19,17 @@ export const backendStatusLabels: Record<BackendExpedienteStatus, string> = {
   CLOSED: "Cerrado",
 };
 
+// Ámbar = falta algo del cliente; azul = en revisión o en proceso interno;
+// verde = completado; dorado = esperando firmas.
 export const backendStatusTone: Record<BackendExpedienteStatus, Tone> = {
   DRAFT: "neutral",
   WAITING_PRIVACY: "warning",
   WAITING_DOCUMENTS: "warning",
   DOCUMENTS_RECEIVED: "info",
-  UNDER_REVIEW: "gold",
+  UNDER_REVIEW: "info",
   CORRECTIONS_REQUESTED: "warning",
   DOCUMENTS_APPROVED: "success",
-  RECEPTION_SIGNED: "info",
+  RECEPTION_SIGNED: "success",
   CONTRACT_PREPARATION: "info",
   READY_FOR_SIGNATURE: "gold",
   CONTRACT_SIGNED: "success",

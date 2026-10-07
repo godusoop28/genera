@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useId } from "react";
 
 interface ModalProps {
   open: boolean;
@@ -21,6 +21,7 @@ const sizeClasses = {
 };
 
 export function Modal({ open, onClose, title, children, size = "md", footer }: ModalProps) {
+  const titleId = useId();
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -46,13 +47,20 @@ export function Modal({ open, onClose, title, children, size = "md", footer }: M
       <div
         role="dialog"
         aria-modal="true"
+        aria-labelledby={title ? titleId : undefined}
         className={cn(
-          "relative w-full rounded-2xl border border-border bg-card p-4 shadow-lg max-h-[92vh] overflow-y-auto sm:p-6",
+          "animate-fade-in relative w-full rounded-xl border border-border bg-card p-4 shadow-lg max-h-[92vh] overflow-y-auto sm:p-6",
           sizeClasses[size],
         )}
       >
         <div className="mb-4 flex items-start justify-between gap-4">
-          {title ? <h3 className="text-lg font-semibold text-obsessed">{title}</h3> : <span />}
+          {title ? (
+            <h3 id={titleId} className="text-lg font-semibold text-obsessed">
+              {title}
+            </h3>
+          ) : (
+            <span />
+          )}
           <button
             aria-label="Cerrar"
             onClick={onClose}

@@ -10,7 +10,7 @@ interface BadgeProps {
 }
 
 const toneClasses: Record<BadgeTone, string> = {
-  gold: "bg-gold/15 text-dark-gold",
+  gold: "bg-gold/20 text-dark-gold",
   obsessed: "bg-obsessed/5 text-obsessed",
   success: "bg-success-bg text-success-text",
   warning: "bg-warning-bg text-warning-text",
@@ -24,7 +24,7 @@ export function Badge({ children, tone = "neutral", className }: BadgeProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap",
+        "inline-flex max-w-full items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium [&_svg]:h-3.5 [&_svg]:w-3.5 [&_svg]:shrink-0",
         toneClasses[tone],
         className,
       )}

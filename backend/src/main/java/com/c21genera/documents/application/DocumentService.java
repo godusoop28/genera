@@ -43,7 +43,9 @@ import java.io.ByteArrayInputStream;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -628,6 +630,27 @@ public class DocumentService implements DocumentsApi {
                     d.getId(), d.getType(), d.getParticipantId(), d.isRequired(), d.getStatus().name(),
                     latestVersion(d.getId()).map(DocumentVersion::getId).orElse(null)))
         .toList();
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Map<UUID, DocumentProgressView> documentProgressOf(Collection<UUID> expedienteIds) {
+    if (expedienteIds.isEmpty()) {
+      return Map.of();
+    }
+    Set<DocumentStatus> received = Set.of(DocumentStatus.UPLOADED, DocumentStatus.READY_FOR_REVIEW, DocumentStatus.ACCEPTED);
+    return documentRepository.findByExpedienteIdIn(expedienteIds).stream()
+        .filter(d -> d.isRequired() && d.getStatus() != DocumentStatus.NOT_APPLICABLE)
+        .collect(
+            Collectors.groupingBy(
+                Document::getExpedienteId,
+                Collectors.collectingAndThen(
+                    Collectors.toList(),
+                    docs ->
+                        new DocumentProgressView(
+                            docs.size(),
+                            (int) docs.stream().filter(d -> received.contains(d.getStatus())).count(),
+                            (int) docs.stream().filter(d -> d.getStatus() == DocumentStatus.ACCEPTED).count()))));
   }
 
   @Override

@@ -13,6 +13,8 @@ interface ParticipantFieldsProps {
   detailed?: boolean;
   /** Solo el nombre: al crear el expediente lo demás se pide al cliente o se lee de sus documentos. */
   nameOnly?: boolean;
+  /** Error de validación del nombre (p. ej. "Captura el nombre"). */
+  nameError?: string;
 }
 
 const emptyOption = { label: "Selecciona…", value: "" };
@@ -22,7 +24,7 @@ const emptyOption = { label: "Selecciona…", value: "" };
  * moral) no tiene estado civil ni identificación personal; el estado civil
  * solo aplica a titulares persona física.
  */
-export function ParticipantFields({ value, onChange, personType, detailed = false, nameOnly = false }: ParticipantFieldsProps) {
+export function ParticipantFields({ value, onChange, personType, detailed = false, nameOnly = false, nameError }: ParticipantFieldsProps) {
   const isCompany = personType === "MORAL" && value.role === "OWNER";
   const isOwner = value.role === "OWNER" || value.role === "CO_OWNER";
   const set = <K extends keyof ParticipantRequest>(key: K, v: ParticipantRequest[K]) => onChange({ ...value, [key]: v });
@@ -36,10 +38,14 @@ export function ParticipantFields({ value, onChange, personType, detailed = fals
         onChange={(e) => set("fullName", e.target.value)}
         placeholder={isCompany ? "Ej. Inmobiliaria del Sol, S.A. de C.V." : "Ej. Juan Pérez López"}
         containerClassName="sm:col-span-2"
+        error={nameError}
+        required
       />
-      <p className="text-xs text-muted sm:col-span-2">
-        Rol: {isCompany ? companyOwnerLabel : participantRoleLabels[value.role]}
-      </p>
+      {nameOnly ? null : (
+        <p className="text-xs text-muted sm:col-span-2">
+          Rol: {isCompany ? companyOwnerLabel : participantRoleLabels[value.role]}
+        </p>
+      )}
 
       {nameOnly ? null : (
         <>

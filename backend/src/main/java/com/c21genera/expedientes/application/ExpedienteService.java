@@ -47,15 +47,18 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.Year;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -151,6 +154,45 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
   @Transactional(readOnly = true)
   public Page<Expediente> listOwn(UUID userId, Pageable pageable) {
     return expedienteRepository.findByCreatedByUserId(userId, pageable);
+  }
+
+  /**
+   * Listado con búsqueda (folio, titular o domicilio) y filtro por estatus.
+   * ownerUserId null = todos los expedientes; si no, solo los que creó ese usuario.
+   */
+  @Transactional(readOnly = true)
+  public Page<Expediente> search(UUID ownerUserId, String query, Set<ExpedienteStatus> statuses, Pageable pageable) {
+    Specification<Expediente> spec = (root, q, cb) -> cb.conjunction();
+    if (ownerUserId != null) {
+      spec = spec.and((root, q, cb) -> cb.equal(root.get("createdByUserId"), ownerUserId));
+    }
+    if (statuses != null && !statuses.isEmpty()) {
+      spec = spec.and((root, q, cb) -> root.get("status").in(statuses));
+    }
+    String term = blankToNull(query);
+    if (term != null) {
+      // "!" escapa los comodines que el usuario escriba ("%", "_").
+      String like = "%" + term.toLowerCase(Locale.ROOT).replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
+      spec =
+          spec.and(
+              (root, q, cb) ->
+                  cb.or(
+                      cb.like(cb.lower(root.get("folio")), like, '!'),
+                      cb.like(cb.lower(root.get("ownerDisplayName")), like, '!'),
+                      cb.like(cb.lower(cb.coalesce(root.<String>get("propertyAddress"), "")), like, '!')));
+    }
+    return expedienteRepository.findAll(spec, pageable);
+  }
+
+  /** Total de expedientes por estatus (los mismos que puede ver el usuario: todos, o solo los suyos). */
+  @Transactional(readOnly = true)
+  public Map<ExpedienteStatus, Long> countByStatus(UUID ownerUserId) {
+    List<Object[]> rows = ownerUserId == null ? expedienteRepository.countAllByStatus() : expedienteRepository.countOwnByStatus(ownerUserId);
+    Map<ExpedienteStatus, Long> counts = new EnumMap<>(ExpedienteStatus.class);
+    for (Object[] row : rows) {
+      counts.put((ExpedienteStatus) row[0], ((Number) row[1]).longValue());
+    }
+    return counts;
   }
 
   @Transactional(readOnly = true)

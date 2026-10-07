@@ -2,29 +2,32 @@
 
 :root {
   /* Paleta oficial CENTURY 21 Genera — constante en todos los temas */
-  --color-c21-gold: #beaf87;
-  --color-c21-dark-gold: #a19276;
-  --color-c21-obsessed-grey: #252526;
+  /* Champagne para superficies y acentos; "dark-gold" es su versión para TEXTO
+     (contraste ≥ 4.5:1 sobre blanco y marfil). */
+  --color-c21-gold: #b5a477;
+  --color-c21-gold-hover: #a69462;
+  --color-c21-dark-gold: #76653a;
+  --color-c21-obsessed-grey: #242723;
   --color-c21-medium-grey: #808285;
   --color-c21-light-grey: #e6e7e8;
   --color-c21-white: #ffffff;
   --color-c21-black: #000000;
 
   /* ---- Tema: Claro (predeterminado) ---- */
-  --fg: #252526;
-  --color-app-bg: #f4f4f4;
+  --fg: #1f2120;
+  --color-app-bg: #f7f6f2;
   --color-card: #ffffff;
-  --color-border: #dcdcdc;
-  --color-muted: #6b6b6c;
+  --color-border: #e5e2da;
+  --color-muted: #5f625d;
 
-  --color-success-bg: #eaf5ec;
-  --color-success-text: #1f7a3d;
-  --color-warning-bg: #fdf2e3;
-  --color-warning-text: #96591a;
+  --color-success-bg: #e8f3ea;
+  --color-success-text: #256b39;
+  --color-warning-bg: #fbf0dc;
+  --color-warning-text: #8a5310;
   --color-danger-bg: #fbe9e8;
   --color-danger-text: #a3352c;
-  --color-info-bg: #eef2f5;
-  --color-info-text: #3d5a70;
+  --color-info-bg: #e8eff7;
+  --color-info-text: #2f557d;
   --color-manual-bg: #f1efe9;
   --color-manual-text: #6b5a34;
 
@@ -113,6 +116,7 @@ html[data-font-size="xl"] {
   --font-mono: var(--font-geist-mono);
 
   --color-gold: var(--color-c21-gold);
+  --color-gold-hover: var(--color-c21-gold-hover);
   --color-dark-gold: var(--color-c21-dark-gold);
   /* "obsessed" es texto/acento reactivo al tema; "brand-ink" es la superficie
      de marca (sidebar, avatares, toasts) que se mantiene fija en todos los temas. */
@@ -164,4 +168,31 @@ body {
 
 .animate-toast-in {
   animation: toast-in 0.2s ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.18s ease-out;
+}
+
+/* Respeta "reducir movimiento" del sistema operativo. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

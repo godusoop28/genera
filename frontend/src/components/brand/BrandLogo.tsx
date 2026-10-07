@@ -5,7 +5,8 @@ interface BrandLogoProps {
   className?: string;
   /** "light": logo autorizado en gris, para fondos claros (login, portal cliente, documentos). */
   /** "dark": lockup dorado, para fondos oscuros (sidebar Obsessed Grey). */
-  tone?: "light" | "dark";
+  /** "nav": lockup horizontal dorado (recorte del asset oficial 05), para el menú lateral. */
+  tone?: "light" | "dark" | "nav";
   size?: "sm" | "md" | "lg";
 }
 
@@ -19,10 +20,12 @@ const sizeClasses = {
 // (ver /public/brand). No se reconstruye el logo mediante SVG inventado.
 export function BrandLogo({ className, tone = "light", size = "md" }: BrandLogoProps) {
   const src =
-    tone === "dark"
-      ? "/brand/variants/09_logo_vertical_dorado.png"
-      : "/brand/century21-genera-autorizado.png";
-  const aspect = tone === "dark" ? "aspect-[187/195]" : "aspect-[1420/807]";
+    tone === "nav"
+      ? "/brand/century21-genera-horizontal-nav.png"
+      : tone === "dark"
+        ? "/brand/variants/09_logo_vertical_dorado.png"
+        : "/brand/century21-genera-autorizado.png";
+  const aspect = tone === "nav" ? "aspect-[267/58]" : tone === "dark" ? "aspect-[187/195]" : "aspect-[1420/807]";
 
   return (
     <span className={cn("relative inline-block w-auto", sizeClasses[size], aspect, className)}>

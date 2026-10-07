@@ -106,3 +106,31 @@ export function acceptProperty(id: string) {
 export function rejectProperty(id: string, reason: string) {
   return apiClient.post<ExpedienteResponse>(`/internal/expedientes/${id}/reject-property`, { reason });
 }
+
+/** Grupos de estatus del listado (ver ExpedienteOverviewController.StatusGroup en el backend). */
+export type ExpedienteStatusGroup = "PENDING" | "IN_REVIEW" | "COMPLETE";
+
+/** Documentos obligatorios que aplican: con archivo vigente (recibidos) y aceptados por el revisor. */
+export interface DocumentProgress {
+  required: number;
+  received: number;
+  accepted: number;
+}
+
+export interface ExpedienteOverviewItem {
+  expediente: ExpedienteResponse;
+  documents: DocumentProgress;
+}
+
+export interface ExpedienteOverview {
+  page: PageResponse<ExpedienteOverviewItem>;
+  /** Totales sobre todos los expedientes visibles para el usuario (no solo la página). */
+  counts: { total: number; pending: number; inReview: number; complete: number };
+}
+
+export function getExpedienteOverview(params: { q?: string; group?: ExpedienteStatusGroup | null; page?: number; size?: number }) {
+  const search = new URLSearchParams({ page: String(params.page ?? 0), size: String(params.size ?? 18), sort: "updatedAt,desc" });
+  if (params.q?.trim()) search.set("q", params.q.trim());
+  if (params.group) search.set("group", params.group);
+  return apiClient.get<ExpedienteOverview>(`/internal/expedientes/overview?${search.toString()}`);
+}

@@ -1,6 +1,8 @@
 package com.c21genera.documents;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -44,6 +46,16 @@ public interface DocumentsApi {
    * versión que nunca llegó a generar PDF (p. ej. anuló un QUALITY_FAILED).
    */
   List<AcceptedDocumentView> acceptedDocumentsOf(UUID expedienteId);
+
+  /**
+   * Avance documental de varios expedientes en una sola consulta (para el
+   * listado). Solo cuentan los documentos obligatorios que aplican:
+   * received = tienen archivo vigente (cargado, por revisar o aceptado);
+   * accepted = aceptados por el revisor.
+   */
+  Map<UUID, DocumentProgressView> documentProgressOf(Collection<UUID> expedienteIds);
+
+  record DocumentProgressView(int required, int received, int accepted) {}
 
   record PageView(int pageNumber, String storageKeyOriginal, String mimeType) {}
 
