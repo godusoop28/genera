@@ -11,10 +11,13 @@ import { StateMessage } from "@/components/ui/StateMessage";
 import { Toggle } from "@/components/ui/Toggle";
 import { useToast } from "@/components/ui/Toast";
 import { ApiError } from "@/lib/api/client";
-import { createExpediente } from "@/lib/api/expedientes";
+import { checkClientDuplicates, createExpediente, type DuplicateMatchResponse } from "@/lib/api/expedientes";
+import { backendStatusLabels } from "@/lib/api/status-labels";
+import { formatDate } from "@/lib/labels";
 import type { BackendAccreditationType, BackendPersonType, BackendPropertyCaseType, ParticipantRequest } from "@/lib/api/types";
 import { accreditationLabels, propertyTypeLabels } from "@/lib/labels";
 import { useCan } from "@/lib/permissions";
+import Link from "next/link";
 import { previewRequirements, type PreviewItem } from "@/lib/requirements-preview";
 import { internalDraftTransport, useServerDraft, type ServerDraft } from "@/lib/use-server-draft";
 import { cn } from "@/lib/utils";
@@ -95,6 +98,8 @@ export default function NuevoExpedientePage() {
 
 function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft | null; serverDraft: ServerDraft<NewExpedienteDraft> }) {
   const { showToast } = useToast();
+  const can = useCan();
+  const canAuthorizeDuplicates = can("EXPEDIENT_DUPLICATE_AUTHORIZE");
   const router = useRouter();
   const { update: updateDraft } = serverDraft;
 
@@ -117,6 +122,12 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
   const [submitting, setSubmitting] = useState(false);
   const [created, setCreated] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Cliente que ya tiene expediente(s) en curso: se avisa para no duplicarlo, y abrir
+  // otro (p. ej. por otra propiedad) requiere autorización con motivo.
+  const [duplicates, setDuplicates] = useState<DuplicateMatchResponse[]>([]);
+  const [duplicateReason, setDuplicateReason] = useState("");
+  const [authorizedFolios, setAuthorizedFolios] = useState<string | null>(null);
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false);
   const submittingRef = useRef(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const firstRender = useRef(true);
@@ -183,10 +194,50 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
     });
   };
 
-  const next = () => {
+  const foliosKey = (matches: DuplicateMatchResponse[]) => matches.map((m) => m.folio).sort().join(",");
+  const duplicatesAuthorized = duplicates.length > 0 && authorizedFolios === foliosKey(duplicates);
+  const MIN_DUPLICATE_REASON = 15;
+
+  /** true si se puede seguir: no hay expedientes en curso del cliente, o ya se autorizó abrir otro. */
+  const checkDuplicates = async (): Promise<boolean> => {
+    const holders = participants.filter((p) => p.role === "OWNER" || p.role === "CO_OWNER").map((p) => p.fullName.trim());
+    setCheckingDuplicates(true);
+    try {
+      const matches = await checkClientDuplicates(holders);
+      setDuplicates(matches);
+      if (matches.length === 0) return true;
+      if (authorizedFolios === foliosKey(matches)) return true;
+      setError(
+        matches.length === 1
+          ? `Este cliente ya tiene el expediente ${matches[0].folio} en curso.`
+          : `Este cliente ya tiene ${matches.length} expedientes en curso.`,
+      );
+      return false;
+    } catch {
+      // Si la verificación falla por red, el backend vuelve a revisarlo al crear.
+      return true;
+    } finally {
+      setCheckingDuplicates(false);
+    }
+  };
+
+  const authorizeDuplicate = () => {
+    if (duplicateReason.trim().length < MIN_DUPLICATE_REASON) {
+      setError(`Explica por qué se abre otro expediente (mínimo ${MIN_DUPLICATE_REASON} caracteres).`);
+      return;
+    }
+    setAuthorizedFolios(foliosKey(duplicates));
+    setError(null);
+    goTo(2);
+  };
+
+  const next = async () => {
     if (step === 1 && !clientValid) {
       setShowErrors(true);
       setError(missingNamesText);
+      return;
+    }
+    if (step === 1 && !(await checkDuplicates())) {
       return;
     }
     if (step === 2 && !propertyValid) {
@@ -209,6 +260,12 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
     }
     submittingRef.current = true;
     setSubmitting(true);
+    if (!(await checkDuplicates())) {
+      submittingRef.current = false;
+      setSubmitting(false);
+      goTo(1);
+      return;
+    }
     try {
       const result = await createExpediente({
         personType,
@@ -220,6 +277,7 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
         // Solo el nombre: estado civil, contacto, domicilio y situación jurídica
         // se piden al cliente en su liga o se leen de sus documentos.
         participants: participants.map((p) => ({ role: p.role, fullName: p.fullName.trim() })),
+        duplicateAuthorizationReason: duplicatesAuthorized ? duplicateReason.trim() : undefined,
       });
       setCreated(true);
       await serverDraft.clear();
@@ -413,6 +471,17 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
                     </Button>
                   ) : null}
 
+                  {duplicates.length > 0 && !duplicatesAuthorized ? (
+                    <DuplicateWarning
+                      matches={duplicates}
+                      canAuthorize={canAuthorizeDuplicates}
+                      reason={duplicateReason}
+                      onReasonChange={setDuplicateReason}
+                      minReason={MIN_DUPLICATE_REASON}
+                      onAuthorize={authorizeDuplicate}
+                    />
+                  ) : null}
+
                   {!isMoral && signedByAttorney ? (
                     <fieldset className="rounded-xl border border-border p-4">
                       <legend className="mb-3 text-sm font-semibold text-obsessed">Apoderado</legend>
@@ -508,6 +577,15 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
                   />
                 ))}
               </ReviewSection>
+              {duplicatesAuthorized ? (
+                <p className="mb-4 flex items-start gap-2 rounded-xl bg-warning-bg px-3 py-2.5 text-sm text-warning-text">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                  <span>
+                    Autorización especial: este cliente ya tiene {duplicates.map((d) => d.folio).join(", ")}. Motivo: {duplicateReason.trim()}. Quedará en la
+                    bitácora.
+                  </span>
+                </p>
+              ) : null}
               <ReviewSection title="Inmueble" onEdit={() => goTo(2)}>
                 <ReviewRow label="Referencia para el cliente" value={propertyReference.trim() || "—"} />
                 <ReviewRow label="Tipo de inmueble" value={propertyTypeLabels[propertyCaseType]} />
@@ -580,7 +658,8 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
               </Button>
             ) : null}
             {step < 3 ? (
-              <Button variant="dark" onClick={next}>
+              <Button variant="dark" onClick={() => void next()} disabled={checkingDuplicates} aria-busy={checkingDuplicates}>
+                {checkingDuplicates ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
                 Continuar <ArrowRight className="h-4 w-4" aria-hidden />
               </Button>
             ) : (
@@ -672,6 +751,76 @@ function PreviewRow({ item }: { item: PreviewItem }) {
         {item.note ? <span className="mt-0.5 block text-xs font-medium text-warning-text">{item.note}</span> : null}
       </span>
     </li>
+  );
+}
+
+function DuplicateWarning({
+  matches,
+  canAuthorize,
+  reason,
+  onReasonChange,
+  minReason,
+  onAuthorize,
+}: {
+  matches: DuplicateMatchResponse[];
+  canAuthorize: boolean;
+  reason: string;
+  onReasonChange: (value: string) => void;
+  minReason: number;
+  onAuthorize: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-warning-text/30 bg-warning-bg p-4" role="alert">
+      <p className="flex items-start gap-2 text-sm font-semibold text-warning-text">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+        {matches.length === 1 ? "Este cliente ya está dado de alta" : `Este cliente ya está dado de alta en ${matches.length} expedientes`}
+      </p>
+      <p className="mt-1 text-sm text-warning-text">Revisa que no estés duplicando el expediente. Si es la misma propiedad, continúa en el que ya existe.</p>
+      <ul className="mt-3 flex flex-col gap-2">
+        {matches.map((m) => (
+          <li key={m.id} className="rounded-lg border border-border bg-card px-3 py-2 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-mono font-medium text-obsessed">{m.folio}</span>
+              <Link href={`/expedientes/${m.id}`} className="text-xs font-medium text-dark-gold hover:underline" target="_blank" rel="noopener noreferrer">
+                Abrir expediente existente
+              </Link>
+            </div>
+            <p className="mt-0.5 break-words text-obsessed">{m.matchedName}</p>
+            <p className="text-xs text-muted">
+              {backendStatusLabels[m.status]}
+              {m.property ? ` · ${m.property}` : ""}
+              {m.advisorName ? ` · Asesor: ${m.advisorName}` : ""} · Alta {formatDate(m.createdAt)}
+            </p>
+          </li>
+        ))}
+      </ul>
+      {canAuthorize ? (
+        <div className="mt-4 border-t border-warning-text/20 pt-4">
+          <label htmlFor="duplicate-reason" className="text-sm font-medium text-obsessed">
+            ¿Es otra propiedad? Autoriza abrir otro expediente
+          </label>
+          <textarea
+            id="duplicate-reason"
+            value={reason}
+            onChange={(e) => onReasonChange(e.target.value)}
+            rows={2}
+            placeholder="Ej. Segunda propiedad del cliente: departamento en Providencia"
+            className="mt-1.5 w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm outline-none focus:border-gold focus:ring-4 focus:ring-gold/20"
+          />
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs text-muted">Mínimo {minReason} caracteres. La autorización queda en la bitácora con tu nombre.</span>
+            <Button size="sm" variant="dark" onClick={onAuthorize} disabled={reason.trim().length < minReason}>
+              Autorizar y continuar
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-4 border-t border-warning-text/20 pt-3 text-sm text-warning-text">
+          Si es otra propiedad del mismo cliente, se necesita una autorización especial: pide a un administrador o director que dé de alta este
+          expediente.
+        </p>
+      )}
+    </div>
   );
 }
 

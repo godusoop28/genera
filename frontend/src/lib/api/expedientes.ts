@@ -1,5 +1,6 @@
 import { apiClient } from "@/lib/api/client";
 import type {
+  BackendExpedienteStatus,
   BackendAccreditationType,
   BackendCivilStatus,
   BackendPersonType,
@@ -37,6 +38,24 @@ export interface CreateExpedienteRequest extends Omit<ExpedienteConfiguration, "
   propertyReference?: string;
   participants: ParticipantRequest[];
   legalDetails?: LegalDetails;
+  /** Solo si el cliente ya tiene otro expediente en curso y quien crea puede autorizarlo. */
+  duplicateAuthorizationReason?: string;
+}
+
+/** Expediente en curso del mismo cliente (para no duplicarlo). */
+export interface DuplicateMatchResponse {
+  id: string;
+  folio: string;
+  ownerDisplayName: string;
+  matchedName: string;
+  status: BackendExpedienteStatus;
+  property: string | null;
+  advisorName: string | null;
+  createdAt: string;
+}
+
+export function checkClientDuplicates(holderNames: string[]) {
+  return apiClient.post<DuplicateMatchResponse[]>("/internal/expedientes/duplicate-check", { holderNames });
 }
 
 export function listExpedientes(page = 0, size = 20) {

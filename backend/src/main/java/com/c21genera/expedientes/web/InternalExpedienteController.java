@@ -8,12 +8,15 @@ import com.c21genera.expedientes.domain.Expediente;
 import com.c21genera.expedientes.web.ExpedienteDtos.ChangeResponse;
 import com.c21genera.expedientes.web.ExpedienteDtos.CorrectConfigurationRequest;
 import com.c21genera.expedientes.web.ExpedienteDtos.CreateExpedienteRequest;
+import com.c21genera.expedientes.web.ExpedienteDtos.DuplicateCheckRequest;
+import com.c21genera.expedientes.web.ExpedienteDtos.DuplicateMatchResponse;
 import com.c21genera.expedientes.web.ExpedienteDtos.ExpedienteResponse;
 import com.c21genera.expedientes.web.ExpedienteDtos.LegalDetailsRequest;
 import com.c21genera.expedientes.web.ExpedienteDtos.ParticipantChangeRequest;
 import com.c21genera.expedientes.web.ExpedienteDtos.ParticipantResponse;
 import com.c21genera.expedientes.web.ExpedienteDtos.RequirementResponse;
 import com.c21genera.identity.CurrentUser;
+import com.c21genera.identity.UserDirectory;
 import com.c21genera.shared.security.ExpedienteAccessPolicy;
 import com.c21genera.shared.web.PageResponse;
 import com.c21genera.shared.web.Pagination;
@@ -44,10 +47,12 @@ public class InternalExpedienteController {
 
   private final ExpedienteService expedienteService;
   private final ExpedienteAccessPolicy accessPolicy;
+  private final UserDirectory userDirectory;
 
-  public InternalExpedienteController(ExpedienteService expedienteService, ExpedienteAccessPolicy accessPolicy) {
+  public InternalExpedienteController(ExpedienteService expedienteService, ExpedienteAccessPolicy accessPolicy, UserDirectory userDirectory) {
     this.expedienteService = expedienteService;
     this.accessPolicy = accessPolicy;
+    this.userDirectory = userDirectory;
   }
 
   @PostMapping
@@ -68,8 +73,26 @@ public class InternalExpedienteController {
                 request.propertyReference(),
                 request.participants().stream().map(ExpedienteDtos.ParticipantRequest::toInput).toList(),
                 request.legalDetails(),
-                currentUser.toActor()));
+                currentUser.toActor(),
+                request.duplicateAuthorizationReason(),
+                currentUser.hasPermission("EXPEDIENT_DUPLICATE_AUTHORIZE")));
     return ExpedienteResponse.from(expediente);
+  }
+
+  /** Antes de crear: ¿alguno de estos titulares ya tiene un expediente en curso? */
+  @PostMapping("/duplicate-check")
+  @PreAuthorize("hasAuthority('EXPEDIENT_CREATE')")
+  public List<DuplicateMatchResponse> duplicateCheck(@Valid @RequestBody DuplicateCheckRequest request) {
+    return expedienteService.findClientDuplicates(request.holderNames()).stream()
+        .map(
+            m -> {
+              Expediente e = m.expediente();
+              String property = e.getPropertyAddress() != null ? e.getPropertyAddress() : e.getPropertyReference();
+              String advisor = userDirectory.contactOf(e.getCreatedByUserId()).map(UserDirectory.UserContact::name).orElse(null);
+              return new DuplicateMatchResponse(
+                  e.getId(), e.getFolio(), e.getOwnerDisplayName(), m.matchedName(), e.getStatus(), property, advisor, e.getCreatedAt());
+            })
+        .toList();
   }
 
   @GetMapping

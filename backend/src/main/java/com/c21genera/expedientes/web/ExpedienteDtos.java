@@ -84,7 +84,15 @@ public final class ExpedienteDtos {
       // Para que el cliente reconozca su liga (no es el domicilio legal; ese sale de los documentos).
       @Size(max = 120) String propertyReference,
       @NotEmpty List<@Valid ParticipantRequest> participants,
-      LegalDetails legalDetails) {}
+      LegalDetails legalDetails,
+      // Solo si el cliente ya tiene otro expediente en curso y quien crea tiene EXPEDIENT_DUPLICATE_AUTHORIZE.
+      @Size(max = 500) String duplicateAuthorizationReason) {}
+
+  public record DuplicateCheckRequest(@NotNull List<@Size(max = 200) String> holderNames) {}
+
+  /** Expediente en curso del mismo cliente; advisorName: quién lo atiende (para coordinarse). */
+  public record DuplicateMatchResponse(
+      UUID id, String folio, String ownerDisplayName, String matchedName, ExpedienteStatus status, String property, String advisorName, Instant createdAt) {}
 
   public record CorrectConfigurationRequest(
       @NotNull PersonType personType,

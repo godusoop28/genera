@@ -19,6 +19,10 @@ import com.c21genera.expedientes.domain.ExpedienteParticipant;
 import com.c21genera.expedientes.domain.ManualClientData;
 import com.c21genera.expedientes.domain.ManualClientData.ManualClientDataUpdate;
 import com.c21genera.expedientes.domain.ParticipantRole;
+import java.util.Collection;
+import com.c21genera.shared.domain.ConflictException;
+import com.c21genera.expedientes.domain.ClientNameKey;
+import com.c21genera.shared.events.ExpedienteEvents.DuplicateClientAuthorized;
 import com.c21genera.expedientes.infrastructure.ExpedienteChangeRepository;
 import com.c21genera.expedientes.infrastructure.ExpedienteParticipantRepository;
 import com.c21genera.expedientes.infrastructure.ExpedienteRepository;
@@ -105,10 +109,71 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
       String propertyReference,
       List<ParticipantInput> participants,
       LegalDetails legalDetails,
-      Actor actor) {}
+      Actor actor,
+      // Solo cuando el cliente ya tiene otro expediente en curso (ver findClientDuplicates).
+      String duplicateAuthorizationReason,
+      boolean canAuthorizeDuplicates) {}
+
+  /** Expediente en curso de alguno de los titulares que se quieren dar de alta. */
+  public record DuplicateMatch(Expediente expediente, String matchedName) {}
+
+  private static final java.util.Set<ExpedienteStatus> FINISHED = java.util.EnumSet.of(ExpedienteStatus.CLOSED, ExpedienteStatus.PROPERTY_REJECTED);
+  private static final int MIN_DUPLICATE_REASON_LENGTH = 15;
+
+  /**
+   * Revisión cliente 07/10: antes de dar de alta, ¿alguno de estos titulares ya
+   * tiene un expediente en curso? Evita duplicar el mismo expediente; abrir otro
+   * a propósito (otra propiedad) requiere autorización (ver create).
+   */
+  @Transactional(readOnly = true)
+  public List<DuplicateMatch> findClientDuplicates(Collection<String> holderNames) {
+    java.util.Map<String, String> wanted = new java.util.HashMap<>();
+    for (String name : holderNames) {
+      String key = ClientNameKey.of(name);
+      if (!key.isEmpty()) {
+        wanted.putIfAbsent(key, name.strip());
+      }
+    }
+    if (wanted.isEmpty()) {
+      return List.of();
+    }
+    java.util.Map<UUID, String> matched = new java.util.LinkedHashMap<>();
+    for (Object[] row : participantRepository.findHolderNames(List.of(ParticipantRole.OWNER, ParticipantRole.CO_OWNER), FINISHED)) {
+      String existingName = (String) row[1];
+      if (wanted.containsKey(ClientNameKey.of(existingName))) {
+        matched.putIfAbsent((UUID) row[0], existingName);
+      }
+    }
+    return expedienteRepository.findAllById(matched.keySet()).stream()
+        .sorted(java.util.Comparator.comparing(Expediente::getCreatedAt))
+        .map(e -> new DuplicateMatch(e, matched.get(e.getId())))
+        .toList();
+  }
 
   public Expediente create(CreateExpedienteCommand command) {
     validateParticipants(command.personType(), command.signedByAttorney(), command.participants());
+    List<DuplicateMatch> duplicates =
+        findClientDuplicates(
+            command.participants().stream()
+                .filter(p -> p.role() == ParticipantRole.OWNER || p.role() == ParticipantRole.CO_OWNER)
+                .map(ParticipantInput::fullName)
+                .toList());
+    List<String> existingFolios = duplicates.stream().map(d -> d.expediente().getFolio()).toList();
+    String duplicateReason = blankToNull(command.duplicateAuthorizationReason());
+    if (!duplicates.isEmpty()) {
+      if (!command.canAuthorizeDuplicates()) {
+        throw new ConflictException(
+            "DUPLICATE_CLIENT",
+            "Este cliente ya tiene un expediente en curso (" + String.join(", ", existingFolios) + "). Para abrir otro, p. ej. por otra propiedad,"
+                + " se necesita la autorización de un administrador o director.");
+      }
+      if (duplicateReason == null || duplicateReason.length() < MIN_DUPLICATE_REASON_LENGTH) {
+        throw new UnprocessableException(
+            "DUPLICATE_AUTHORIZATION_REQUIRED",
+            "Este cliente ya tiene un expediente en curso (" + String.join(", ", existingFolios) + "). Explica por qué se abre otro (mínimo "
+                + MIN_DUPLICATE_REASON_LENGTH + " caracteres), p. ej. \"Segunda propiedad: departamento en Providencia\".");
+      }
+    }
 
     String folio = generateFolio();
     Expediente expediente =
@@ -139,6 +204,9 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
     manualClientDataRepository.save(new ManualClientData(expediente.getId()));
 
     events.publishEvent(new ExpedienteCreated(expediente.getId(), folio, command.actor().userId(), command.actor()));
+    if (!duplicates.isEmpty()) {
+      events.publishEvent(new DuplicateClientAuthorized(expediente.getId(), existingFolios, duplicateReason, command.actor()));
+    }
     publishRequirements(expediente);
     return expediente;
   }

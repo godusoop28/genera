@@ -18,6 +18,9 @@ public final class ExpedienteEvents {
 
   public record ExpedienteCreated(UUID expedienteId, String folio, UUID createdByUserId, Actor actor) {}
 
+  /** Se abrió un expediente para un cliente que ya tenía otros en curso (otra propiedad), con autorización. */
+  public record DuplicateClientAuthorized(UUID expedienteId, List<String> existingFolios, String reason, Actor actor) {}
+
   /** Documents escucha esto para materializar sus propios Document a partir de la política calculada. */
   public record ExpedienteRequirementsChanged(UUID expedienteId, List<RequiredDocumentSpec> requirements) {}
 

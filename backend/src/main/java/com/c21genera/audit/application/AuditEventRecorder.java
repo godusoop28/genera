@@ -26,6 +26,7 @@ import com.c21genera.shared.events.DocumentEvents.DocumentVersionProcessed;
 import com.c21genera.shared.events.DocumentEvents.DocumentVersionUploaded;
 import com.c21genera.shared.events.DocumentEvents.ReceptionSigned;
 import com.c21genera.shared.events.DocumentEvents.RequiredDocumentsReopened;
+import com.c21genera.shared.events.ExpedienteEvents.DuplicateClientAuthorized;
 import com.c21genera.shared.events.ExpedienteEvents.ExpedienteCreated;
 import com.c21genera.shared.events.ExpedienteEvents.ExpedienteDataCorrected;
 import com.c21genera.shared.events.ExpedienteEvents.ExpedienteRequirementsChanged;
@@ -71,6 +72,15 @@ class AuditEventRecorder {
   }
 
   // --- Expediente -------------------------------------------------------
+
+  @ApplicationModuleListener
+  void on(DuplicateClientAuthorized event) {
+    String folios = String.join(", ", event.existingFolios());
+    record("DuplicateClientAuthorized", "Expediente", event.expedienteId(), event.actor(),
+        "Alta autorizada de un cliente con expediente activo (" + folios + ")");
+    activity(event.expedienteId(), ActivityCategory.EXPEDIENT, "DUPLICATE_CLIENT_AUTHORIZED", event.actor(), null, null,
+        "Autorizó abrir este expediente aunque el cliente ya tiene " + folios + ". Motivo: " + event.reason());
+  }
 
   @ApplicationModuleListener
   void on(ExpedienteCreated event) {
