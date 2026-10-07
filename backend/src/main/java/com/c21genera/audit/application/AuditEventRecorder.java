@@ -16,6 +16,7 @@ import com.c21genera.shared.events.ContractEvents.ContractSuperseded;
 import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsApproved;
 import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsUploaded;
 import com.c21genera.shared.events.DocumentEvents.DocumentApplicabilityChanged;
+import com.c21genera.shared.events.DocumentEvents.DocumentDeferralChanged;
 import com.c21genera.shared.events.DocumentEvents.DocumentContentAssessed;
 import com.c21genera.shared.events.DocumentEvents.DocumentFileMoved;
 import com.c21genera.shared.events.DocumentEvents.DocumentReprocessRequested;
@@ -218,6 +219,15 @@ class AuditEventRecorder {
     record("DocumentReviewed", "Document", event.documentId(), event.actor(), message);
     activity(event.expedienteId(), ActivityCategory.DOCUMENT,
         event.decision() == ReviewDecision.ACCEPTED && event.overrideJustification() != null ? "DOCUMENT_ACCEPTED_BY_EXCEPTION" : "DOCUMENT_" + event.decision().name(),
+        event.actor(), event.documentId(), label, message);
+  }
+
+  @ApplicationModuleListener
+  void on(DocumentDeferralChanged event) {
+    String label = DocumentTypeLabels.of(event.type());
+    String message = event.deferred() ? "Dejó " + label + " para que el cliente lo suba después" : "Pidió " + label + " desde ahora";
+    record("DocumentDeferralChanged", "Document", event.documentId(), event.actor(), message);
+    activity(event.expedienteId(), ActivityCategory.DOCUMENT, event.deferred() ? "DOCUMENT_DEFERRED" : "DOCUMENT_REQUESTED_NOW",
         event.actor(), event.documentId(), label, message);
   }
 

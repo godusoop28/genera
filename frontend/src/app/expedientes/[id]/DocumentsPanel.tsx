@@ -429,7 +429,7 @@ function DocumentRow({
             {participantName ? <span className="text-muted"> — {participantName}</span> : null}
           </p>
           <p className="text-xs text-muted">
-            {doc.required ? "Obligatorio" : "Opcional / no aplica en este caso"}
+            {doc.required ? (doc.deferred && doc.status === "PENDING" ? "Obligatorio · el cliente lo sube después" : "Obligatorio") : "Opcional / no aplica en este caso"}
             {v ? ` · Versión ${v.versionNumber}, cargada ${formatDateTime(v.uploadedAt)} por ${v.uploadedVia === "PUBLIC_PORTAL" ? "el cliente" : v.uploadedByName ?? "el staff"}` : ""}
           </p>
         </div>
@@ -440,6 +440,7 @@ function DocumentRow({
               {pipelineStatusLabels[doc.pipelineStatus]}
             </Badge>
           ) : null}
+          {doc.required && doc.deferred && doc.status === "PENDING" ? <Badge tone="neutral">Para después</Badge> : null}
           <Badge tone={documentStatusTone[doc.status]}>{documentStatusLabels[doc.status]}</Badge>
         </div>
       </div>

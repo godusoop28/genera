@@ -40,6 +40,14 @@ public class Document extends AuditableEntity {
   @Column(nullable = false)
   private boolean required;
 
+  /**
+   * El asesor decidió que el cliente lo suba después, cuando lo tenga: sigue
+   * siendo obligatorio para aprobar la documentación y generar el contrato,
+   * pero no impide que el cliente envíe lo que se le pidió primero.
+   */
+  @Column(nullable = false)
+  private boolean deferred;
+
   @Enumerated(EnumType.STRING)
   @Column(nullable = false, length = 24)
   private DocumentStatus status;
@@ -147,9 +155,22 @@ public class Document extends AuditableEntity {
     this.notApplicableAt = null;
   }
 
-  /** Cuenta como "cargado" para poder enviar el expediente (un "No aplica" también cuenta). */
+  /** Cuenta como "cargado" para poder enviar el expediente (un "No aplica" también cuenta; uno para después no se espera). */
   public boolean isSatisfiedForSubmission() {
-    return status != DocumentStatus.PENDING;
+    return deferred || status != DocumentStatus.PENDING;
+  }
+
+  /** Pedirlo desde la primera entrega o dejar que el cliente lo suba después. */
+  public void changeDeferred(boolean deferred) {
+    if (status == DocumentStatus.ACCEPTED || status == DocumentStatus.NOT_APPLICABLE) {
+      throw new ConflictException(
+          "DOCUMENT_ALREADY_RESOLVED", "Este documento ya está aceptado o marcado como \"No aplica\"; no hace falta decidir cuándo pedirlo.");
+    }
+    this.deferred = deferred;
+  }
+
+  public boolean isDeferred() {
+    return deferred;
   }
 
   /** Cuenta como resuelto para aprobar la documentación: aceptado, o "No aplica" justificado. */

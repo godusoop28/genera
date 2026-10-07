@@ -26,9 +26,10 @@ import {
 import { useCan } from "@/lib/permissions";
 import { Copy, FileSignature, Link2, Pencil, ShieldOff, ThumbsDown, ThumbsUp } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { DocumentTimingCard } from "./DocumentTimingCard";
 import type { ExpedienteContext } from "./page";
 
-export function SummaryTab({ expediente, reload, freshPublicLink: newLink, setFreshPublicLink: setNewLink }: ExpedienteContext) {
+export function SummaryTab({ expediente, participants, reload, freshPublicLink: newLink, setFreshPublicLink: setNewLink }: ExpedienteContext) {
   const { showToast } = useToast();
   const can = useCan();
   const [linkStatus, setLinkStatus] = useState<PublicLinkStatusResponse | null>(null);
@@ -114,6 +115,8 @@ export function SummaryTab({ expediente, reload, freshPublicLink: newLink, setFr
           </Button>
         ) : null}
       </Card>
+
+      {can("PUBLIC_LINK_GENERATE") ? <DocumentTimingCard expediente={expediente} participants={participants} /> : null}
 
       <Card>
         <CardHeader

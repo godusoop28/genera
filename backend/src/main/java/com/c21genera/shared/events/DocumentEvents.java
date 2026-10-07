@@ -20,6 +20,7 @@ public final class DocumentEvents {
   /**
    * documentprocessing escucha esto para arrancar el pipeline de calidad/OCR/PDF. actor: quién cargó el archivo.
    * previousStatus: estado del documento antes de esta carga (p. ej. RETURNED si es una corrección).
+   * deferred: el asesor lo había dejado para que el cliente lo subiera después.
    */
   public record DocumentVersionUploaded(
       UUID expedienteId,
@@ -29,7 +30,8 @@ public final class DocumentEvents {
       List<PageRef> pages,
       UUID participantId,
       Actor actor,
-      String previousStatus) {}
+      String previousStatus,
+      boolean deferred) {}
 
   /**
    * expedientes escucha esto para decidir la transición de estado
@@ -51,6 +53,9 @@ public final class DocumentEvents {
   /** El staff marcó un requisito como "No aplica" (con justificación) o lo volvió a solicitar. */
   public record DocumentApplicabilityChanged(
       UUID expedienteId, UUID documentId, DocumentTypeCode type, boolean notApplicable, String justification, Actor actor) {}
+
+  /** deferred=true: el cliente puede subirlo después; false: se pide desde la primera entrega. */
+  public record DocumentDeferralChanged(UUID expedienteId, UUID documentId, DocumentTypeCode type, boolean deferred, Actor actor) {}
 
   /** Se publica cuando TODOS los documentos obligatorios de un expediente quedan ACCEPTED. */
   public record AllRequiredDocumentsApproved(UUID expedienteId) {}

@@ -51,6 +51,11 @@ export function rejectDocument(documentId: string, reasonCode: ReturnReasonCode,
   return apiClient.post<DocumentResponse>(`/internal/documents/${documentId}/reject`, { reasonCode, comment });
 }
 
+/** deferred=true: el cliente puede subirlo después; false: se pide en la primera entrega. */
+export function setDocumentDeferred(documentId: string, deferred: boolean) {
+  return apiClient.put<DocumentResponse>(`/internal/documents/${documentId}/deferral`, { deferred });
+}
+
 export function markNotApplicable(documentId: string, justification: string) {
   return apiClient.post<DocumentResponse>(`/internal/documents/${documentId}/not-applicable`, { justification });
 }

@@ -337,6 +337,8 @@ export interface DocumentResponse {
   type: string;
   participantId: string | null;
   required: boolean;
+  /** El cliente puede subirlo después: no impide su primera entrega. */
+  deferred: boolean;
   status: BackendDocumentStatus;
   currentVersionNumber: number;
   notApplicableJustification: string | null;
@@ -354,6 +356,8 @@ export interface PublicDocumentResponse {
   type: string;
   participantId: string | null;
   required: boolean;
+  /** Se lo pidieron para después: no impide enviar lo demás. */
+  deferred: boolean;
   status: BackendDocumentStatus;
   currentVersionNumber: number;
   correctionReasonCode: ReturnReasonCode | null;

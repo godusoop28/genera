@@ -32,6 +32,7 @@ import com.c21genera.shared.events.Actor;
 import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsApproved;
 import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsUploaded;
 import com.c21genera.shared.events.DocumentEvents.DocumentApplicabilityChanged;
+import com.c21genera.shared.events.DocumentEvents.DocumentDeferralChanged;
 import com.c21genera.shared.events.DocumentEvents.DocumentContentAssessed;
 import com.c21genera.shared.events.DocumentEvents.DocumentReviewed;
 import com.c21genera.shared.events.DocumentEvents.DocumentVersionUploaded;
@@ -273,7 +274,8 @@ public class DocumentService implements DocumentsApi {
             pageRefs,
             document.getParticipantId(),
             actor,
-            previousStatus));
+            previousStatus,
+            document.isDeferred()));
 
     documentRepository.flush();
     publishCompletenessChanges(document.getExpedienteId(), before);
@@ -382,7 +384,8 @@ public class DocumentService implements DocumentsApi {
         new DocumentFileMoved(source.getExpedienteId(), sourceDocumentId, source.getType(), targetDocumentId, target.getType(), actor));
     events.publishEvent(
         new DocumentVersionUploaded(
-            target.getExpedienteId(), targetDocumentId, moved.getId(), target.getType(), pageRefs, target.getParticipantId(), actor, previousStatus));
+            target.getExpedienteId(), targetDocumentId, moved.getId(), target.getType(), pageRefs, target.getParticipantId(), actor, previousStatus,
+            target.isDeferred()));
     documentRepository.flush();
     publishCompletenessChanges(source.getExpedienteId(), before);
     return target;
@@ -528,6 +531,24 @@ public class DocumentService implements DocumentsApi {
     return document;
   }
 
+  /**
+   * El asesor elige qué pide en la primera entrega y qué puede subir el cliente
+   * después. Si un documento "para después" vuelve a pedirse ahora y el cliente
+   * ya había enviado, el expediente vuelve a pedirle documentos.
+   */
+  public Document changeDeferred(UUID documentId, boolean deferred, Actor actor) {
+    Document document = get(documentId);
+    if (document.isDeferred() == deferred) {
+      return document;
+    }
+    Completeness before = completenessOf(document.getExpedienteId());
+    document.changeDeferred(deferred);
+    events.publishEvent(new DocumentDeferralChanged(document.getExpedienteId(), documentId, document.getType(), deferred, actor));
+    documentRepository.flush();
+    publishCompletenessChanges(document.getExpedienteId(), before);
+    return document;
+  }
+
   public Document requestAgain(UUID documentId, Actor actor) {
     Document document = get(documentId);
     Completeness before = completenessOf(document.getExpedienteId());
@@ -547,7 +568,7 @@ public class DocumentService implements DocumentsApi {
     List<Document> required = documentRepository.findByExpedienteId(expedienteId).stream().filter(Document::isRequired).toList();
     return new Completeness(
         !required.isEmpty(),
-        required.stream().anyMatch(d -> d.getStatus() == DocumentStatus.PENDING),
+        required.stream().anyMatch(d -> d.getStatus() == DocumentStatus.PENDING && !d.isDeferred()),
         !required.isEmpty() && required.stream().allMatch(Document::isSatisfiedForSubmission),
         !required.isEmpty() && required.stream().allMatch(Document::isSatisfiedForApproval));
   }

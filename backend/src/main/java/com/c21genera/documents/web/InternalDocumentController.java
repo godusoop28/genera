@@ -30,6 +30,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -144,6 +145,17 @@ public class InternalDocumentController {
     CurrentUser user = CurrentUser.from(jwt);
     requireDocument(documentId, jwt);
     return toResponse(documentService.markNotApplicable(documentId, request.justification(), user.toActor()));
+  }
+
+  public record DeferralRequest(boolean deferred) {}
+
+  /** Quien prepara la liga decide qué se pide en la primera entrega y qué puede subir el cliente después. */
+  @PutMapping("/api/v1/internal/documents/{documentId}/deferral")
+  @PreAuthorize("hasAuthority('PUBLIC_LINK_GENERATE')")
+  public DocumentResponse changeDeferral(@PathVariable UUID documentId, @RequestBody DeferralRequest request, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = CurrentUser.from(jwt);
+    requireDocument(documentId, jwt);
+    return toResponse(documentService.changeDeferred(documentId, request.deferred(), user.toActor()));
   }
 
   @PostMapping("/api/v1/internal/documents/{documentId}/request-again")

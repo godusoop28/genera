@@ -258,7 +258,12 @@ export function PublicPortal({ token }: { token: string }) {
             />
           ) : null}
           {shownStep === 5 ? (
-            <ConfirmationStep expediente={expediente} onEditOwners={canEditOwners(expediente) ? () => goTo(3) : undefined} />
+            <ConfirmationStep
+              token={token}
+              expediente={expediente}
+              onEditOwners={canEditOwners(expediente) ? () => goTo(3) : undefined}
+              onUploadLater={() => goTo(4)}
+            />
           ) : null}
         </div>
       </main>
@@ -757,7 +762,11 @@ function DocumentsStep({
   }, [load, token]);
 
   const names = Object.fromEntries(participants.map((p) => [p.id, p.displayName]));
-  const required = (documents ?? []).filter((d) => d.required);
+  // Lo que el asesor dejó para después (y aún no se sube) no impide enviar lo demás.
+  const isLater = (d: PublicDocumentResponse) => d.required && d.deferred && d.status === "PENDING";
+  const later = (documents ?? []).filter(isLater);
+  const now = (documents ?? []).filter((d) => !isLater(d));
+  const required = now.filter((d) => d.required);
   // Solo se le pide corregir al cliente lo que el equipo devolvió o lo que de verdad no se pudo leer.
   const toFix = (documents ?? []).filter((d) => d.status === "RETURNED" || d.status === "REJECTED" || d.qualityIssue);
   const allRequiredUploaded = documents !== null && required.every((d) => d.status !== "PENDING");
@@ -797,7 +806,7 @@ function DocumentsStep({
           <p className="text-sm text-muted">Cargando…</p>
         ) : (
           <div className="flex flex-col gap-3">
-            {documents.map((doc) => (
+            {now.map((doc) => (
               <PublicDocumentRow
                 key={doc.id}
                 token={token}
@@ -809,6 +818,26 @@ function DocumentsStep({
           </div>
         )}
       </Card>
+
+      {later.length > 0 ? (
+        <Card>
+          <CardHeader
+            title="Puedes subirlos después"
+            description="Tu asesor no los necesita todavía: súbelos cuando los tengas, desde esta misma liga. No impiden que envíes lo de arriba."
+          />
+          <div className="flex flex-col gap-3">
+            {later.map((doc) => (
+              <PublicDocumentRow
+                key={doc.id}
+                token={token}
+                document={doc}
+                participantName={doc.participantId ? names[doc.participantId] : undefined}
+                onUploaded={load}
+              />
+            ))}
+          </div>
+        </Card>
+      ) : null}
 
       <Card>
         <div className="flex items-start gap-3">
@@ -834,7 +863,11 @@ function DocumentsStep({
       {error ? <p className="text-sm text-danger-text">{error}</p> : null}
       {canSubmit ? (
         <div className="flex flex-col items-end gap-2">
-          {!allRequiredUploaded ? <p className="text-xs text-muted">Carga todos los documentos obligatorios para poder enviarlos.</p> : null}
+          {!allRequiredUploaded ? (
+            <p className="text-xs text-muted">
+              Carga los documentos que se piden ahora para poder enviarlos{later.length > 0 ? "; los de después puedes subirlos más adelante" : ""}.
+            </p>
+          ) : null}
           <Button size="lg" disabled={!allRequiredUploaded || submitting} onClick={handleSubmit}>
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
             Enviar documentación
@@ -911,6 +944,7 @@ function PublicDocumentRow({
           <span className="text-sm font-medium text-obsessed">{documentTypeLabel(doc.type)}</span>
           {participantName ? <span className="text-sm text-muted"> — {participantName}</span> : null}
           {!doc.required ? <span className="ml-2 text-xs text-muted">(opcional)</span> : null}
+          {doc.required && doc.deferred && doc.status === "PENDING" ? <span className="ml-2 text-xs text-muted">(cuando lo tengas)</span> : null}
         </div>
         <div className="flex items-center gap-2">
           {doc.processing ? (
@@ -960,11 +994,42 @@ function PublicDocumentRow({
   );
 }
 
-function ConfirmationStep({ expediente, onEditOwners }: { expediente: PublicExpedienteResponse; onEditOwners?: () => void }) {
+function ConfirmationStep({
+  token,
+  expediente,
+  onEditOwners,
+  onUploadLater,
+}: {
+  token: string;
+  expediente: PublicExpedienteResponse;
+  onEditOwners?: () => void;
+  onUploadLater: () => void;
+}) {
+  // Documentos que el asesor dejó para después: se le recuerdan al cliente aquí.
+  const [laterCount, setLaterCount] = useState(0);
+  useEffect(() => {
+    listPublicDocuments(token)
+      .then((docs) => setLaterCount(docs.filter((d) => d.required && d.deferred && d.status === "PENDING").length))
+      .catch(() => undefined);
+  }, [token]);
+
   return (
     <Card>
       <CardHeader title="Estado de tu trámite" />
       <p className="text-sm text-obsessed">{clientStatusText[expediente.status]}</p>
+      {laterCount > 0 ? (
+        <div className="mt-4 rounded-xl border border-gold/40 bg-gold/10 p-4">
+          <p className="text-sm text-obsessed">
+            {laterCount === 1
+              ? "Queda 1 documento que puedes subir cuando lo tengas."
+              : `Quedan ${laterCount} documentos que puedes subir cuando los tengas.`}{" "}
+            Se necesitan antes de preparar tu contrato.
+          </p>
+          <Button variant="secondary" size="sm" className="mt-3" onClick={onUploadLater}>
+            <Upload className="h-4 w-4" aria-hidden /> Subir documentos pendientes
+          </Button>
+        </div>
+      ) : null}
       <p className="mt-3 text-sm text-muted">
         Te avisaremos por correo cuando haya algo que hacer. Si necesitas corregir un documento, vuelve a esta misma liga.
       </p>

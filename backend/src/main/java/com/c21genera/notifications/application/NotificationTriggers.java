@@ -138,11 +138,21 @@ class NotificationTriggers {
   void on(DocumentVersionUploaded event) {
     boolean byClient = event.actor() == null || !event.actor().isStaff();
     boolean correction = "RETURNED".equals(event.previousStatus()) || "REJECTED".equals(event.previousStatus());
-    if (!byClient || !correction) {
+    // Un documento que se dejó "para después" llega cuando el cliente lo consigue, ya fuera de la entrega inicial.
+    boolean laterDocument = event.deferred() && "PENDING".equals(event.previousStatus());
+    if (!byClient || (!correction && !laterDocument)) {
       return;
     }
     ExpedienteSummary e = expedientes.getSummary(event.expedienteId());
     String label = DocumentTypeLabels.of(event.type());
+    if (laterDocument) {
+      toAdvisor(
+          e,
+          "Documento pendiente cargado",
+          "Expediente " + e.folio() + ": el cliente subió " + label,
+          "El cliente del expediente " + e.folio() + " subió \"" + label + "\", que había quedado para después. Siguiente paso: revisarlo.");
+      return;
+    }
     toAdvisor(
         e,
         "Corrección cargada",
@@ -156,8 +166,9 @@ class NotificationTriggers {
     toAdvisor(
         e,
         "Documentos completos por revisar",
-        "Expediente " + e.folio() + ": el cliente cargó todos sus documentos",
-        "El cliente del expediente " + e.folio() + " (" + e.ownerDisplayName() + ") ya cargó todos los documentos obligatorios. Siguiente paso: revisarlos.");
+        "Expediente " + e.folio() + ": el cliente cargó los documentos que se le pidieron",
+        "El cliente del expediente " + e.folio() + " (" + e.ownerDisplayName() + ") ya cargó los documentos que se le pidieron en esta entrega"
+            + " (los que se dejaron para después puede subirlos más adelante). Siguiente paso: revisarlos.");
   }
 
   @ApplicationModuleListener

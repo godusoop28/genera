@@ -120,4 +120,17 @@ class DocumentReviewRulesTest {
     assertThat(document.getLastReviewReasonCode()).isEqualTo(ReturnReasonCode.MISSING_PAGE);
     assertThat(document.getLastReviewComment()).isEqualTo("Falta la hoja 2");
   }
+
+  @Test
+  void aDocumentLeftForLaterDoesNotBlockTheFirstSubmissionButStillBlocksApproval() {
+    Document deed = new Document(UUID.randomUUID(), "escritura", DocumentTypeCode.DEED, null, true);
+    assertThat(deed.isSatisfiedForSubmission()).isFalse();
+
+    deed.changeDeferred(true);
+    assertThat(deed.isSatisfiedForSubmission()).isTrue();
+    assertThat(deed.isSatisfiedForApproval()).isFalse();
+
+    deed.applyReview(com.c21genera.shared.domain.ReviewDecision.ACCEPTED, null, null, Instant.now());
+    assertThatThrownBy(() -> deed.changeDeferred(false)).isInstanceOf(ConflictException.class);
+  }
 }
