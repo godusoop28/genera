@@ -147,7 +147,7 @@ public class InternalDocumentController {
     return toResponse(documentService.markNotApplicable(documentId, request.justification(), user.toActor()));
   }
 
-  public record DeferralRequest(boolean deferred) {}
+  public record DeferralRequest(boolean deferred, String reason) {}
 
   /** Quien prepara la liga decide qué se pide en la primera entrega y qué puede subir el cliente después. */
   @PutMapping("/api/v1/internal/documents/{documentId}/deferral")
@@ -155,7 +155,7 @@ public class InternalDocumentController {
   public DocumentResponse changeDeferral(@PathVariable UUID documentId, @RequestBody DeferralRequest request, @AuthenticationPrincipal Jwt jwt) {
     CurrentUser user = CurrentUser.from(jwt);
     requireDocument(documentId, jwt);
-    return toResponse(documentService.changeDeferred(documentId, request.deferred(), user.toActor()));
+    return toResponse(documentService.changeDeferred(documentId, request.deferred(), request.reason(), user.toActor()));
   }
 
   @PostMapping("/api/v1/internal/documents/{documentId}/request-again")

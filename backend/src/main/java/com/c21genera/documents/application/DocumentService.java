@@ -63,6 +63,7 @@ public class DocumentService implements DocumentsApi {
 
   /** Una justificación de excepción o de "No aplica" debe explicar algo, no solo "ok". */
   static final int MIN_JUSTIFICATION_LENGTH = 15;
+  static final int MIN_DEFERRAL_REASON_LENGTH = 10;
 
   private final DocumentRepository documentRepository;
   private final DocumentVersionRepository versionRepository;
@@ -534,16 +535,23 @@ public class DocumentService implements DocumentsApi {
   /**
    * El asesor elige qué pide en la primera entrega y qué puede subir el cliente
    * después. Si un documento "para después" vuelve a pedirse ahora y el cliente
-   * ya había enviado, el expediente vuelve a pedirle documentos.
+   * ya había enviado, el expediente vuelve a pedirle documentos. Dejarlo para
+   * después es una excepción: exige la razón, para que quede claro por qué no se pidió.
    */
-  public Document changeDeferred(UUID documentId, boolean deferred, Actor actor) {
+  public Document changeDeferred(UUID documentId, boolean deferred, String reason, Actor actor) {
     Document document = get(documentId);
     if (document.isDeferred() == deferred) {
       return document;
     }
+    String cleaned = blankToNull(reason);
+    if (deferred && (cleaned == null || cleaned.length() < MIN_DEFERRAL_REASON_LENGTH)) {
+      throw new UnprocessableException(
+          "DEFERRAL_REASON_REQUIRED",
+          "Escribe por qué este documento no se pide en la primera entrega (al menos " + MIN_DEFERRAL_REASON_LENGTH + " caracteres).");
+    }
     Completeness before = completenessOf(document.getExpedienteId());
-    document.changeDeferred(deferred);
-    events.publishEvent(new DocumentDeferralChanged(document.getExpedienteId(), documentId, document.getType(), deferred, actor));
+    document.changeDeferred(deferred, cleaned);
+    events.publishEvent(new DocumentDeferralChanged(document.getExpedienteId(), documentId, document.getType(), deferred, cleaned, actor));
     documentRepository.flush();
     publishCompletenessChanges(document.getExpedienteId(), before);
     return document;

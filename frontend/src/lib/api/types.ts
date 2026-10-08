@@ -339,6 +339,8 @@ export interface DocumentResponse {
   required: boolean;
   /** El cliente puede subirlo después: no impide su primera entrega. */
   deferred: boolean;
+  /** Por qué el asesor no lo pidió en la primera entrega. */
+  deferralReason: string | null;
   status: BackendDocumentStatus;
   currentVersionNumber: number;
   notApplicableJustification: string | null;

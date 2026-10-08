@@ -51,9 +51,9 @@ export function rejectDocument(documentId: string, reasonCode: ReturnReasonCode,
   return apiClient.post<DocumentResponse>(`/internal/documents/${documentId}/reject`, { reasonCode, comment });
 }
 
-/** deferred=true: el cliente puede subirlo después; false: se pide en la primera entrega. */
-export function setDocumentDeferred(documentId: string, deferred: boolean) {
-  return apiClient.put<DocumentResponse>(`/internal/documents/${documentId}/deferral`, { deferred });
+/** deferred=true: el cliente puede subirlo después (con la razón de la excepción); false: se pide en la primera entrega. */
+export function setDocumentDeferred(documentId: string, deferred: boolean, reason?: string) {
+  return apiClient.put<DocumentResponse>(`/internal/documents/${documentId}/deferral`, { deferred, reason });
 }
 
 export function markNotApplicable(documentId: string, justification: string) {

@@ -54,8 +54,8 @@ public final class DocumentEvents {
   public record DocumentApplicabilityChanged(
       UUID expedienteId, UUID documentId, DocumentTypeCode type, boolean notApplicable, String justification, Actor actor) {}
 
-  /** deferred=true: el cliente puede subirlo después; false: se pide desde la primera entrega. */
-  public record DocumentDeferralChanged(UUID expedienteId, UUID documentId, DocumentTypeCode type, boolean deferred, Actor actor) {}
+  /** deferred=true: el cliente puede subirlo después (reason: por qué); false: se pide desde la primera entrega. */
+  public record DocumentDeferralChanged(UUID expedienteId, UUID documentId, DocumentTypeCode type, boolean deferred, String reason, Actor actor) {}
 
   /** Se publica cuando TODOS los documentos obligatorios de un expediente quedan ACCEPTED. */
   public record AllRequiredDocumentsApproved(UUID expedienteId) {}

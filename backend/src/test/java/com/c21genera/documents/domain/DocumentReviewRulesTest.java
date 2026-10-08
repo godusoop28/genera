@@ -126,11 +126,11 @@ class DocumentReviewRulesTest {
     Document deed = new Document(UUID.randomUUID(), "escritura", DocumentTypeCode.DEED, null, true);
     assertThat(deed.isSatisfiedForSubmission()).isFalse();
 
-    deed.changeDeferred(true);
+    deed.changeDeferred(true, "El cliente la está tramitando");
     assertThat(deed.isSatisfiedForSubmission()).isTrue();
     assertThat(deed.isSatisfiedForApproval()).isFalse();
 
     deed.applyReview(com.c21genera.shared.domain.ReviewDecision.ACCEPTED, null, null, Instant.now());
-    assertThatThrownBy(() -> deed.changeDeferred(false)).isInstanceOf(ConflictException.class);
+    assertThatThrownBy(() -> deed.changeDeferred(false, null)).isInstanceOf(ConflictException.class);
   }
 }

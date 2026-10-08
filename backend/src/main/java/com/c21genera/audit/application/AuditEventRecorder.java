@@ -235,7 +235,10 @@ class AuditEventRecorder {
   @ApplicationModuleListener
   void on(DocumentDeferralChanged event) {
     String label = DocumentTypeLabels.of(event.type());
-    String message = event.deferred() ? "Dejó " + label + " para que el cliente lo suba después" : "Pidió " + label + " desde ahora";
+    String message =
+        event.deferred()
+            ? "Dejó " + label + " para que el cliente lo suba después. Razón: " + event.reason()
+            : "Pidió " + label + " desde ahora";
     record("DocumentDeferralChanged", "Document", event.documentId(), event.actor(), message);
     activity(event.expedienteId(), ActivityCategory.DOCUMENT, event.deferred() ? "DOCUMENT_DEFERRED" : "DOCUMENT_REQUESTED_NOW",
         event.actor(), event.documentId(), label, message);

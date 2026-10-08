@@ -1,6 +1,7 @@
 "use client";
 
 import { Card, CardHeader } from "@/components/ui/Card";
+import { ReasonModal } from "@/components/ui/ReasonModal";
 import { useToast } from "@/components/ui/Toast";
 import { listDocuments, setDocumentDeferred } from "@/lib/api/documents";
 import type { DocumentResponse } from "@/lib/api/types";
@@ -21,6 +22,8 @@ export function DocumentTimingCard({ expediente, participants }: Pick<Expediente
   const { showToast } = useToast();
   const [documents, setDocuments] = useState<DocumentResponse[] | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
+  // Dejar un documento para después es una excepción: se pide la razón antes de guardarlo.
+  const [deferring, setDeferring] = useState<DocumentResponse | null>(null);
 
   useEffect(() => {
     listDocuments(expediente.id)
@@ -49,12 +52,12 @@ export function DocumentTimingCard({ expediente, participants }: Pick<Expediente
   ].filter((g) => g.docs.length > 0);
   const laterCount = open.filter((d) => d.deferred).length;
 
-  const change = async (docs: DocumentResponse[], deferred: boolean) => {
+  const change = async (docs: DocumentResponse[], deferred: boolean, reason?: string) => {
     const targets = docs.filter((d) => d.deferred !== deferred);
     if (targets.length === 0) return;
     setSaving(targets.length === 1 ? targets[0].id : "all");
     try {
-      const updated = await Promise.all(targets.map((d) => setDocumentDeferred(d.id, deferred)));
+      const updated = await Promise.all(targets.map((d) => setDocumentDeferred(d.id, deferred, reason)));
       const byId = Object.fromEntries(updated.map((d) => [d.id, d]));
       setDocuments((prev) => prev?.map((d) => byId[d.id] ?? d) ?? null);
     } catch (err) {
@@ -100,9 +103,12 @@ export function DocumentTimingCard({ expediente, participants }: Pick<Expediente
                         className="h-4 w-4 shrink-0 accent-dark-gold"
                         checked={now}
                         disabled={saving !== null}
-                        onChange={(e) => change([doc], !e.target.checked)}
+                        onChange={(e) => (e.target.checked ? change([doc], false) : setDeferring(doc))}
                       />
-                      <span className="min-w-0 flex-1 break-words text-sm text-obsessed">{documentTypeLabel(doc.type)}</span>
+                      <span className="min-w-0 flex-1 break-words text-sm text-obsessed">
+                        {documentTypeLabel(doc.type)}
+                        {doc.deferred && doc.deferralReason ? <span className="block text-xs text-muted">Razón: {doc.deferralReason}</span> : null}
+                      </span>
                       <span className={cn("shrink-0 text-xs font-medium", now ? "text-dark-gold" : "text-muted")}>{now ? "Ahora" : "Después"}</span>
                     </label>
                   </li>
@@ -112,6 +118,21 @@ export function DocumentTimingCard({ expediente, participants }: Pick<Expediente
           </fieldset>
         ))}
       </div>
+      <ReasonModal
+        open={deferring !== null}
+        title={deferring ? `¿Por qué no pides "${documentTypeLabel(deferring.type)}" ahora?` : ""}
+        description="El cliente podrá subirlo después desde su misma liga. Escribe la razón de esta excepción: queda en el expediente y en la bitácora para que el equipo entienda por qué no se pidió."
+        label="Razón"
+        placeholder="Ej. El cliente está tramitando el certificado de libertad de gravamen y lo tendrá la próxima semana."
+        minLength={10}
+        confirmLabel="Dejar para después"
+        onCancel={() => setDeferring(null)}
+        onConfirm={async (reason) => {
+          const doc = deferring;
+          setDeferring(null);
+          if (doc) await change([doc], true, reason);
+        }}
+      />
     </Card>
   );
 }

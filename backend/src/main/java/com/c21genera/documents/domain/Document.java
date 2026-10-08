@@ -48,6 +48,9 @@ public class Document extends AuditableEntity {
   @Column(nullable = false)
   private boolean deferred;
 
+  /** Por qué el asesor no lo pidió en la primera entrega (excepción justificada). */
+  private String deferralReason;
+
   @Enumerated(EnumType.STRING)
   @Column(nullable = false, length = 24)
   private DocumentStatus status;
@@ -161,16 +164,21 @@ public class Document extends AuditableEntity {
   }
 
   /** Pedirlo desde la primera entrega o dejar que el cliente lo suba después. */
-  public void changeDeferred(boolean deferred) {
+  public void changeDeferred(boolean deferred, String reason) {
     if (status == DocumentStatus.ACCEPTED || status == DocumentStatus.NOT_APPLICABLE) {
       throw new ConflictException(
           "DOCUMENT_ALREADY_RESOLVED", "Este documento ya está aceptado o marcado como \"No aplica\"; no hace falta decidir cuándo pedirlo.");
     }
     this.deferred = deferred;
+    this.deferralReason = deferred ? reason : null;
   }
 
   public boolean isDeferred() {
     return deferred;
+  }
+
+  public String getDeferralReason() {
+    return deferralReason;
   }
 
   /** Cuenta como resuelto para aprobar la documentación: aceptado, o "No aplica" justificado. */
