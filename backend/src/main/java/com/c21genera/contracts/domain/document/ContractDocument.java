@@ -53,7 +53,19 @@ public record ContractDocument(String title, boolean draft, List<String> missing
   /** Barra sombreada centrada, como "Declaraciones" / "Cláusulas" / "Anexo A" en el modelo registrado. */
   public record SectionHeading(String text) implements Block {}
 
-  public record Paragraph(List<Span> spans, Align align, int indent) implements Block {
+  /**
+   * fontSize: 0 = tamaño normal del cuerpo (9 pt, como el modelo registrado);
+   * otro valor = tamaño explícito (título, avisos en letra menor, Anexo E).
+   */
+  public record Paragraph(List<Span> spans, Align align, int indent, float fontSize) implements Block {
+
+    public Paragraph(List<Span> spans, Align align, int indent) {
+      this(spans, align, indent, 0);
+    }
+
+    public Paragraph withFontSize(float size) {
+      return new Paragraph(spans, align, indent, size);
+    }
 
     public static Paragraph of(Span... spans) {
       return new Paragraph(List.of(spans), Align.JUSTIFY, 0);
@@ -123,7 +135,11 @@ public record ContractDocument(String title, boolean draft, List<String> missing
 
   public record PageBreak() implements Block {}
 
-  /** Líneas de firma con el nombre/carácter debajo, acomodadas en dos columnas. */
+  /**
+   * Recuadros de firma con la leyenda ("Firma del cliente") y el nombre/carácter
+   * debajo, acomodados en dos columnas como en el modelo registrado; un solo
+   * firmante queda centrado.
+   */
   public record SignatureLines(List<String> labels) implements Block {}
 
   /** Imagen PNG (p. ej. el trazo de una firma) con su pie; widthPoints: ancho en el PDF. */

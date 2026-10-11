@@ -40,7 +40,7 @@ class ContractCalculatorTest {
     assertThat(result.penalty()).isEqualByComparingTo("300000.00");
     assertThat(result.exclusivityDays()).isEqualTo(180);
     assertThat(result.exclusivityEndDate()).isEqualTo(LocalDate.of(2027, 3, 13));
-    assertThat(result.priceWritten()).isEqualTo("SEIS MILLONES PESOS 00/100 M.N.");
+    assertThat(result.priceWritten()).isEqualTo("SEIS MILLONES DE PESOS 00/100 M.N.");
   }
 
   @Test

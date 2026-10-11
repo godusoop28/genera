@@ -26,9 +26,14 @@ import org.apache.poi.xwpf.usermodel.XWPFRun;
 import org.apache.poi.xwpf.usermodel.XWPFTable;
 import org.apache.poi.xwpf.usermodel.XWPFTableCell;
 import org.apache.poi.xwpf.usermodel.XWPFTableRow;
+import org.apache.poi.xwpf.usermodel.LineSpacingRule;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTBorder;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTShd;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTblWidth;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTcBorders;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTcPr;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.STBorder;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.STHeightRule;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STShd;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STTblWidth;
 import org.springframework.core.io.ClassPathResource;
@@ -44,7 +49,10 @@ import org.springframework.stereotype.Component;
 public class DocxContractRenderer {
 
   private static final String TEMPLATE = "contract/base-template.docx";
-  private static final int FONT_HALF_POINTS = 18;
+  private static final double FONT_SIZE = 9;
+  /** Las tablas del modelo van en 8 pt, interlineado sencillo y sin espacio después. */
+  private static final double TABLE_FONT_SIZE = 8;
+  private static final int SIGNATURE_BOX_TWIPS = 900;
   private static final int TABLE_WIDTH_TWIPS = 8828;
   private static final String SHADE = "DEEAF6";
 
@@ -95,16 +103,16 @@ public class DocxContractRenderer {
 
   private void write(XWPFDocument docx, Block block) {
     switch (block) {
-      case Paragraph p -> writeParagraph(docx.createParagraph(), p.spans(), p.align(), p.indent());
+      case Paragraph p -> writeParagraph(docx.createParagraph(), p.spans(), p.align(), p.indent(), p.fontSize() > 0 ? p.fontSize() : FONT_SIZE);
       case SectionHeading h -> writeHeading(docx, h.text());
       case Table t -> writeTable(docx, t);
       case PageBreak ignored -> docx.createParagraph().createRun().addBreak(BreakType.PAGE);
       case SignatureLines s -> writeSignatures(docx, s.labels());
-      case ContractDocument.Image image -> writeParagraph(docx.createParagraph(), List.of(Span.t(image.caption())), Align.CENTER, 0);
+      case ContractDocument.Image image -> writeParagraph(docx.createParagraph(), List.of(Span.t(image.caption())), Align.CENTER, 0, FONT_SIZE);
     }
   }
 
-  private void writeParagraph(XWPFParagraph paragraph, List<Span> spans, Align align, int indent) {
+  private void writeParagraph(XWPFParagraph paragraph, List<Span> spans, Align align, int indent, double fontSize) {
     paragraph.setAlignment(
         switch (align) {
           case LEFT -> ParagraphAlignment.LEFT;
@@ -118,7 +126,7 @@ public class DocxContractRenderer {
       String[] lines = span.text().split("\n", -1);
       for (int i = 0; i < lines.length; i++) {
         XWPFRun run = paragraph.createRun();
-        run.setFontSize(FONT_HALF_POINTS / 2);
+        run.setFontSize(fontSize);
         run.setBold(span.bold());
         if (span.pending()) {
           run.setTextHighlightColor("yellow");
@@ -138,7 +146,8 @@ public class DocxContractRenderer {
     XWPFTableCell cell = table.getRow(0).getCell(0);
     shade(cell);
     XWPFParagraph p = cell.getParagraphs().getFirst();
-    writeParagraph(p, List.of(Span.b(text)), Align.CENTER, 0);
+    writeParagraph(p, List.of(Span.b(text)), Align.CENTER, 0, FONT_SIZE);
+    compact(p);
     docx.createParagraph();
   }
 
@@ -171,7 +180,8 @@ public class DocxContractRenderer {
         boolean first = true;
         for (List<Span> paragraph : cell.paragraphs()) {
           XWPFParagraph xp = first ? xc.getParagraphs().getFirst() : xc.addParagraph();
-          writeParagraph(xp, paragraph, cell.align(), 0);
+          writeParagraph(xp, paragraph, cell.align(), 0, TABLE_FONT_SIZE);
+          compact(xp);
           first = false;
         }
         column += span;
@@ -184,22 +194,62 @@ public class DocxContractRenderer {
     docx.createParagraph();
   }
 
+  /**
+   * Recuadros de firma como en el modelo: un rectángulo por firmante y debajo
+   * "Firma de ..." en negritas (y nombre/carácter). Dos por renglón; uno solo va
+   * centrado.
+   */
   private void writeSignatures(XWPFDocument docx, List<String> labels) {
-    int rows = (labels.size() + 1) / 2;
-    XWPFTable table = docx.createTable(rows, 2);
-    setTableWidth(table);
-    table.removeBorders();
-    for (int i = 0; i < labels.size(); i++) {
-      XWPFTableCell cell = table.getRow(i / 2).getCell(i % 2);
-      XWPFParagraph space = cell.getParagraphs().getFirst();
-      space.setAlignment(ParagraphAlignment.CENTER);
-      space.createRun().addBreak();
-      XWPFParagraph line = cell.addParagraph();
-      writeParagraph(line, List.of(Span.t("______________________________")), Align.CENTER, 0);
-      XWPFParagraph label = cell.addParagraph();
-      writeParagraph(label, List.of(Span.b(labels.get(i))), Align.CENTER, 0);
+    for (int i = 0; i < labels.size(); i += 2) {
+      boolean single = i + 1 >= labels.size();
+      List<Integer> weights = single ? List.of(28, 44, 28) : List.of(44, 12, 44);
+      int[] boxColumns = single ? new int[] {1} : new int[] {0, 2};
+      XWPFTable table = docx.createTable(2, 3);
+      setTableWidth(table);
+      table.removeBorders();
+      table.getRow(0).setHeight(SIGNATURE_BOX_TWIPS);
+      table.getRow(0).getCtRow().getTrPr().getTrHeightArray(0).setHRule(STHeightRule.EXACT);
+      for (int c = 0; c < 3; c++) {
+        for (int r = 0; r < 2; r++) {
+          CTTcPr pr = tcPr(table.getRow(r).getCell(c));
+          CTTblWidth width = pr.isSetTcW() ? pr.getTcW() : pr.addNewTcW();
+          width.setType(STTblWidth.DXA);
+          width.setW(BigInteger.valueOf((long) TABLE_WIDTH_TWIPS * weights.get(c) / 100));
+        }
+      }
+      for (int k = 0; k < boxColumns.length; k++) {
+        int column = boxColumns[k];
+        box(table.getRow(0).getCell(column));
+        XWPFTableCell labelCell = table.getRow(1).getCell(column);
+        String[] parts = labels.get(i + k).split("\n");
+        for (int p = 0; p < parts.length; p++) {
+          XWPFParagraph label = p == 0 ? labelCell.getParagraphs().getFirst() : labelCell.addParagraph();
+          writeParagraph(label, List.of(p == 0 ? Span.b(parts[p]) : Span.t(parts[p])), Align.CENTER, 0, p == 0 ? FONT_SIZE : TABLE_FONT_SIZE);
+          compact(label);
+        }
+      }
+      docx.createParagraph();
     }
-    docx.createParagraph();
+  }
+
+  private static CTTcPr tcPr(XWPFTableCell cell) {
+    return cell.getCTTc().isSetTcPr() ? cell.getCTTc().getTcPr() : cell.getCTTc().addNewTcPr();
+  }
+
+  private static void box(XWPFTableCell cell) {
+    CTTcPr pr = tcPr(cell);
+    CTTcBorders borders = pr.isSetTcBorders() ? pr.getTcBorders() : pr.addNewTcBorders();
+    for (CTBorder border : List.of(borders.addNewTop(), borders.addNewBottom(), borders.addNewLeft(), borders.addNewRight())) {
+      border.setVal(STBorder.SINGLE);
+      border.setSz(BigInteger.valueOf(6));
+      border.setColor("000000");
+    }
+  }
+
+  /** Interlineado sencillo sin espacio posterior (el estilo base del modelo usa 1.5 y 8 pt después). */
+  private static void compact(XWPFParagraph paragraph) {
+    paragraph.setSpacingAfter(0);
+    paragraph.setSpacingBetween(1, LineSpacingRule.AUTO);
   }
 
   private static void setTableWidth(XWPFTable table) {

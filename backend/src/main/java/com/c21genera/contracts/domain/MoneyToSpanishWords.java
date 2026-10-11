@@ -26,8 +26,30 @@ public final class MoneyToSpanishWords {
     }
     BigDecimal rounded = amount.setScale(2, RoundingMode.HALF_UP);
     long pesos = rounded.longValue();
-    int cents = rounded.subtract(BigDecimal.valueOf(pesos)).movePointRight(2).setScale(0, RoundingMode.HALF_UP).intValue();
-    return "%s PESOS %02d/100 M.N.".formatted(integerToWords(pesos), cents);
+    return "%s %02d/100 M.N.".formatted(pesosInWords(pesos), cents(rounded, pesos));
+  }
+
+  /**
+   * Redacción del modelo registrado ante PROFECO: "DOS MILLONES QUINIENTOS MIL
+   * PESOS con 00/100 Moneda Nacional" (va entre paréntesis después de "$... M.N.").
+   */
+  public static String contractWording(BigDecimal amount) {
+    if (amount == null || amount.signum() <= 0) {
+      return "";
+    }
+    BigDecimal rounded = amount.setScale(2, RoundingMode.HALF_UP);
+    long pesos = rounded.longValue();
+    return "%s con %02d/100 Moneda Nacional".formatted(pesosInWords(pesos), cents(rounded, pesos));
+  }
+
+  /** Millones exactos llevan "DE": "SEIS MILLONES DE PESOS", "UN MILLÓN DE PESOS". */
+  private static String pesosInWords(long pesos) {
+    boolean exactMillions = pesos >= 1_000_000 && pesos % 1_000_000 == 0;
+    return integerToWords(pesos) + (exactMillions ? " DE PESOS" : pesos == 1 ? " PESO" : " PESOS");
+  }
+
+  private static int cents(BigDecimal rounded, long pesos) {
+    return rounded.subtract(BigDecimal.valueOf(pesos)).movePointRight(2).setScale(0, RoundingMode.HALF_UP).intValue();
   }
 
   private static String chunkToWords(int n) {

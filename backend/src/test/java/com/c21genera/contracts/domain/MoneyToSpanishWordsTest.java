@@ -9,7 +9,7 @@ class MoneyToSpanishWordsTest {
 
   @Test
   void sixMillionPesosExact() {
-    assertThat(MoneyToSpanishWords.convert(new BigDecimal("6000000.00"))).isEqualTo("SEIS MILLONES PESOS 00/100 M.N.");
+    assertThat(MoneyToSpanishWords.convert(new BigDecimal("6000000.00"))).isEqualTo("SEIS MILLONES DE PESOS 00/100 M.N.");
   }
 
   @Test
@@ -21,6 +21,15 @@ class MoneyToSpanishWordsTest {
   @Test
   void oneHundredExact() {
     assertThat(MoneyToSpanishWords.convert(new BigDecimal("100"))).isEqualTo("CIEN PESOS 00/100 M.N.");
+  }
+
+  @Test
+  void contractWordingFollowsTheRegisteredModel() {
+    // Modelo PROFECO: "$ ___ M.N. (___ con 00/100 Moneda Nacional)".
+    assertThat(MoneyToSpanishWords.contractWording(new BigDecimal("2500000"))).isEqualTo("DOS MILLONES QUINIENTOS MIL PESOS con 00/100 Moneda Nacional");
+    assertThat(MoneyToSpanishWords.contractWording(new BigDecimal("1000000"))).isEqualTo("UN MILLÓN DE PESOS con 00/100 Moneda Nacional");
+    assertThat(MoneyToSpanishWords.contractWording(new BigDecimal("145000.50"))).isEqualTo("CIENTO CUARENTA Y CINCO MIL PESOS con 50/100 Moneda Nacional");
+    assertThat(MoneyToSpanishWords.contractWording(null)).isEmpty();
   }
 
   @Test

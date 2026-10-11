@@ -53,6 +53,11 @@ import java.util.Map;
  */
 public final class ContractTemplate {
 
+  /** El título del modelo va en letra mayor que el cuerpo (9 pt). */
+  private static final float TITLE_FONT_SIZE = 11f;
+  /** Avisos REPEP y Anexo E: letra menor, como en el modelo. */
+  private static final float SMALL_FONT_SIZE = 8f;
+
   private static final DateTimeFormatter LONG_DATE = DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es-MX"));
 
   /** Preguntas de la declaración II.g según el tipo de inmueble (clave -> texto del modelo). */
@@ -113,14 +118,14 @@ public final class ContractTemplate {
 
   private void render() {
     ExpedienteSummary e = in.expediente();
-    blocks.add(new Paragraph(List.of(b(ContractReferenceData.TITLE)), Align.LEFT, 0));
+    blocks.add(new Paragraph(List.of(b(ContractReferenceData.TITLE)), Align.LEFT, 0, TITLE_FONT_SIZE));
     renderIntro();
 
     blocks.add(new SectionHeading("Declaraciones"));
     renderIntermediaryDeclarations();
     renderClientDeclarations();
     blocks.add(Paragraph.of(b("III. Declaran las partes que:")));
-    blocks.add(Paragraph.indented(t("a. Es su voluntad celebrar el presente contrato.")));
+    blocks.add(Paragraph.of(b("a."), t(" Es su voluntad celebrar el presente contrato.")));
 
     blocks.add(new SectionHeading("Cláusulas"));
     renderClauses();
@@ -132,7 +137,9 @@ public final class ContractTemplate {
     renderAnnexB();
     blocks.add(new PageBreak());
     renderAnnexC();
+    blocks.add(new PageBreak());
     renderAnnexD();
+    renderAnnexE();
 
     if (e.propertyCaseType() == PropertyCaseType.COMMERCIAL) {
       missing.add(
@@ -147,7 +154,9 @@ public final class ContractTemplate {
     spans.add(b(ContractReferenceData.INTERMEDIARY_LEGAL_NAME));
     spans.add(t(", quien comparece al presente acto jurídico a través de "));
     spans.add(b(ContractReferenceData.LEGAL_REPRESENTATIVE));
-    spans.add(t(" en su carácter de representante legal, a quien en lo sucesivo se le denominará la “intermediaria”, y por la otra, "));
+    spans.add(t(" en su carácter de "));
+    spans.add(b("representante legal"));
+    spans.add(t(", a quien en lo sucesivo se le denominará la “intermediaria”, y por la otra, "));
     spans.addAll(clientAppearance());
     spans.add(t(", a quien en lo sucesivo se le denominará el “cliente”, ambos sujetos contractuales que en su conjunto serán designados como “las partes”."));
     blocks.add(Paragraph.of(spans));
@@ -184,7 +193,7 @@ public final class ContractTemplate {
   private void renderIntermediaryDeclarations() {
     blocks.add(Paragraph.of(b("I. Declara la intermediaria que:")));
     blocks.add(
-        Paragraph.indented(
+        Paragraph.of(
             t("a. En caso de ser persona jurídica. Es una sociedad mercantil de Responsabilidad Limitada de Capital Variable, legalmente constituida de conformidad con las Leyes de los Estados Unidos Mexicanos, según consta en el instrumento público "),
             b("número 10,186"),
             t(", "),
@@ -197,7 +206,7 @@ public final class ContractTemplate {
             b("N-2026010454"),
             t(", y que puede ser consultado por el cliente en el portal oficial del Registro Público de Comercio / SIGER de la Secretaría de Economía.")));
     blocks.add(
-        Paragraph.indented(
+        Paragraph.of(
             t("b. En caso de ser persona física representada o jurídica.- Su representante legal cuenta con facultades suficientes para obligarla en los términos y condiciones del presente contrato, lo cual se acredita en términos del instrumento público "),
             b("número 10,186, de fecha 24 de febrero de 2026"),
             t(", otorgado ante la fe de la "),
@@ -208,22 +217,22 @@ public final class ContractTemplate {
             b("N-2026010454"),
             t(", facultades que no le han sido revocadas ni modificadas en forma alguna. Tal documentación puede ser consultada por el cliente en el portal oficial del Registro Público de Comercio / SIGER de la Secretaría de Economía.")));
     blocks.add(
-        Paragraph.indented(
+        Paragraph.of(
             b("c. Su ocupación habitual y periódica / objeto social"),
             t(" versa sobre la prestación de servicios de intermediación para la compraventa de inmuebles, incluyendo aquellos destinados para casa habitación a favor de terceros, con el fin de poner en contacto a la oferta y a la demanda de dichos inmuebles para formalizar la compraventa de los mismos.")));
     blocks.add(
-        Paragraph.indented(
+        Paragraph.of(
             t("d. En caso de contar con algún certificado y/o pertenecer a alguna Cámara o Asociación.- Cuenta con autorización comercial para operar bajo el nombre comercial "),
             b(ContractReferenceData.INTERMEDIARY_COMMERCIAL_NAME.toUpperCase(Locale.ROOT)),
             t(", conforme a la documentación corporativa correspondiente; no se declara pertenencia a Cámara o Asociación adicional, salvo manifestación expresa y documental de la intermediaria.")));
     blocks.add(
-        Paragraph.indented(
+        Paragraph.of(
             t("e. Su domicilio es el ubicado en "),
             b(ContractReferenceData.INTERMEDIARY_ADDRESS),
             t(" y su Registro Federal de Contribuyentes es "),
             b(ContractReferenceData.INTERMEDIARY_RFC)));
     blocks.add(
-        Paragraph.indented(
+        Paragraph.of(
             b("f."), t(" Puso a disposición del cliente, la información y documentación especificada en los \"Anexo B y C\" del presente contrato.")));
   }
 
@@ -235,7 +244,7 @@ public final class ContractTemplate {
     if (e.personType() == PersonType.MORAL) {
       LegalDetails.CompanyData c = legal.company();
       blocks.add(
-          Paragraph.indented(
+          Paragraph.of(
               b("a.2. En caso de ser persona jurídica.-"),
               t(" Es una sociedad mercantil "),
               value(c == null ? null : c.companyType(), "tipo de sociedad (p. ej. Sociedad Anónima de Capital Variable)"),
@@ -257,12 +266,18 @@ public final class ContractTemplate {
               value(c == null ? null : c.mercantileFolio(), "folio mercantil"),
               t(".")));
     } else {
-      blocks.add(Paragraph.indented(b("a.1. En caso de ser persona física.-")));
+      boolean several = owners().size() > 1;
+      if (several || owners().isEmpty()) {
+        blocks.add(Paragraph.of(b("a.1. En caso de ser persona física.-")));
+      }
       for (ParticipantView owner : owners()) {
         String who = owner.fullName();
         List<Span> spans = new ArrayList<>();
-        if (owners().size() > 1) {
+        if (several) {
           spans.add(b(who + ": "));
+        } else {
+          spans.add(b("a.1. En caso de ser persona física.-"));
+          spans.add(t(" "));
         }
         spans.add(t("Es de nacionalidad "));
         spans.add(value(owner.nationality(), "nacionalidad de " + who));
@@ -277,7 +292,7 @@ public final class ContractTemplate {
         spans.add(t(" años; y su estado civil es "));
         spans.add(value(civilStatusLabel(owner.civilStatus(), owner.maritalRegime()), "estado civil de " + who));
         spans.add(t("."));
-        blocks.add(new Paragraph(spans, Align.JUSTIFY, 2));
+        blocks.add(new Paragraph(spans, Align.JUSTIFY, several ? 1 : 0));
       }
     }
 
@@ -286,8 +301,9 @@ public final class ContractTemplate {
     renderOwnership();
 
     blocks.add(
-        Paragraph.indented(
-            t("e. El inmueble referido en el inciso previo es "),
+        Paragraph.of(
+            b("e."),
+            t(" El inmueble referido en el inciso previo es "),
             b(propertyKind()),
             t(" y cuenta con las características señaladas en el \"Anexo A\" del presente contrato.")));
 
@@ -300,15 +316,17 @@ public final class ContractTemplate {
     boolean represented = e.personType() == PersonType.MORAL || e.signerCharacter() == SignerCharacter.APODERADO;
     if (!represented) {
       blocks.add(
-          Paragraph.indented(
-              t("b. En caso de ser persona física representada o jurídica.- "),
+          Paragraph.of(
+              b("b. En caso de ser persona física representada o jurídica.-"),
+              t(" "),
               b("No aplica: el cliente comparece por su propio derecho.")));
       return;
     }
     LegalDetails.RepresentationData r = legal().representation();
     String defaultCapacity = e.personType() == PersonType.MORAL ? "representante legal" : "apoderado";
     List<Span> spans = new ArrayList<>();
-    spans.add(t("b. En caso de ser persona física representada o jurídica.- Su "));
+    spans.add(b("b. En caso de ser persona física representada o jurídica.-"));
+    spans.add(t(" Su "));
     spans.add(value(representationCapacity(defaultCapacity), "carácter del representante"));
     spans.add(t(", "));
     spans.addAll(joinNames(representatives(), "nombre del " + defaultCapacity));
@@ -336,7 +354,7 @@ public final class ContractTemplate {
       spans.add(value(r == null ? null : r.registryFolio(), "folio mercantil del poder"));
     }
     spans.add(t("; facultades que no le han sido revocadas ni modificadas en forma alguna."));
-    blocks.add(Paragraph.indented(spans));
+    blocks.add(Paragraph.of(spans));
   }
 
   private void renderAddressAndRfc() {
@@ -344,15 +362,17 @@ public final class ContractTemplate {
     if (owners.size() <= 1) {
       ParticipantView owner = owners.isEmpty() ? null : owners.getFirst();
       blocks.add(
-          Paragraph.indented(
-              t("c. Su domicilio es el ubicado en "),
+          Paragraph.of(
+              b("c."),
+              t(" Su domicilio es el ubicado en "),
               value(owner == null ? null : owner.address(), "domicilio del cliente"),
               t(" y su Registro Federal de Contribuyentes es "),
               value(owner == null ? null : rfcOf(owner), "RFC del cliente")));
       return;
     }
     List<Span> spans = new ArrayList<>();
-    spans.add(t("c. Sus domicilios y Registros Federales de Contribuyentes son los siguientes: "));
+    spans.add(b("c."));
+    spans.add(t(" Sus domicilios y Registros Federales de Contribuyentes son los siguientes: "));
     for (int i = 0; i < owners.size(); i++) {
       ParticipantView owner = owners.get(i);
       spans.add(b(owner.fullName()));
@@ -362,22 +382,23 @@ public final class ContractTemplate {
       spans.add(value(rfcOf(owner), "RFC de " + owner.fullName()));
       spans.add(t(i == owners.size() - 1 ? "." : "; "));
     }
-    blocks.add(Paragraph.indented(spans));
+    blocks.add(Paragraph.of(spans));
   }
 
   private void renderOwnership() {
     ExpedienteSummary e = in.expediente();
     LegalDetails legal = legal();
     blocks.add(
-        Paragraph.indented(
-            t(owners().size() > 1 && e.personType() == PersonType.FISICA ? "d. Son legítimos propietarios del inmueble ubicado en " : "d. Es legítimo propietario del inmueble ubicado en "),
+        Paragraph.of(
+            b("d."),
+            t(owners().size() > 1 && e.personType() == PersonType.FISICA ? " Son legítimos propietarios del inmueble ubicado en " : " Es legítimo propietario del inmueble ubicado en "),
             value(e.propertyAddress(), "domicilio del inmueble"),
             t(", como se acredita en términos de:")));
 
     if (e.accreditationType() == AccreditationType.ESCRITURA_PUBLICA) {
       LegalDetails.DeedData d = legal.deed();
       List<Span> spans = new ArrayList<>();
-      spans.add(t("Escritura pública número "));
+      spans.add(t("• Escritura pública número "));
       spans.add(value(d == null ? null : d.number(), "número de la escritura"));
       spans.add(t(", otorgada el "));
       spans.add(value(d == null ? null : date(d.date()), "fecha de la escritura"));
@@ -394,13 +415,13 @@ public final class ContractTemplate {
       } else {
         spans.add(t(", debidamente inscrita en el Registro Público de la Propiedad bajo los datos registrales que se desprenden de la escritura correspondiente / pendientes de confirmar con certificado actualizado."));
       }
-      blocks.add(new Paragraph(spans, Align.JUSTIFY, 2));
+      blocks.add(new Paragraph(spans, Align.JUSTIFY, 1));
     } else {
       LegalDetails.PrivateContractData p = legal.privateContract();
       blocks.add(
           new Paragraph(
               List.of(
-                  t("Contrato privado celebrado entre "),
+                  t("• Contrato privado celebrado entre "),
                   value(p == null ? null : p.sellerName(), "vendedor en el contrato privado"),
                   t(" y "),
                   value(p == null ? null : p.buyerName(), "comprador en el contrato privado"),
@@ -424,22 +445,24 @@ public final class ContractTemplate {
                   value(p == null ? null : p.realFolio(), "folio real"),
                   t(".")),
               Align.JUSTIFY,
-              2));
+              1));
     }
   }
 
   private void renderCondominium() {
     if (!in.expediente().condominiumRegime()) {
       blocks.add(
-          Paragraph.indented(
-              t("f. En caso de que el inmueble esté sujeto al régimen de propiedad en condominio.- "),
+          Paragraph.of(
+              b("f. En caso de que el inmueble esté sujeto al régimen de propiedad en condominio.-"),
+              t(" "),
               b("No aplica: el inmueble no está sujeto al régimen de propiedad en condominio.")));
       return;
     }
     LegalDetails.CondominiumData c = legal().condominium();
     blocks.add(
-        Paragraph.indented(
-            t("f. En caso de que el inmueble esté sujeto al régimen de propiedad en condominio.- El inmueble indicado en el inciso previo, está sujeto al régimen de propiedad en condominio; en términos de la escritura pública "),
+        Paragraph.of(
+            b("f. En caso de que el inmueble esté sujeto al régimen de propiedad en condominio.-"),
+            t(" El inmueble indicado en el inciso previo, está sujeto al régimen de propiedad en condominio; en términos de la escritura pública "),
             value(c == null ? null : c.deedNumber(), "número de la escritura del régimen de condominio"),
             t(", otorgada en fecha "),
             value(c == null ? null : date(c.date()), "fecha de la escritura del régimen de condominio"),
@@ -457,7 +480,7 @@ public final class ContractTemplate {
   }
 
   private void renderPropertyChecklist() {
-    blocks.add(Paragraph.indented(t("g. Cuenta con la siguiente documentación e información relativa del inmueble:")));
+    blocks.add(Paragraph.of(b("g."), t(" Cuenta con la siguiente documentación e información relativa del inmueble:")));
     boolean land = in.expediente().propertyCaseType() == PropertyCaseType.RESIDENTIAL_LAND;
     Map<String, String> questions = land ? LAND_CHECKLIST : HOUSING_CHECKLIST;
     Map<String, Boolean> answers = legal().propertyChecklist() == null ? Map.of() : legal().propertyChecklist();
@@ -490,37 +513,37 @@ public final class ContractTemplate {
             b("Primera. Objeto.-"),
             t(" En virtud del presente contrato, la intermediaria experta en operaciones inmobiliarias, se obliga a realizar las siguientes actividades con base en las necesidades y características concretas del cliente y del inmueble destinado a casa habitación referido en la declaración II, inciso d, con el fin de conseguir un comprador del mismo:")));
     blocks.add(
-        Paragraph.indented(
+        Paragraph.of(
             b("I. Asesoría.-"),
             t(" Analizar el inmueble a fin de determinar su precio aproximado en el mercado y la forma más adecuada para enajenarlo, tomando en consideración sus características físicas, urbanas y fiscales de conformidad con la legislación aplicable; precio aproximado en el mercado que resulta cantidad de "),
             money(c == null ? null : c.price(), "precio aproximado de mercado (precio autorizado)"),
             t(". Asimismo, orientar al cliente sobre los trámites e instrumentos jurídicos necesarios para realizar la compraventa del inmueble e integrar la documentación indispensable para la escrituración de dicha compraventa ante Notario Público.")));
     blocks.add(
-        Paragraph.indented(
+        Paragraph.of(
             b("II. Publicidad.-"),
             t(" Promover a nombre del cliente el inmueble, utilizando los medios de difusión que considere apropiados conforme a su naturaleza. La publicidad será realizada a través de "),
             reviewValue(legal().advertisingMedia(), "medios de publicidad autorizados por el cliente"),
             t(", que considere adecuados conforme a la naturaleza del inmueble previamente autorizados por el cliente.")));
     blocks.add(
-        Paragraph.indented(
+        Paragraph.of(
             t("Asimismo, proporcionar toda la información sobre el inmueble y mostrarlo a los posibles compradores, cuantas veces sea necesario, para lo cual debe notificar al cliente.")));
     blocks.add(
-        Paragraph.indented(
+        Paragraph.of(
             b("III. Intermediación.-"),
             t(" Realizar labores de intermediación con los posibles compradores a nombre del cliente a fin de lograr la operación de compraventa, de conformidad con los términos de este contrato, logrando el mejor precio y condiciones de venta.")));
     blocks.add(
-        Paragraph.indented(
+        Paragraph.of(
             b("IV. Oferta.-"),
             t(" Entregar al cliente dentro de los 3 días siguientes de la recepción, todas y cada una de las ofertas que reciba de posibles compradores del inmueble con el fin de que el cliente estudie y determine la aceptación o negación de las mismas.")));
     blocks.add(
-        Paragraph.indented(
+        Paragraph.of(
             t("El cliente debe notificar la aceptación de la oferta por escrito y dentro de los 3 días hábiles siguientes a la recepción de la misma, con el fin de que la intermediaria realice los actos necesarios para proceder a la formalización de la compraventa del inmueble. En caso de que el cliente no notifique a la intermediaria la aceptación dentro del plazo establecido, dicho silencio será considerado como negación o no aceptación de la oferta correspondiente, por lo que la intermediaria continuará ofreciendo el inmueble.")));
     blocks.add(
-        Paragraph.indented(
+        Paragraph.of(
             b("V. Información.-"),
             t(" Informar por escrito al cliente sobre el desarrollo de las actividades concernientes a la prestación de los servicios y las ofertas recibidas.")));
     blocks.add(
-        Paragraph.indented(
+        Paragraph.of(
             b("VI. Instrucciones adicionales del cliente.-"),
             t(" Las visitas al inmueble deberán realizarse previa cita y confirmación del cliente. La intermediaria no podrá compartir documentación sensible del inmueble ni datos personales del cliente con terceros, salvo lo necesario para la promoción, análisis de ofertas y formalización de la compraventa.")));
 
@@ -530,29 +553,33 @@ public final class ContractTemplate {
             t(" Siempre que la intermediaria haya prestado de manera cabal las obligaciones a su cargo referidas en la cláusula previa, y únicamente en el caso de que la compraventa del inmueble destinado a casa habitación se hubiere formalizado en un contrato privado o escritura pública de compraventa, las partes acuerdan que por la prestación de los servicios de intermediación, el cliente pagará a la intermediaria:")));
     blocks.add(
         Paragraph.indented(
-            b("En caso de que se trate de un porcentaje.-"),
-            t(" A la fecha de firma del contrato privado o escritura pública de compraventa, el 5% sobre el precio de compraventa del inmueble que efectivamente sea pagado al cliente, es decir, la cantidad de "),
+            b("• En caso de que se trate de un porcentaje.-"),
+            t(" A la fecha de firma del contrato privado o escritura pública de compraventa, el "),
+            b("5%"),
+            t(" sobre el precio de compraventa del inmueble que efectivamente sea pagado al cliente, es decir, la cantidad de "),
             money(c == null ? null : c.commission(), "comisión (5% del precio)"),
             t(" más el Impuesto al Valor Agregado correspondiente; suma que resulta la cantidad de "),
             money(c == null ? null : c.totalCommissionWithVat(), "comisión más IVA"),
-            t(". Total a pagar por concepto de comisión más IVA: "),
-            c == null || c.totalCommissionWithVat().signum() <= 0 ? Span.pending("total de comisión más IVA") : b("$" + amount(c.totalCommissionWithVat()) + " M.N."),
-            t(".")));
+            t(". "),
+            b("Total a pagar por concepto de comisión más IVA: "),
+            c == null || c.totalCommissionWithVat().signum() <= 0 ? Span.pending("total de comisión más IVA") : b("$" + amount(c.totalCommissionWithVat()) + " M.N.")));
     blocks.add(
         Paragraph.indented(
-            t("El precio indicado es en Moneda Nacional, en caso de expresarse la operación en moneda extranjera, se tomará al tipo de cambio que rija en el lugar y fecha en que se realice el pago, de conformidad con la legislación aplicable.")));
-    blocks.add(Paragraph.indented(t("Los conceptos de pago a cargo del cliente, deben ser cubiertos con el método de pago referido a continuación:")));
+            t("• El precio indicado es en Moneda Nacional, en caso de expresarse la operación en moneda extranjera, se tomará al tipo de cambio que rija en el lugar y fecha en que se realice el pago, de conformidad con la legislación aplicable.")));
+    blocks.add(Paragraph.of(t("Los conceptos de pago a cargo del cliente, deben ser cubiertos con el método de pago referido a continuación:")));
     blocks.add(
-        Paragraph.indented(
+        Paragraph.of(
             t("Mediante transferencia bancaria a la cuenta que por escrito indique la intermediaria, contra la emisión del comprobante fiscal correspondiente. La obligación de pago de la comisión surgirá únicamente una vez que la operación de compraventa quede formalizada mediante escritura pública ante notario y el vendedor haya recibido de manera efectiva los recursos correspondientes al precio de la compraventa.")));
     blocks.add(
-        Paragraph.indented(
-            t("Si el cliente demora en el pago del precio, se constituirá en la obligación de pagar a la intermediaria el interés moratorio del 1% mensual sobre el importe pagadero por el tiempo que medie el retraso en el pago; interés que no debe resultar inequitativo, desproporcional, abusivo, ni excesivo. Dicho interés se calcula de la siguiente manera: Dicho interés se calcula multiplicando el saldo vencido por el 1% mensual, dividiendo dicho porcentaje entre 30 días y multiplicándolo por el número de días naturales de retraso")));
+        Paragraph.of(
+            t("Si el cliente demora en el pago del precio, se constituirá en la obligación de pagar a la intermediaria el interés moratorio del "),
+            b("1% mensual"),
+            t(" sobre el importe pagadero por el tiempo que medie el retraso en el pago; interés que no debe resultar inequitativo, desproporcional, abusivo, ni excesivo. Dicho interés se calcula de la siguiente manera: Dicho interés se calcula multiplicando el saldo vencido por el 1% mensual, dividiendo dicho porcentaje entre 30 días y multiplicándolo por el número de días naturales de retraso")));
     blocks.add(
-        Paragraph.indented(
+        Paragraph.of(
             t("Los pagos que realice el cliente, aún en forma extemporánea y que sean aceptados por la intermediaria, lo liberan de las obligaciones inherentes a dichos pagos.")));
     blocks.add(
-        Paragraph.indented(
+        Paragraph.of(
             t("Los importes señalados en esta cláusula, son todas las cantidades a cargo del cliente por concepto del servicio de intermediación, por lo que, la intermediaria se obliga a respetar en todo momento dicho costo")));
 
     List<String> delivered = in.deliveredDocuments();
@@ -572,16 +599,16 @@ public final class ContractTemplate {
             t(" Los derechos y obligaciones de las partes contractuales son los siguientes (listado enunciativo más no limitativo):")));
     blocks.add(
         new Table(
-            List.of(50, 50),
+            List.of(30, 70),
             List.of(
-                Row.of(Cell.header("Intermediaria", 2)),
+                Row.of(titleCell("Intermediaria", 2)),
                 Row.of(Cell.centered("Derechos"), Cell.centered("Obligaciones")),
                 Row.of(Cell.bullets(ContractReferenceData.INTERMEDIARY_RIGHTS), Cell.bullets(ContractReferenceData.INTERMEDIARY_OBLIGATIONS)))));
     blocks.add(
         new Table(
             List.of(50, 50),
             List.of(
-                Row.of(Cell.header("Cliente", 2)),
+                Row.of(titleCell("Cliente", 2)),
                 Row.of(Cell.centered("Derechos"), Cell.centered("Obligaciones")),
                 Row.of(Cell.bullets(ContractReferenceData.CLIENT_RIGHTS), Cell.bullets(ContractReferenceData.CLIENT_OBLIGATIONS)))));
 
@@ -607,28 +634,49 @@ public final class ContractTemplate {
         new Table(
             List.of(50, 50),
             List.of(
-                Row.of(Cell.centered("Intermediaria"), Cell.centered("Cliente")),
+                Row.of(titleCell("Intermediaria", 1), titleCell("Cliente", 1)),
                 Row.of(
                     Cell.lines(
                         List.of(
-                            List.of(b("Domicilio: "), t(ContractReferenceData.INTERMEDIARY_NOTICE_ADDRESS)),
-                            List.of(b("Correo electrónico: "), t(ContractReferenceData.INTERMEDIARY_EMAIL)),
-                            List.of(b("Teléfono: "), t(ContractReferenceData.INTERMEDIARY_PHONE)),
-                            List.of(b("WhatsApp: "), t(ContractReferenceData.INTERMEDIARY_WHATSAPP)))),
+                            List.of(t("Domicilio: "), b(ContractReferenceData.INTERMEDIARY_NOTICE_ADDRESS)),
+                            List.of(t("Correo electrónico: "), b(ContractReferenceData.INTERMEDIARY_EMAIL)),
+                            List.of(t("Teléfono: "), b(ContractReferenceData.INTERMEDIARY_PHONE)),
+                            List.of(t("WhatsApp: "), b(ContractReferenceData.INTERMEDIARY_WHATSAPP)))),
                     Cell.lines(
                         List.of(
-                            List.of(b("Domicilio: "), value(notificationAddress, "domicilio del cliente para notificaciones")),
-                            List.of(b("Correo electrónico: "), reviewValue(data == null ? null : data.email(), "correo electrónico del cliente")),
-                            List.of(b("Teléfono: "), reviewValue(data == null ? null : data.phone(), "teléfono del cliente"))))))));
+                            List.of(t("Domicilio: "), value(notificationAddress, "domicilio del cliente para notificaciones")),
+                            List.of(t("Correo electrónico: "), reviewValue(data == null ? null : data.email(), "correo electrónico del cliente")),
+                            List.of(t("Teléfono: "), reviewValue(data == null ? null : data.phone(), "teléfono del cliente"))))))));
 
     ContractReferenceData.FIXED_CLAUSES_AFTER_NOTICES.forEach(this::clause);
   }
 
   private void clause(ContractReferenceData.Clause clause) {
-    blocks.add(Paragraph.of(b(clause.title()), t(" " + clause.firstParagraph())));
+    List<Span> first = new ArrayList<>();
+    first.add(b(clause.title()));
+    first.add(t(" "));
+    first.addAll(marked(clause.firstParagraph()));
+    blocks.add(Paragraph.of(first));
     for (String extra : clause.extraParagraphs()) {
-      blocks.add(Paragraph.of(t(extra)));
+      blocks.add(Paragraph.of(marked(extra)));
     }
+  }
+
+  /** Convierte "texto **negritas** texto" en spans (el modelo resalta plazos, montos y artículos). */
+  static List<Span> marked(String text) {
+    List<Span> spans = new ArrayList<>();
+    String[] parts = text.split("\\*\\*", -1);
+    for (int i = 0; i < parts.length; i++) {
+      if (!parts[i].isEmpty()) {
+        spans.add(i % 2 == 1 ? b(parts[i]) : t(parts[i]));
+      }
+    }
+    return spans;
+  }
+
+  /** Renglón de título de las tablas del modelo: centrado, en negritas y sin sombreado. */
+  private static Cell titleCell(String text, int colSpan) {
+    return new Cell(List.of(List.of(b(text))), colSpan, false, Align.CENTER);
   }
 
   private void renderSignaturePage() {
@@ -661,18 +709,25 @@ public final class ContractTemplate {
             t(" ) no ( "),
             ads == null ? t(" ") : b(ads ? " " : "X"),
             t(" ) acepta que la intermediaria le envíe publicidad sobre bienes y servicios.")));
-    blocks.add(new SignatureLines(List.of("Firma del cliente", "Firma del cliente")));
-    blocks.add(Paragraph.of(t(ContractReferenceData.REPEP_NOTICE)));
-    blocks.add(Paragraph.of(t(ContractReferenceData.MARKETING_PROHIBITION_NOTICE)));
+    // El modelo deja un solo recuadro "Firma del cliente" (uno por cada quien firma por el cliente).
+    blocks.add(new SignatureLines(clientSignatureLabels()));
+    blocks.add(Paragraph.of(t(ContractReferenceData.REPEP_NOTICE)).withFontSize(SMALL_FONT_SIZE));
+    blocks.add(Paragraph.of(t(ContractReferenceData.MARKETING_PROHIBITION_NOTICE)).withFontSize(SMALL_FONT_SIZE));
   }
 
   private List<String> signatureLabels() {
     List<String> labels = new ArrayList<>();
     labels.add("Firma de la intermediaria\n" + ContractReferenceData.LEGAL_REPRESENTATIVE + "\nRepresentante legal de " + ContractReferenceData.INTERMEDIARY_LEGAL_NAME);
+    labels.addAll(clientSignatureLabels());
+    return labels;
+  }
+
+  private List<String> clientSignatureLabels() {
+    List<String> labels = new ArrayList<>();
     for (ParticipantView signer : clientSigners()) {
       labels.add("Firma del cliente\n" + signer.fullName() + "\n" + signerCapacity(signer));
     }
-    if (clientSigners().isEmpty()) {
+    if (labels.isEmpty()) {
       labels.add("Firma del cliente");
     }
     return labels;
@@ -728,7 +783,7 @@ public final class ContractTemplate {
     for (String[] row : ContractReferenceData.ANNEX_B_ROWS) {
       rows.add(Row.of(Cell.text(row[0]), Cell.centered(row[1]), Cell.centered(row[2]), Cell.text(row[3])));
     }
-    blocks.add(new Table(List.of(34, 8, 8, 50), rows));
+    blocks.add(new Table(List.of(34, 15, 15, 36), rows));
     blocks.add(
         Paragraph.of(
             b("Importante para el cliente.-"),
@@ -739,7 +794,11 @@ public final class ContractTemplate {
   private void renderAnnexC() {
     blocks.add(new SectionHeading("Anexo C"));
     blocks.add(Paragraph.centered(b("Carta de derechos del cliente")));
-    blocks.add(new Table(List.of(100), List.of(Row.of(Cell.bullets(ContractReferenceData.CLIENT_RIGHTS_LETTER)))));
+    // El último párrafo de la carta (los derechos no excluyen otros...) no es viñeta.
+    List<String> letter = ContractReferenceData.CLIENT_RIGHTS_LETTER;
+    List<List<Span>> paragraphs = new ArrayList<>(Cell.bullets(letter.subList(0, letter.size() - 1)).paragraphs());
+    paragraphs.add(List.of(t(letter.getLast())));
+    blocks.add(new Table(List.of(100), List.of(Row.of(new Cell(paragraphs, 1, false, Align.JUSTIFY)))));
   }
 
   private void renderAnnexD() {
@@ -749,11 +808,19 @@ public final class ContractTemplate {
         Paragraph.of(
             t("(El presente formato debe contener el listado de los servicios adicionales, especiales o conexos que el cliente puede solicitar de forma opcional por conducto de la intermediación, en concordancia con lo dispuesto en la cláusula décima primera del contrato de intermediación del cual forma parte integrante)")));
     ManualClientDataView d = in.clientData();
-    blocks.add(
-        Paragraph.of(
-            b("Servicios adicionales solicitados por el cliente: "),
-            t(d != null && notBlank(d.additionalServicesRequested()) ? d.additionalServicesRequested() : "Ninguno.")));
+    if (d != null && notBlank(d.additionalServicesRequested())) {
+      blocks.add(Paragraph.of(b("Servicios adicionales solicitados por el cliente: "), t(d.additionalServicesRequested())));
+    }
     blocks.add(new SignatureLines(List.of("Firma de la intermediaria", "Firma del cliente")));
+  }
+
+  /** Aviso de privacidad al que remite la cláusula décima cuarta. */
+  private void renderAnnexE() {
+    blocks.add(new SectionHeading("Anexo E"));
+    blocks.add(new Paragraph(List.of(t(ContractReferenceData.PRIVACY_NOTICE_TITLE)), Align.LEFT, 0, TITLE_FONT_SIZE + 1));
+    for (String paragraph : ContractReferenceData.PRIVACY_NOTICE) {
+      blocks.add(Paragraph.of(t(paragraph)).withFontSize(SMALL_FONT_SIZE));
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -902,7 +969,7 @@ public final class ContractTemplate {
       missing.add(capitalize(missingDescription) + " (el monto no puede ser cero)");
       return Span.pending(missingDescription);
     }
-    return b("$" + amount(amount) + " M.N. (" + MoneyToSpanishWords.convert(amount) + ")");
+    return b("$" + amount(amount) + " M.N. (" + MoneyToSpanishWords.contractWording(amount) + ")");
   }
 
   private Span area(BigDecimal area, String missingDescription, boolean required) {

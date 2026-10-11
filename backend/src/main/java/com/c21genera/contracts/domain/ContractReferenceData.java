@@ -8,6 +8,9 @@ import java.util.List;
  * literalmente: no se reescriben cláusulas ni se inventan datos. Los
  * espacios a llenar viven en {@link ContractTemplate}.
  *
+ * <p>En las cláusulas, el texto entre {@code **...**} va en negritas, igual
+ * que en el modelo.
+ *
  * TODO: Confirmar dato canónico con CENTURY 21 Genera antes de producción
  * — el domicilio de la intermediaria difiere ligeramente entre este
  * contrato y el aviso de privacidad simplificado; no se normaliza aquí.
@@ -73,20 +76,20 @@ public final class ContractReferenceData {
       List.of(
           new Clause(
               "Quinta. Vigencia.-",
-              "El presente contrato tendrá una vigencia de 180 días naturales. Una vez vencido dicho plazo, la intermediaria debe devolver al cliente la documentación referida en la cláusula tercera, quedando sin efecto cualquier obligación de pago de comisión a favor de la intermediaria, salvo que durante la vigencia del presente contrato se hubiese formalizado la compraventa mediante escritura pública y el vendedor hubiese recibido efectivamente el pago correspondiente.",
+              "El presente contrato tendrá una vigencia de **180** días naturales. Una vez vencido dicho plazo, la intermediaria debe devolver al cliente la documentación referida en la cláusula tercera, quedando sin efecto cualquier obligación de pago de comisión a favor de la intermediaria, salvo que durante la vigencia del presente contrato se hubiese formalizado la compraventa mediante escritura pública y el vendedor hubiese recibido efectivamente el pago correspondiente.",
               List.of()),
           new Clause(
               "Sexta. Exclusividad.-",
-              "Las partes acuerdan expresamente que el presente contrato se celebra bajo la modalidad de exclusividad. Durante la vigencia del presente contrato, el cliente no podrá realizar por sí, o solicitar a persona alguna la prestación de los servicios objeto del presente contrato, en relación con el inmueble, pero sí podrá hacerlo respecto de cualquier otro inmueble que sea de su propiedad.",
+              "**Las partes acuerdan expresamente que el presente contrato se celebra bajo la modalidad de exclusividad.** Durante la vigencia del presente contrato, el cliente no podrá realizar por sí, o solicitar a persona alguna la prestación de los servicios objeto del presente contrato, en relación con el inmueble, pero sí podrá hacerlo respecto de cualquier otro inmueble que sea de su propiedad.",
               List.of(
                   "Si durante la vigencia del presente contrato, el cliente vende el inmueble por intermediación de un tercero, se obliga a pagar a la intermediaria la pena convencional dispuesta en la cláusula novena.")),
           new Clause(
               "Séptima. Revocación.-",
-              "El cliente cuenta con un plazo de 5 días hábiles (plazo que no debe ser menor a 5 días hábiles contados a partir de la firma del contrato) posteriores a la firma del presente contrato para revocar su consentimiento sobre la operación sin responsabilidad alguna de su parte, mediante aviso por escrito, de conformidad con la cláusula décima segunda.",
+              "El cliente cuenta con un plazo de **5** días hábiles (plazo que no debe ser menor a 5 días hábiles contados a partir de la firma del contrato) posteriores a la firma del presente contrato para revocar su consentimiento sobre la operación sin responsabilidad alguna de su parte, mediante aviso por escrito, de conformidad con la cláusula décima segunda.",
               List.of(
                   "Para el caso de que la revocación se realice por correo certificado o registrado o servicio de mensajería, se tomará como fecha de revocación, la de recepción para su envío.",
                   "Ante la cancelación, la intermediaria se obliga a reintegrar todas las cantidades al cliente por el mismo medio en el que éste haya efectuado el pago, dentro de los 15 días hábiles siguientes a la fecha en que le sea notificada la revocación.",
-                  "En caso de que no se restituyeren las cantidades al cliente dentro del plazo establecido, la intermediaria debe pagarle a su contraparte el interés moratorio del 1% mensual simple sobre la cantidad no devuelta por el tiempo que medie el retraso. Dicho interés se calcula de la siguiente manera: Dicho interés se calcula multiplicando el saldo vencido por el 1% mensual, dividiendo dicho porcentaje entre 30 días y multiplicándolo por el número de días naturales de retraso")),
+                  "En caso de que no se restituyeren las cantidades al cliente dentro del plazo establecido, la intermediaria debe pagarle a su contraparte el interés moratorio del **1%** mensual simple sobre la cantidad no devuelta por el tiempo que medie el retraso. Dicho interés se calcula de la siguiente manera: Dicho interés se calcula multiplicando el saldo vencido por el **1% mensual**, dividiendo dicho porcentaje entre 30 días y multiplicándolo por el número de días naturales de retraso")),
           new Clause(
               "Octava. Rescisión.-",
               "Son causales de rescisión del presente contrato, cualquier incumplimiento a las obligaciones a las que se sujetan las partes en el mismo. Aunado a lo anterior, en caso de que la intermediaria actúe con impericia, negligencia, dolo o mala fe, se hará acreedora a la pena convencional establecida en la cláusula siguiente.",
@@ -102,7 +105,7 @@ public final class ContractReferenceData {
               List.of()),
           new Clause(
               "Décima primera. Servicios adicionales.-",
-              "En caso de que la intermediaria ofrezca servicios adicionales.- El listado de los servicios adicionales, especiales o conexos, que puede solicitar el cliente de forma opcional son detallados en cuanto a su descripción y costo en el \"Anexo D\".",
+              "**En caso de que la intermediaria ofrezca servicios adicionales.-** El listado de los servicios adicionales, especiales o conexos, que puede solicitar el cliente de forma opcional son detallados en cuanto a su descripción y costo en el \"Anexo D\".",
               List.of(
                   "La intermediaria sólo puede prestar servicios adicionales, especiales o conexos, si cuenta con el consentimiento escrito del cliente sobre los mismos. Las erogaciones distintas al precio de venta, deben ser aceptadas por escrito por el cliente, por lo que, la intermediaria sólo podrá hacer efectivo su pago, de manera posterior a haber recabado dicho consentimiento.",
                   "El cliente en cualquier momento podrá solicitar dar por terminada la prestación de los servicios adicionales, especiales o conexos, mediante aviso por escrito a la intermediaria, sin que ello implique la conclusión de la contratación principal.")));
@@ -112,7 +115,7 @@ public final class ContractReferenceData {
       List.of(
           new Clause(
               "Décima tercera. Canales de atención.-",
-              "La intermediaria cuenta con los siguientes canales de atención para recibir comentarios, sugerencias y quejas del cliente: atención presencial en el domicilio de la intermediaria, WhatsApp 7778005300, teléfono 7774540198 y correo electrónico ventas@c21genera.com",
+              "La intermediaria cuenta con los siguientes canales de atención para recibir comentarios, sugerencias y quejas del cliente: atención presencial en el domicilio de la intermediaria, **WhatsApp 7778005300, teléfono 7774540198 y correo electrónico ventas@c21genera.com**",
               List.of(
                   "Dichos canales están habilitados los días de Lunes a Viernes de 09:00 a 18:00 hrs y sabados de 09:00 a 13:00 hrs y el plazo de respuesta es de 72 hrs.")),
           new Clause(
@@ -122,8 +125,8 @@ public final class ContractReferenceData {
                   "Para efectos de lo dispuesto en la Ley Federal de Protección de Datos Personales en Posesión de los Particulares, la intermediaria adjunta al presente contrato su Aviso de Privacidad en el \"Anexo E\", en el cual informa al titular de los datos personales, qué información recabará y con qué finalidades.",
                   "En caso de tratarse de datos personales sensibles, la intermediaria debe obtener consentimiento expreso y por escrito del titular para su tratamiento. No podrán crearse bases de datos que contengan datos personales sensibles, sin que se justifique la creación de las mismas para finalidades legítimas, concretas y acordes con las actividades o fines explícitos que persigue el sujeto regulado.",
                   "En caso de que los datos personales fueren obtenidos de manera indirecta del titular, se debe informar a los titulares de los datos personales que así lo soliciten cómo se dio la transferencia u obtención de dichos datos y se deben observar las siguientes reglas:",
-                  "a. Si fueron tratados para una finalidad distinta prevista en una transferencia consentida, o si los datos fueron obtenidos de una fuente de acceso público, el aviso de privacidad se debe de dar a conocer al cliente en el primer contacto que se tenga con él.",
-                  "b. Cuando la intermediaria pretenda utilizar los datos para una finalidad distinta a la consentida, el aviso de privacidad debe ser actualizado y darse a conocer al titular previo aprovechamiento de los datos personales.",
+                  "**a.** Si fueron tratados para una finalidad distinta prevista en una transferencia consentida, o si los datos fueron obtenidos de una fuente de acceso público, el aviso de privacidad se debe de dar a conocer al cliente en el primer contacto que se tenga con él.",
+                  "**b.** Cuando la intermediaria pretenda utilizar los datos para una finalidad distinta a la consentida, el aviso de privacidad debe ser actualizado y darse a conocer al titular previo aprovechamiento de los datos personales.",
                   "La persona titular de los datos personales o su representante legal podrá solicitar a la intermediaria en cualquier momento el acceso, rectificación, cancelación u oposición respecto a sus datos personales y datos personales sensibles.")),
           new Clause(
               "Décima quinta. Competencia administrativa de la Procuraduría Federal del Consumidor (Profeco).-",
@@ -135,11 +138,11 @@ public final class ContractReferenceData {
               List.of()),
           new Clause(
               "Décima séptima. Plazo para ejercer la acción de responsabilidad civil.-",
-              "En caso de que el incumplimiento de una de las partes al presente contrato, le ocasione a su contraparte daños y perjuicios; la segunda, podrá ejercer ante las autoridades jurisdiccionales indicadas en la cláusula décima sexta, la acción de responsabilidad civil en el plazo de diez años, contados a partir de la fecha en que la obligación pudo exigirse o el derecho pudo ejercitarse, de conformidad con los artículos 1244, 1511, 1514, 1518, 1718 y 1719 del Código Civil para el Estado Libre y Soberano de Morelos",
+              "En caso de que el incumplimiento de una de las partes al presente contrato, le ocasione a su contraparte daños y perjuicios; la segunda, podrá ejercer ante las autoridades jurisdiccionales indicadas en la cláusula décima sexta, la acción de responsabilidad civil en el plazo de **diez años, contados a partir de la fecha en que la obligación pudo exigirse o el derecho pudo ejercitarse**, de conformidad con los **artículos 1244, 1511, 1514, 1518, 1718 y 1719 del Código Civil para el Estado Libre y Soberano de Morelos**",
               List.of()),
           new Clause(
               "Décima octava. Registro del modelo de contrato de adhesión.-",
-              "El presente modelo de contrato de adhesión fue inscrito el 19 marzo de 2026 en el Registro Público de Contratos de Adhesión de la Profeco bajo el número 7/002193-2026. Cualquier diferencia entre el texto del contrato de adhesión registrado ante la Procuraduría y el utilizado en perjuicio de los consumidores, se tendrá por no puesta.",
+              "El presente modelo de contrato de adhesión fue inscrito el **19 marzo de 2026** en el Registro Público de Contratos de Adhesión de la Profeco bajo el número **7/002193-2026.** Cualquier diferencia entre el texto del contrato de adhesión registrado ante la Procuraduría y el utilizado en perjuicio de los consumidores, se tendrá por no puesta.",
               List.of()));
 
   public static final String REPEP_NOTICE =
@@ -174,4 +177,27 @@ public final class ContractReferenceData {
           "Tener a su disposición un Aviso de Privacidad para conocer y en su caso consentir el tratamiento que se dará a los datos personales que proporcione, que sus datos personales sean tratados conforme a la normatividad aplicable y conocer los mecanismos disponibles para realizar el ejercicio de sus derechos de acceso, rectificación, cancelación y oposición.",
           "Derecho a la protección por parte de las autoridades competentes y conforme a las leyes aplicables, incluyendo el derecho a presentar denuncias y reclamaciones ante las mismas.",
           "Los derechos previstos en esta carta, no excluyen otros derivados de tratados o convenciones internacionales de los que los Estados Unidos Mexicanos sea signatario; de la legislación interna ordinaria; o de reglamentos expedidos por las autoridades administrativas competentes.");
+
+  /**
+   * Anexo E: aviso de privacidad que el modelo adjunta al contrato (cláusula
+   * décima cuarta). Transcrito del contrato modelo entregado por la agencia el
+   * 11/10/2026; los renglones que empiezan con "• " son viñetas.
+   */
+  public static final String PRIVACY_NOTICE_TITLE = "Aviso de privacidad.";
+
+  public static final List<String> PRIVACY_NOTICE =
+      List.of(
+          "La empresa Grupo WILGEN y asociados S. de R.L. de C.V. la cual opera bajo el nombre comercial de Century 21 Genera, con domicilio Av Alta tensión 403 Local 1 Plaza Copa de Oro CP 62448, es responsable de recabar sus datos personales, del uso que se le dé a los mismos y de su protección.",
+          "Su información personal será utilizada para proveer los servicios y productos que ha solicitado, específicamente la intermediación comercial inmobiliaria para la venta, compra o arrendamiento de inmuebles, para informarle sobre cambios en los mismos, y evaluar la calidad del servicio que le brindamos. Con el fin de poder iniciar nuestras gestiones de intermediación comercial inmobiliaria, requerimos obtener, los siguientes datos personales:",
+          "• Nombre completo.",
+          "• Dirección.",
+          "• Teléfono particular.",
+          "• Teléfono celular.",
+          "• Correo electrónico.",
+          "• Información fiscal.",
+          "En algunos casos, cuando es estrictamente necesario para la firma de contratos de compraventa o de arrendamiento, también podemos recabar los siguientes datos: Identificación oficial, RFC, CURP, comprobantes de ingresos, referencias personales, laborales o comerciales, estado civil, ocupación, fecha y lugar de nacimiento, comprobantes de ingreso, escritura pública que acredite la propiedad del inmueble respectivo, recibo de pago predial, recibo de servicios (agua, luz o teléfono).",
+          "Usted tiene derecho de acceder, rectificar y cancelar sus datos personales, así como de oponerse al tratamiento de los mismos o revocar el consentimiento que para tal fin nos haya otorgado, a través de los procedimientos que hemos implementado. Para conocer dichos procedimientos, los requisitos y plazos, se puede poner en contacto con nuestro departamento de datos personales en Century 21 Genera, ubicado en Alta tensión 403 Local 1 Plaza Copa de Oro CP 62448, teléfono 55-5104-6103 o visitar nuestra página de Internet www.century21genera.com",
+          "Asimismo, le informamos que sus datos personales pueden ser transferidos y tratados dentro y fuera del país, por sociedades subsidiarias a Century 21 Mexico, filiales, afiliadas y controladoras del responsable, para los mismos fines citados.",
+          "Nos reservamos el derecho de efectuar en cualquier momento modificaciones o actualizaciones del presente aviso de privacidad, para la atención de novedades legislativas, políticas internas o nuevos requerimientos para la prestación u ofrecimiento de nuestro servicio o productos. Estas modificaciones si es que las hubiera estarán disponibles al público a través de nuestra página de internet www.century21genera.com.",
+          "Consiento que mis datos personales sean tratados conforme a los términos y condiciones del presente aviso de privacidad.");
 }

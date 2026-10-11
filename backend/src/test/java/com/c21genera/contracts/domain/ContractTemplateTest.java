@@ -132,13 +132,43 @@ class ContractTemplateTest {
         .contains("Escritura pública número 45,678, otorgada el 15 de marzo de 2010")
         .contains("No aplica: el inmueble no está sujeto al régimen de propiedad en condominio")
         .contains("No aplica: el cliente comparece por su propio derecho")
-        .contains("$2,500,000.00 M.N. (DOS MILLONES QUINIENTOS MIL PESOS 00/100 M.N.)")
+        .contains("$2,500,000.00 M.N. (DOS MILLONES QUINIENTOS MIL PESOS con 00/100 Moneda Nacional)")
         .contains("$125,000.00 M.N.")
         .contains("$145,000.00 M.N.")
         .contains("lo firman por duplicado el 1 de octubre de 2026")
         .contains("Décima octava. Registro del modelo de contrato de adhesión")
         .contains("En caso de vivienda.-")
         .doesNotContain("[PENDIENTE");
+  }
+
+  @Test
+  void followsTheAgencysReferenceContract() {
+    // Contrato modelo entregado por la agencia (11/10/2026): Anexo E (aviso de privacidad), un solo
+    // recuadro de firma para la autorización de publicidad y negritas en plazos y artículos.
+    ExpedienteSummary s =
+        summary(
+            PersonType.FISICA, SignerCharacter.PROPIETARIO, AccreditationType.ESCRITURA_PUBLICA, false, PropertyCaseType.HOUSING,
+            List.of(person("OWNER", "Juan Pérez López", 1, CivilStatus.SOLTERO)), deedDetails(housingChecklist()));
+
+    ContractDocument doc = ContractTemplate.build(input(s, completeClientData()), false);
+    String text = text(doc);
+
+    assertThat(text)
+        .contains("Anexo E")
+        .contains("Aviso de privacidad.")
+        .contains("es responsable de recabar sus datos personales")
+        .contains("Consiento que mis datos personales sean tratados conforme a los términos y condiciones del presente aviso de privacidad.")
+        .contains("a.1. En caso de ser persona física.- Es de nacionalidad Mexicana")
+        .contains("Total a pagar por concepto de comisión más IVA: $145,000.00 M.N.")
+        .doesNotContain("M.N..")
+        .doesNotContain("**")
+        .doesNotContain("Servicios adicionales solicitados por el cliente");
+    assertThat(doc.blocks())
+        .filteredOn(ContractDocument.SignatureLines.class::isInstance)
+        .map(ContractDocument.SignatureLines.class::cast)
+        .anyMatch(l -> l.labels().equals(List.of("Firma del cliente\nJuan Pérez López\nPropietario")));
+    assertThat(ContractTemplate.marked("de **180** días"))
+        .containsExactly(Span.t("de "), Span.b("180"), Span.t(" días"));
   }
 
   @Test
@@ -280,7 +310,7 @@ class ContractTemplateTest {
         .contains("a.2. En caso de ser persona jurídica.- Es una sociedad mercantil Sociedad Anónima de Capital Variable")
         .contains("Inmobiliaria Sol SA de CV, representada en este acto por Laura Méndez Ríos")
         .doesNotContain("a.1. En caso de ser persona física")
-        .doesNotContain("estado civil");
+        .doesNotContain("su estado civil es");
   }
 
   @Test
