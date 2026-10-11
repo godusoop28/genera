@@ -2,20 +2,30 @@
 
 import { BrandFooter } from "@/components/brand/BrandFooter";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import { useCanSeeCrm } from "@/components/crm/CrmUi";
 import { useAuth } from "@/context/AuthProvider";
 import { useCan } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-import { FilePlus2, Files, LogOut, Users } from "lucide-react";
+import { Building2, FilePlus2, Files, LayoutDashboard, LogOut, MessagesSquare, Users, UserRoundSearch, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
-// Menú final del Módulo 1 (prompt maestro §10/§86): solo estas entradas.
-// No agregar Dashboard, Leads, Propiedades, Campañas, CRM, etc. Cada entrada
-// se muestra solo a quien tiene el permiso (el backend vuelve a validarlo).
+// Módulo 1 (expedientes): cada entrada se muestra solo a quien tiene el
+// permiso (el backend vuelve a validarlo).
 const navItems = [
   { href: "/expedientes", label: "Expedientes", icon: Files },
   { href: "/expedientes/nuevo", label: "Nuevo expediente", icon: FilePlus2, permission: "EXPEDIENT_CREATE" },
   { href: "/usuarios", label: "Usuarios y permisos", icon: Users, permission: "USER_MANAGE" },
+];
+
+// CRM (Módulo 3, vista previa con datos de ejemplo): por ahora solo para
+// administración y dirección, hasta que el backend tenga permisos de leads.
+const crmItems = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/leads", label: "Leads", icon: UserRoundSearch },
+  { href: "/conversaciones", label: "Conversaciones", icon: MessagesSquare },
+  { href: "/propiedades", label: "Propiedades", icon: Building2 },
+  { href: "/asesores", label: "Asesores", icon: UsersRound },
 ];
 
 function isActive(href: string, pathname: string): boolean {
@@ -28,6 +38,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const router = useRouter();
   const { logout } = useAuth();
   const can = useCan();
+  const canSeeCrm = useCanSeeCrm();
 
   const handleLogout = () => {
     void logout();
@@ -48,28 +59,20 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         </Link>
       </div>
       <nav aria-label="Principal" className="flex-1 space-y-1 overflow-y-auto px-3">
+        {canSeeCrm ? <p className="px-3.5 pb-1 text-[0.68rem] font-semibold uppercase tracking-wider text-white/40">Expedientes</p> : null}
         {navItems
           .filter((item) => !item.permission || can(item.permission))
-          .map((item) => {
-            const active = isActive(item.href, pathname);
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={onNavigate}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "relative flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/40",
-                  active ? "bg-gold/15 text-gold" : "text-white/75 hover:bg-white/5 hover:text-white",
-                )}
-              >
-                {active ? <span className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-gold" aria-hidden /> : null}
-                <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden />
-                {item.label}
-              </Link>
-            );
-          })}
+          .map((item) => (
+            <NavLink key={item.href} item={item} active={isActive(item.href, pathname)} onNavigate={onNavigate} />
+          ))}
+        {canSeeCrm ? (
+          <>
+            <p className="px-3.5 pb-1 pt-5 text-[0.68rem] font-semibold uppercase tracking-wider text-white/40">CRM</p>
+            {crmItems.map((item) => (
+              <NavLink key={item.href} item={item} active={isActive(item.href, pathname)} onNavigate={onNavigate} />
+            ))}
+          </>
+        ) : null}
       </nav>
       <div className="space-y-3 border-t border-white/10 px-3 py-4">
         <button
@@ -83,5 +86,24 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <BrandFooter className="px-3.5 text-white/50" />
       </div>
     </div>
+  );
+}
+
+function NavLink({ item, active, onNavigate }: { item: { href: string; label: string; icon: typeof Files }; active: boolean; onNavigate?: () => void }) {
+  const Icon = item.icon;
+  return (
+    <Link
+      href={item.href}
+      onClick={onNavigate}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "relative flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/40",
+        active ? "bg-gold/15 text-gold" : "text-white/75 hover:bg-white/5 hover:text-white",
+      )}
+    >
+      {active ? <span className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-gold" aria-hidden /> : null}
+      <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden />
+      {item.label}
+    </Link>
   );
 }

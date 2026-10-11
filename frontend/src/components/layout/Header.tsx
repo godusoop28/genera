@@ -22,6 +22,13 @@ function breadcrumbFor(pathname: string): Crumb[] {
   if (pathname.startsWith("/expedientes")) return [{ label: "Expedientes" }];
   if (pathname.startsWith("/usuarios")) return [{ label: "Usuarios y permisos" }];
   if (pathname.startsWith("/configuracion")) return [{ label: "Configuración" }];
+  if (pathname.startsWith("/dashboard")) return [{ label: "Dashboard" }];
+  if (pathname.startsWith("/leads/")) return [{ label: "Leads", href: "/leads" }, { label: "Detalle del lead" }];
+  if (pathname.startsWith("/leads")) return [{ label: "Leads" }];
+  if (pathname.startsWith("/conversaciones")) return [{ label: "Conversaciones" }];
+  if (pathname.startsWith("/propiedades/")) return [{ label: "Propiedades", href: "/propiedades" }, { label: "Detalle de la propiedad" }];
+  if (pathname.startsWith("/propiedades")) return [{ label: "Propiedades" }];
+  if (pathname.startsWith("/asesores")) return [{ label: "Asesores" }];
   return [];
 }
 
