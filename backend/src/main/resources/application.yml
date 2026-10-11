@@ -157,6 +157,44 @@ app:
     # final y luego el resto), con este tope de páginas por documento.
     max-pages: ${AI_MAX_PAGES:96}
     pages-per-batch: ${AI_PAGES_PER_BATCH:8}
+  # Integración de solo lectura con 21Online (inventario) — ver online21.infrastructure.Online21Properties.
+  online21:
+    base-url: ${ONLINE21_BASE_URL:https://plus.21onlinemx.com}
+    # Llave JWT de 21Online (Mi Perfil → API Keys). Vacía = integración apagada.
+    api-key: ${ONLINE21_API_KEY:}
+    auth-prefix: ${ONLINE21_AUTH_PREFIX:Bearer }
+    # Enlace público de la ficha para mandar al cliente, con {id}. Vacío = sin enlace.
+    public-url-template: ${ONLINE21_PUBLIC_URL_TEMPLATE:}
+    refresh-interval: ${ONLINE21_REFRESH_INTERVAL:PT3H}
+    # Registrar cada lead como prospecto en 21Online (POST /api/prospectos).
+    push-prospects: ${ONLINE21_PUSH_PROSPECTS:false}
+  # Asistente de WhatsApp (misma llave de OpenAI que app.ai) — ver assistant.infrastructure.AssistantProperties.
+  assistant:
+    # OFF (solo guarda mensajes), TEST_ONLY (simulador y números de prueba) u ON.
+    mode: ${ASSISTANT_MODE:OFF}
+    # Vacío = el mismo AI_MODEL de la extracción de documentos.
+    model: ${ASSISTANT_MODEL:}
+    # low/medium/high para modelos de razonamiento; vacío = no se envía.
+    reasoning-effort: ${ASSISTANT_REASONING_EFFORT:low}
+    debounce: PT6S
+    max-wait: PT25S
+    max-clarifications: 3
+    session-idle: PT6H
+    # Canaliza a quien mostró interés y dejó de responder (0 = nunca).
+    abandon-handoff-after: ${ASSISTANT_ABANDON_AFTER:PT30M}
+    turn-timeout: PT40S
+    # Números (wa_id, solo dígitos, separados por coma) que reciben respuesta en TEST_ONLY.
+    test-wa-ids: ${ASSISTANT_TEST_WA_IDS:}
+  # WhatsApp Cloud API (Meta) — ver assistant.infrastructure.WhatsAppProperties.
+  whatsapp:
+    api-version: ${WHATSAPP_API_VERSION:v23.0}
+    phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID:}
+    access-token: ${WHATSAPP_ACCESS_TOKEN:}
+    verify-token: ${WHATSAPP_VERIFY_TOKEN:}
+    app-secret: ${WHATSAPP_APP_SECRET:}
+    # Plantilla aprobada para avisar al asesor (un parámetro de cuerpo). Vacío = texto libre.
+    advisor-template: ${WHATSAPP_ADVISOR_TEMPLATE:}
+    advisor-template-language: ${WHATSAPP_ADVISOR_TEMPLATE_LANGUAGE:es_MX}
   rate-limit:
     login:
       capacity: 10

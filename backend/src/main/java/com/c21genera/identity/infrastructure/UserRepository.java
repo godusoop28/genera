@@ -1,6 +1,8 @@
 package com.c21genera.identity.infrastructure;
 
 import com.c21genera.identity.domain.User;
+import com.c21genera.identity.domain.UserStatus;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
@@ -19,4 +21,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
   // LazyInitializationException.
   @EntityGraph(attributePaths = "role")
   Page<User> findAll(Pageable pageable);
+
+  @EntityGraph(attributePaths = "role")
+  List<User> findByStatus(UserStatus status);
 }

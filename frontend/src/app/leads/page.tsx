@@ -1,42 +1,32 @@
 "use client";
 
-import { AdvisorChip, PreviewNotice, PropertyMini, Segmented, SourceLabel, StageBadge, StatCard } from "@/components/crm/CrmUi";
+import { AdvisorChip, LoadError, PropertyMini, Segmented, SourceLabel, StageBadge, StatCard, useApi } from "@/components/crm/CrmUi";
+import { NewLeadModal } from "@/components/crm/NewLeadModal";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Button } from "@/components/ui/Button";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { Select } from "@/components/ui/Select";
 import { StateMessage } from "@/components/ui/StateMessage";
-import { interestLabels, openStages, sourceLabels, stageLabels, stageOrder, timeAgo } from "@/lib/crm/labels";
-import { useCrm, type CrmState } from "@/lib/crm/store";
+import { listAdvisors, listLeads, type LeadGroup, type LeadItem, type LeadSource } from "@/lib/api/crm";
+import { interestLabels, sourceLabels, stageLabels, stageOrder, timeAgo } from "@/lib/crm/labels";
+import { useCan } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-import type { CrmLead, LeadSource } from "@/types/crm";
-import { ArrowRight, CheckCircle2, Columns3, Inbox, List, UserPlus, Users } from "lucide-react";
+import { ArrowRight, CheckCircle2, Columns3, Inbox, List, Plus, RefreshCw, UserPlus, Users } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 
-type Group = "all" | "unassigned" | "new" | "open" | "won" | "lost";
-
-const groupMatchers: Record<Group, (l: CrmLead) => boolean> = {
-  all: () => true,
-  unassigned: (l) => !l.advisorId,
-  new: (l) => l.stage === "NEW",
-  open: (l) => openStages.includes(l.stage),
-  won: (l) => l.stage === "WON",
-  lost: (l) => l.stage === "LOST",
+const groupLabels: Record<LeadGroup, string> = {
+  ALL: "Todos",
+  UNASSIGNED: "Sin asignar",
+  NEW: "Nuevos",
+  OPEN: "En seguimiento",
+  WON: "Ganados",
+  LOST: "Perdidos",
 };
 
-const groupLabels: Record<Group, string> = {
-  all: "Todos",
-  unassigned: "Sin asignar",
-  new: "Nuevos",
-  open: "En seguimiento",
-  won: "Ganados",
-  lost: "Perdidos",
-};
-
-function initialGroup(value: string | null): Group {
-  return value && value in groupMatchers ? (value as Group) : "all";
+function initialGroup(value: string | null): LeadGroup {
+  return value && value in groupLabels ? (value as LeadGroup) : "ALL";
 }
 
 export default function LeadsPage() {
@@ -49,117 +39,75 @@ export default function LeadsPage() {
 }
 
 function LeadsScreen() {
-  const crm = useCrm();
   const params = useSearchParams();
+  const can = useCan();
+  const seesAll = can("LEAD_VIEW_ALL");
   const [query, setQuery] = useState("");
-  const [group, setGroup] = useState<Group>(() => initialGroup(params.get("grupo")));
+  const [debounced, setDebounced] = useState("");
+  const [group, setGroup] = useState<LeadGroup>(() => initialGroup(params.get("grupo")));
   const [advisorId, setAdvisorId] = useState(params.get("asesor") ?? "");
   const [source, setSource] = useState<LeadSource | "">((params.get("fuente") as LeadSource | null) ?? "");
   const [view, setView] = useState<"list" | "board">("list");
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebounced(query.trim()), 300);
+    return () => window.clearTimeout(t);
+  }, [query]);
+
+  const leads = useApi(
+    () => listLeads({ q: debounced, group: view === "board" ? "ALL" : group, advisorId, source, size: 100 }),
+    [debounced, group, advisorId, source, view],
+  );
+  const advisors = useApi(() => (seesAll ? listAdvisors() : Promise.resolve([])), [seesAll]);
+  const counts = leads.data?.counts;
+  const filtering = debounced !== "" || advisorId !== "" || source !== "" || group !== "ALL";
 
   return (
     <PageContainer
       title="Leads"
-      subtitle="Prospectos que llegan por WhatsApp, portales, campañas y la oficina, con su propiedad y su asesor."
+      subtitle={seesAll ? "Prospectos que llegan por WhatsApp, portales, campañas y la oficina, con su propiedad y su asesor." : "Tus prospectos asignados."}
       action={
-        <div className="flex shrink-0 gap-1 rounded-xl border border-border bg-card p-1" role="group" aria-label="Vista">
-          <ViewButton active={view === "list"} onClick={() => setView("list")} label="Ver como lista" icon={List} />
-          <ViewButton active={view === "board"} onClick={() => setView("board")} label="Ver como tablero por etapa" icon={Columns3} />
-        </div>
+        <>
+          <Button variant="secondary" onClick={leads.reload} aria-label="Actualizar la lista" title="Actualizar la lista">
+            <RefreshCw className="h-4 w-4" aria-hidden />
+          </Button>
+          <div className="flex shrink-0 gap-1 rounded-xl border border-border bg-card p-1" role="group" aria-label="Vista">
+            <ViewButton active={view === "list"} onClick={() => setView("list")} label="Ver como lista" icon={List} />
+            <ViewButton active={view === "board"} onClick={() => setView("board")} label="Ver como tablero por etapa" icon={Columns3} />
+          </div>
+          {can("LEAD_MANAGE") ? (
+            <Button onClick={() => setCreating(true)}>
+              <Plus className="h-4 w-4" aria-hidden /> Registrar lead
+            </Button>
+          ) : null}
+        </>
       }
     >
-      <PreviewNotice />
-      {!crm ? (
-        <StateMessage kind="loading" title="Cargando leads…" />
-      ) : (
-        <LeadsContent
-          crm={crm}
-          query={query}
-          setQuery={setQuery}
-          group={group}
-          setGroup={setGroup}
-          advisorId={advisorId}
-          setAdvisorId={setAdvisorId}
-          source={source}
-          setSource={setSource}
-          view={view}
-        />
-      )}
-    </PageContainer>
-  );
-}
-
-function LeadsContent({
-  crm,
-  query,
-  setQuery,
-  group,
-  setGroup,
-  advisorId,
-  setAdvisorId,
-  source,
-  setSource,
-  view,
-}: {
-  crm: CrmState;
-  query: string;
-  setQuery: (v: string) => void;
-  group: Group;
-  setGroup: (g: Group) => void;
-  advisorId: string;
-  setAdvisorId: (v: string) => void;
-  source: LeadSource | "";
-  setSource: (v: LeadSource | "") => void;
-  view: "list" | "board";
-}) {
-  const propertyById = useMemo(() => new Map(crm.properties.map((p) => [p.id, p])), [crm.properties]);
-  const advisorById = useMemo(() => new Map(crm.advisors.map((a) => [a.id, a])), [crm.advisors]);
-
-  // Filtros que no son de grupo: los conteos de las pestañas respetan búsqueda, asesor y fuente.
-  const base = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return crm.leads
-      .filter((l) => !advisorId || l.advisorId === advisorId)
-      .filter((l) => !source || l.source === source)
-      .filter((l) => {
-        if (!q) return true;
-        const p = l.propertyId ? propertyById.get(l.propertyId) : undefined;
-        return [l.name, l.phone, l.summary, p?.internalKey, p?.key, p?.neighborhood].some((v) => v?.toLowerCase().includes(q));
-      })
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }, [crm.leads, query, advisorId, source, propertyById]);
-
-  const visible = base.filter(groupMatchers[group]);
-  const filtering = query.trim() !== "" || advisorId !== "" || source !== "" || group !== "all";
-  const total = crm.leads.length;
-  const unassigned = crm.leads.filter(groupMatchers.unassigned).length;
-  const fresh = crm.leads.filter(groupMatchers.new).length;
-  const won = crm.leads.filter(groupMatchers.won).length;
-
-  return (
-    <>
       <section aria-label="Resumen" className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
-        <StatCard icon={Users} value={total} label="Leads" hint="Todos los registrados" />
-        <StatCard icon={Inbox} tone="warning" value={fresh} label="Nuevos" hint="Aún sin primer contacto" />
-        <StatCard icon={UserPlus} tone="danger" value={unassigned} label="Sin asignar" hint="Necesitan un asesor" />
-        <StatCard icon={CheckCircle2} tone="success" value={won} label="Ganados" hint="Cerraron operación" />
+        <StatCard icon={Users} value={counts?.ALL ?? "—"} label="Leads" hint={filtering ? "Con los filtros actuales" : "Todos los registrados"} />
+        <StatCard icon={Inbox} tone="warning" value={counts?.NEW ?? "—"} label="Nuevos" hint="Aún sin primer contacto" />
+        <StatCard icon={UserPlus} tone="danger" value={counts?.UNASSIGNED ?? "—"} label="Sin asignar" hint="Necesitan un asesor" />
+        <StatCard icon={CheckCircle2} tone="success" value={counts?.WON ?? "—"} label="Ganados" hint="Cerraron operación" />
       </section>
 
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end">
-        <SearchInput value={query} onChange={setQuery} label="Buscar por nombre, teléfono o clave de propiedad" className="lg:max-w-md lg:flex-1" />
-        <Select
-          aria-label="Filtrar por asesor"
-          value={advisorId}
-          onChange={(e) => setAdvisorId(e.target.value)}
-          options={[{ value: "", label: "Todos los asesores" }, ...crm.advisors.map((a) => ({ value: a.id, label: a.name }))]}
-          containerClassName="lg:w-64"
-          className="h-11"
-        />
+        <SearchInput value={query} onChange={setQuery} label="Buscar por nombre, teléfono o propiedad" className="lg:max-w-md lg:flex-1" />
+        {seesAll ? (
+          <Select
+            aria-label="Filtrar por asesor"
+            value={advisorId}
+            onChange={(e) => setAdvisorId(e.target.value)}
+            options={[{ value: "", label: "Todos los asesores" }, ...(advisors.data ?? []).map((a) => ({ value: a.userId, label: a.name }))]}
+            containerClassName="lg:w-64"
+            className="h-11"
+          />
+        ) : null}
         <Select
           aria-label="Filtrar por fuente"
           value={source}
           onChange={(e) => setSource(e.target.value as LeadSource | "")}
-          options={[{ value: "", label: "Todas las fuentes" }, ...Object.entries(sourceLabels).map(([value, label]) => ({ value, label }))]}
+          options={[{ value: "", label: "Todas las fuentes" }, ...(Object.keys(sourceLabels) as LeadSource[]).map((value) => ({ value, label: sourceLabels[value] }))]}
           containerClassName="lg:w-56"
           className="h-11"
         />
@@ -171,16 +119,20 @@ function LeadsContent({
             label="Filtrar por estado"
             value={group}
             onChange={setGroup}
-            options={(Object.keys(groupLabels) as Group[]).map((id) => ({ id, label: groupLabels[id], count: base.filter(groupMatchers[id]).length }))}
+            options={(Object.keys(groupLabels) as LeadGroup[]).map((id) => ({ id, label: groupLabels[id], count: counts?.[id] }))}
           />
         </div>
       ) : null}
 
-      {(view === "list" ? visible : base).length === 0 ? (
+      {leads.error && !leads.data ? (
+        <LoadError message={leads.error} onRetry={leads.reload} />
+      ) : !leads.data ? (
+        <StateMessage kind="loading" title="Cargando leads…" />
+      ) : leads.data.items.length === 0 ? (
         <StateMessage
           kind={filtering ? "no-results" : "empty"}
           title={filtering ? "Sin resultados" : "Aún no hay leads"}
-          description={filtering ? "Ningún lead coincide con estos filtros." : "Cuando el bot de WhatsApp o un portal registre un prospecto aparecerá aquí."}
+          description={filtering ? "Ningún lead coincide con estos filtros." : "Cuando el asistente de WhatsApp canalice a un cliente, o registres uno a mano, aparecerá aquí."}
           action={
             filtering ? (
               <Button
@@ -189,7 +141,7 @@ function LeadsContent({
                   setQuery("");
                   setAdvisorId("");
                   setSource("");
-                  setGroup("all");
+                  setGroup("ALL");
                 }}
               >
                 Quitar filtros
@@ -198,20 +150,24 @@ function LeadsContent({
           }
         />
       ) : view === "list" ? (
-        <LeadTable leads={visible} propertyById={propertyById} advisorById={advisorById} />
+        <>
+          <LeadTable leads={leads.data.items} />
+          {leads.data.total > leads.data.items.length ? (
+            <p className="mt-4 text-center text-xs text-muted">
+              Mostrando {leads.data.items.length} de {leads.data.total}. Usa la búsqueda o los filtros para encontrar el resto.
+            </p>
+          ) : null}
+        </>
       ) : (
-        <LeadBoard leads={base} advisorById={advisorById} propertyById={propertyById} />
+        <LeadBoard leads={leads.data.items} />
       )}
-    </>
+
+      {creating ? <NewLeadModal open={creating} onClose={() => setCreating(false)} advisors={advisors.data ?? []} /> : null}
+    </PageContainer>
   );
 }
 
-type Maps = {
-  propertyById: Map<number, CrmState["properties"][number]>;
-  advisorById: Map<string, CrmState["advisors"][number]>;
-};
-
-function LeadTable({ leads, propertyById, advisorById }: { leads: CrmLead[] } & Maps) {
+function LeadTable({ leads }: { leads: LeadItem[] }) {
   const cols = "lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1.6fr)_minmax(0,1.3fr)_minmax(0,0.9fr)_minmax(0,1.1fr)_auto]";
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-[0_1px_2px_rgba(36,39,35,0.04)]">
@@ -232,8 +188,8 @@ function LeadTable({ leads, propertyById, advisorById }: { leads: CrmLead[] } & 
                 {interestLabels[lead.interest]} · {timeAgo(lead.createdAt)}
               </p>
             </div>
-            <PropertyMini property={lead.propertyId ? propertyById.get(lead.propertyId) : undefined} />
-            <AdvisorChip advisor={lead.advisorId ? advisorById.get(lead.advisorId) : undefined} />
+            <PropertyMini property={lead.property} />
+            <AdvisorChip advisor={lead.advisor} />
             <div>
               <StageBadge stage={lead.stage} />
             </div>
@@ -253,7 +209,7 @@ function LeadTable({ leads, propertyById, advisorById }: { leads: CrmLead[] } & 
 }
 
 /** Tablero por etapa (solo lectura: el cambio de etapa se hace en el detalle del lead). */
-function LeadBoard({ leads, advisorById, propertyById }: { leads: CrmLead[] } & Maps) {
+function LeadBoard({ leads }: { leads: LeadItem[] }) {
   return (
     <div className="-mx-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
       <div className="grid min-w-[1100px] grid-cols-7 gap-3">
@@ -266,22 +222,18 @@ function LeadBoard({ leads, advisorById, propertyById }: { leads: CrmLead[] } & 
                 <span className="text-xs tabular-nums text-muted">{items.length}</span>
               </header>
               <ul className="flex flex-col gap-2 p-2">
-                {items.map((lead) => {
-                  const property = lead.propertyId ? propertyById.get(lead.propertyId) : undefined;
-                  const advisor = lead.advisorId ? advisorById.get(lead.advisorId) : undefined;
-                  return (
-                    <li key={lead.id}>
-                      <Link
-                        href={`/leads/${lead.id}`}
-                        className="block rounded-lg border border-border bg-card p-3 text-left shadow-[0_1px_2px_rgba(36,39,35,0.04)] transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/30"
-                      >
-                        <p className="truncate text-sm font-semibold text-obsessed">{lead.name}</p>
-                        <p className="mt-0.5 truncate text-xs text-muted">{property ? `${property.internalKey} · ${property.neighborhood}` : interestLabels[lead.interest]}</p>
-                        <p className={cn("mt-2 truncate text-xs", advisor ? "text-muted" : "font-medium text-warning-text")}>{advisor?.name ?? "Sin asignar"}</p>
-                      </Link>
-                    </li>
-                  );
-                })}
+                {items.map((lead) => (
+                  <li key={lead.id}>
+                    <Link
+                      href={`/leads/${lead.id}`}
+                      className="block rounded-lg border border-border bg-card p-3 text-left shadow-[0_1px_2px_rgba(36,39,35,0.04)] transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/30"
+                    >
+                      <p className="truncate text-sm font-semibold text-obsessed">{lead.name}</p>
+                      <p className="mt-0.5 truncate text-xs text-muted">{lead.property?.title ?? interestLabels[lead.interest]}</p>
+                      <p className={cn("mt-2 truncate text-xs", lead.advisor ? "text-muted" : "font-medium text-warning-text")}>{lead.advisor?.name ?? "Sin asignar"}</p>
+                    </Link>
+                  </li>
+                ))}
                 {items.length === 0 ? <li className="px-1 py-4 text-center text-xs text-muted">Sin leads</li> : null}
               </ul>
             </section>

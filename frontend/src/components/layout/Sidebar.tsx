@@ -6,7 +6,7 @@ import { useCanSeeCrm } from "@/components/crm/CrmUi";
 import { useAuth } from "@/context/AuthProvider";
 import { useCan } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-import { Building2, FilePlus2, Files, LayoutDashboard, LogOut, MessagesSquare, Users, UserRoundSearch, UsersRound } from "lucide-react";
+import { FilePlus2, Files, LayoutDashboard, LogOut, MessagesSquare, Users, UserRoundSearch, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -18,14 +18,13 @@ const navItems = [
   { href: "/usuarios", label: "Usuarios y permisos", icon: Users, permission: "USER_MANAGE" },
 ];
 
-// CRM (Módulo 3, vista previa con datos de ejemplo): por ahora solo para
-// administración y dirección, hasta que el backend tenga permisos de leads.
+// CRM (Módulo 3). Las propiedades no tienen pantalla aquí: se consultan en
+// 21Online y su gestión es el Módulo 2.
 const crmItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/leads", label: "Leads", icon: UserRoundSearch },
-  { href: "/conversaciones", label: "Conversaciones", icon: MessagesSquare },
-  { href: "/propiedades", label: "Propiedades", icon: Building2 },
-  { href: "/asesores", label: "Asesores", icon: UsersRound },
+  { href: "/conversaciones", label: "Conversaciones", icon: MessagesSquare, permission: "CONVERSATION_VIEW" },
+  { href: "/asesores", label: "Asesores", icon: UsersRound, permission: "ADVISOR_ROUTING_MANAGE" },
 ];
 
 function isActive(href: string, pathname: string): boolean {
@@ -68,7 +67,9 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         {canSeeCrm ? (
           <>
             <p className="px-3.5 pb-1 pt-5 text-[0.68rem] font-semibold uppercase tracking-wider text-white/40">CRM</p>
-            {crmItems.map((item) => (
+            {crmItems
+              .filter((item) => !item.permission || can(item.permission))
+              .map((item) => (
               <NavLink key={item.href} item={item} active={isActive(item.href, pathname)} onNavigate={onNavigate} />
             ))}
           </>

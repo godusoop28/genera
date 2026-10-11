@@ -1,4 +1,4 @@
-# Backend — CENTURY 21 Genera, Módulo 1
+# Backend — CENTURY 21 Genera (Módulo 1 y CRM del Módulo 3)
 
 Monolito modular en Spring Boot 4.1.1 / Java 21, organizado con Spring
 Modulith. Base de paquete: `com.c21genera`.
@@ -19,6 +19,9 @@ Modulith. Base de paquete: `com.c21genera`.
 | `notifications` | Envío de correo vía outbox transaccional (nunca síncrono en el request) |
 | `audit` | Rastro técnico (`AuditEvent`) separado de la línea de tiempo amigable (`Activity`) |
 | `closing` | Seguimiento genérico de cierre tras la aceptación del inmueble |
+| `leads` | CRM (Módulo 3): leads, etapas, actividades, ruteo de asesores (asesor de la propiedad o ruleta ponderada) y dashboard |
+| `online21` | Consulta de solo lectura del inventario de 21Online (API REST con JWT) y registro opcional de prospectos |
+| `assistant` | Asistente de WhatsApp con IA (misma lógica que el panel de Inova): WhatsApp Cloud API, OpenAI con herramientas acotadas, bandeja y simulador |
 | `shared` | Módulo abierto: eventos de integración, tipos de valor compartidos, seguridad de archivos, JPA base |
 
 Los módulos se comunican solo por API pública (interfaces en el paquete raíz
@@ -178,3 +181,56 @@ cd backend
   (`PDF_CONVERSION_ENABLED=false`); el DOCX siempre se genera igual.
 - `Property` (Módulo 2): no existe como entidad; solo el punto de
   integración por evento.
+
+## CRM y asistente de WhatsApp (Módulo 3)
+
+Misma lógica que el panel de Inova (proyecto `inovapanel`,
+`docs/CONVERSATIONAL_ASSISTANT.md`), en Java y con 21Online en lugar de
+EasyBroker. **Las propiedades no se guardan ni se administran en Genera**
+(eso es el Módulo 2): se consultan en 21Online.
+
+```
+Cliente (WhatsApp) → Meta → POST /api/v1/public/whatsapp/webhook (firma HMAC)
+   → InboundService: guarda el mensaje y agenda el turno (ráfaga 6 s / máx. 25 s)
+   → AssistantWorker (cada 2 s) → TurnProcessor → AssistantAgent (OpenAI Responses + herramientas)
+        search_properties / get_property   → online21.PropertyCatalog (índice en memoria, ficha en vivo)
+        request_commercial_handoff         → leads.LeadIntake (asesor de la propiedad o ruleta)
+        request_management / request_human → pendiente para el equipo
+   → respuesta en cola → OutboxSender → WhatsApp Cloud API
+leads.LeadAssigned → AdvisorNoticeListener → aviso por WhatsApp al asesor
+```
+
+Reglas clave (iguales a Inova):
+
+- **La IA propone; el backend decide.** El modelo no elige asesor ni escribe
+  estados. Máximo 4 rondas y 6 herramientas por turno; una corrección si
+  menciona una propiedad no verificada, afirma una asignación que no ocurrió
+  o dice "ruleta".
+- **Asignación:** propiedad identificada cuyo asesor en 21Online es usuario de
+  Genera (`crm_advisor_profile.online21_user_id`) → directo a él. Si no,
+  ruleta ponderada (leads de hoy / peso) entre quienes reciben leads, en su
+  horario y sin rebasar su límite diario. Nadie disponible → el lead se guarda
+  sin asesor y queda pendiente.
+- **Un lead por teléfono en 30 días:** si ya tiene asesor, la nueva solicitud
+  se anexa como seguimiento (no se reasigna). Idempotencia por
+  `wa:<conversación>:s<sesión>`.
+- **Sesión nueva** tras 6 h sin mensajes: lo anterior pasa a contexto y la IA
+  no contesta pedidos viejos.
+- **Abandono:** con interés inmobiliario y 30 min sin respuesta, se canaliza
+  solo (nunca proveedores ni gerencia).
+- **Fallas de OpenAI:** reintento a 10 s, 30 s y 90 s; luego respuesta fija
+  una vez, IA en pausa para ese contacto y pendiente en el panel.
+- Responder como equipo pausa la IA en esa conversación; al reanudarla no
+  contesta lo que llegó durante la pausa.
+
+Variables (ver `.env.example`): `ASSISTANT_MODE` (OFF/TEST_ONLY/ON; el
+simulador del panel funciona siempre que haya `AI_API_KEY`),
+`ASSISTANT_MODEL` (vacío = `AI_MODEL`), `ONLINE21_API_KEY` (Mi Perfil → API
+Keys en 21Online), `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`,
+`WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_ADVISOR_TEMPLATE`.
+
+Pendiente de validar con credenciales reales: el formato exacto de la
+respuesta de `GET /api/propiedades` de 21Online (el mapeo acepta JSON-LD y
+arreglo plano), qué acepta `POST /api/prospectos`
+(`ONLINE21_PUSH_PROSPECTS=false` por defecto) y el comportamiento del modelo
+de `AI_MODEL` con la Responses API (herramientas + JSON Schema estricto).

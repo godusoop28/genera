@@ -1,4 +1,4 @@
-import type { AssignmentMethod, ConversationControl, CrmProperty, LeadInterest, LeadSource, LeadStage } from "@/types/crm";
+import type { AssignmentMethod, ConversationControl, LeadInterest, LeadSource, LeadStage } from "@/lib/api/crm";
 
 type Tone = "gold" | "obsessed" | "success" | "warning" | "danger" | "info" | "manual" | "neutral";
 
@@ -25,9 +25,6 @@ export const stageTones: Record<LeadStage, Tone> = {
   LOST: "danger",
 };
 
-/** Etapas abiertas: el lead sigue en seguimiento. */
-export const openStages: LeadStage[] = ["NEW", "CONTACTED", "APPOINTMENT", "VISITED", "NEGOTIATION"];
-
 export const sourceLabels: Record<LeadSource, string> = {
   WHATSAPP_BOT: "WhatsApp (asistente)",
   PORTAL: "Portal inmobiliario",
@@ -35,13 +32,16 @@ export const sourceLabels: Record<LeadSource, string> = {
   WEBSITE: "Sitio web",
   REFERRAL: "Referido",
   WALK_IN: "Oficina",
+  PHONE: "Llamada",
 };
 
 export const interestLabels: Record<LeadInterest, string> = {
   BUY: "Comprar",
   RENT: "Rentar",
   SELL: "Vender su propiedad",
+  LEASE_OUT: "Poner en renta su propiedad",
   INVEST: "Invertir",
+  OTHER: "Información",
 };
 
 export const assignmentLabels: Record<AssignmentMethod, string> = {
@@ -52,7 +52,7 @@ export const assignmentLabels: Record<AssignmentMethod, string> = {
 
 export const assignmentHints: Record<AssignmentMethod, string> = {
   PROPERTY_OWNER: "Se asignó al asesor que tiene la propiedad en 21Online",
-  ROULETTE: "Se repartió entre los asesores activos según su peso y horario",
+  ROULETTE: "Se repartió entre los asesores que reciben leads según su peso y horario",
   MANUAL: "Lo asignó una persona desde el panel",
 };
 
@@ -68,34 +68,19 @@ export const controlTones: Record<ConversationControl, Tone> = {
   PAUSED: "neutral",
 };
 
+export const ONLINE21_BASE_URL = "https://plus.21onlinemx.com";
+
 const mxn = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 });
 
-export function formatPrice(amount: number, currency: "MXN" | "USD" = "MXN"): string {
-  return currency === "MXN" ? mxn.format(amount) : `${new Intl.NumberFormat("es-MX", { maximumFractionDigits: 0 }).format(amount)} USD`;
-}
-
-export function propertyPrice(p: CrmProperty): string {
-  return `${formatPrice(p.price, p.currency)}${p.operation === "renta" ? " / mes" : ""}`;
-}
-
-export function propertyTitle(p: CrmProperty): string {
-  return `${p.subtype} en ${p.operation} · ${p.neighborhood}`;
-}
-
-export function propertyAddress(p: CrmProperty): string {
-  return `${p.street}, ${p.neighborhood}, ${p.municipality}`;
+export function formatPrice(amount: number): string {
+  return mxn.format(amount);
 }
 
 const dateTime = new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-const dateOnly = new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short", year: "numeric" });
 const timeOnly = new Intl.DateTimeFormat("es-MX", { hour: "2-digit", minute: "2-digit" });
 
 export function formatDateTime(iso: string): string {
   return dateTime.format(new Date(iso));
-}
-
-export function formatDate(iso: string): string {
-  return dateOnly.format(new Date(iso));
 }
 
 export function formatTime(iso: string): string {

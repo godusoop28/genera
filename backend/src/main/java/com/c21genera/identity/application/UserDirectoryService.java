@@ -3,6 +3,7 @@ package com.c21genera.identity.application;
 import com.c21genera.identity.UserDirectory;
 import com.c21genera.identity.domain.UserStatus;
 import com.c21genera.identity.infrastructure.UserRepository;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -24,5 +25,12 @@ class UserDirectoryService implements UserDirectory {
       return Optional.empty();
     }
     return userRepository.findById(userId).map(u -> new UserContact(u.getId(), u.getName(), u.getEmail(), u.getStatus() == UserStatus.ACTIVE));
+  }
+
+  @Override
+  public List<StaffMember> activeStaff() {
+    return userRepository.findByStatus(UserStatus.ACTIVE).stream()
+        .map(u -> new StaffMember(u.getId(), u.getName(), u.getEmail(), u.getRole().getCode().name()))
+        .toList();
   }
 }

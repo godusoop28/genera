@@ -1,5 +1,6 @@
 package com.c21genera.identity;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -8,5 +9,10 @@ public interface UserDirectory {
 
   Optional<UserContact> contactOf(UUID userId);
 
+  /** Personal interno activo con su rol (p. ej. para elegir a qué asesor se asigna un lead). */
+  List<StaffMember> activeStaff();
+
   record UserContact(UUID id, String name, String email, boolean active) {}
+
+  record StaffMember(UUID id, String name, String email, String roleCode) {}
 }

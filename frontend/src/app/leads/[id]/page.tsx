@@ -1,6 +1,6 @@
 "use client";
 
-import { AdvisorChip, PreviewNotice, SourceLabel, StageBadge } from "@/components/crm/CrmUi";
+import { AdvisorChip, LoadError, PropertyMini, SourceLabel, StageBadge, errorText, useApi } from "@/components/crm/CrmUi";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -8,7 +8,18 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Select";
 import { StateMessage } from "@/components/ui/StateMessage";
 import { useToast } from "@/components/ui/Toast";
-import { ONLINE21_BASE_URL } from "@/data/crm/properties";
+import {
+  addLeadNote,
+  assignLead,
+  changeLeadStage,
+  getConversation,
+  getLead,
+  listAdvisors,
+  type ActivityKind,
+  type LeadDetail,
+  type LeadItem,
+  type LeadStage,
+} from "@/lib/api/crm";
 import {
   assignmentHints,
   assignmentLabels,
@@ -17,41 +28,31 @@ import {
   formatDateTime,
   formatPrice,
   interestLabels,
-  propertyAddress,
-  propertyPrice,
   stageLabels,
   stageOrder,
   timeAgo,
   whatsappLink,
 } from "@/lib/crm/labels";
-import { addLeadNote, changeLeadStage, reassignLead, useCrm } from "@/lib/crm/store";
+import { useCan } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-import type { CrmLead, LeadActivity, LeadStage } from "@/types/crm";
-import {
-  ArrowLeft,
-  Bath,
-  BedDouble,
-  Bell,
-  Bot,
-  Car,
-  CheckCircle2,
-  ExternalLink,
-  FilePlus2,
-  MessageCircle,
-  MessagesSquare,
-  Ruler,
-  StickyNote,
-  UserCheck,
-  UserPlus,
-} from "lucide-react";
+import { ArrowLeft, Bell, Bot, CheckCircle2, FilePlus2, MessageCircle, MessagesSquare, StickyNote, UserCheck, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { use, useState, type ReactNode } from "react";
 
 export default function LeadDetailPage({ params }: PageProps<"/leads/[id]">) {
   const { id } = use(params);
-  const crm = useCrm();
+  const can = useCan();
+  const detail = useApi(() => getLead(id), [id]);
+  const advisors = useApi(() => (can("LEAD_ASSIGN") ? listAdvisors() : Promise.resolve([])), [can("LEAD_ASSIGN")]);
 
-  if (!crm) {
+  if (detail.error && !detail.data) {
+    return (
+      <PageContainer title="Lead">
+        <LoadError message={detail.error} onRetry={detail.reload} />
+      </PageContainer>
+    );
+  }
+  if (!detail.data) {
     return (
       <PageContainer title="Lead">
         <StateMessage kind="loading" title="Cargando lead…" />
@@ -59,35 +60,16 @@ export default function LeadDetailPage({ params }: PageProps<"/leads/[id]">) {
     );
   }
 
-  const lead = crm.leads.find((l) => l.id === id);
-  if (!lead) {
-    return (
-      <PageContainer title="Lead no encontrado">
-        <StateMessage
-          kind="no-results"
-          title="Este lead no existe"
-          description="Puede que el enlace sea de una sesión anterior (los datos de ejemplo se regeneran al recargar)."
-          action={
-            <Link href="/leads" className="text-sm font-medium text-dark-gold hover:text-obsessed">
-              Volver a leads
-            </Link>
-          }
-        />
-      </PageContainer>
-    );
-  }
-
-  const property = lead.propertyId ? crm.properties.find((p) => p.id === lead.propertyId) : undefined;
-  const advisor = lead.advisorId ? crm.advisors.find((a) => a.id === lead.advisorId) : undefined;
-  const conversation = lead.conversationId ? crm.conversations.find((c) => c.id === lead.conversationId) : undefined;
+  const { lead, activities } = detail.data;
+  const update = (next: LeadDetail) => detail.setData(next);
 
   return (
     <PageContainer
       title={lead.name}
       subtitle={
         <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="tabular-nums">{lead.phone}</span>
-          <span aria-hidden>·</span>
+          {lead.phone ? <span className="tabular-nums">{lead.phone}</span> : null}
+          {lead.email ? <span>{lead.email}</span> : null}
           <span>Recibido {timeAgo(lead.createdAt)}</span>
         </span>
       }
@@ -99,18 +81,19 @@ export default function LeadDetailPage({ params }: PageProps<"/leads/[id]">) {
           >
             <ArrowLeft className="h-4 w-4" aria-hidden /> Leads
           </Link>
-          <a
-            href={whatsappLink(lead.phone)}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-gold px-4 py-2.5 text-sm font-medium text-brand-ink shadow-sm hover:bg-gold-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/40"
-          >
-            <MessageCircle className="h-4 w-4" aria-hidden /> WhatsApp
-          </a>
+          {lead.phone ? (
+            <a
+              href={whatsappLink(lead.phone)}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-gold px-4 py-2.5 text-sm font-medium text-brand-ink shadow-sm hover:bg-gold-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/40"
+            >
+              <MessageCircle className="h-4 w-4" aria-hidden /> WhatsApp
+            </a>
+          ) : null}
         </>
       }
     >
-      <PreviewNotice />
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="min-w-0 space-y-5">
           <Card>
@@ -122,11 +105,11 @@ export default function LeadDetailPage({ params }: PageProps<"/leads/[id]">) {
               </Field>
               <Field label="Presupuesto">{lead.budget ? formatPrice(lead.budget) : "—"}</Field>
               <Field label="Recibido">{formatDateTime(lead.createdAt)}</Field>
-              <Field label="Último movimiento">{lead.lastContactAt ? timeAgo(lead.lastContactAt) : "—"}</Field>
+              <Field label="Último movimiento">{timeAgo(lead.lastActivityAt)}</Field>
               {lead.stage === "LOST" ? <Field label="Motivo de pérdida">{lead.lostReason ?? "—"}</Field> : null}
             </dl>
             {lead.summary ? (
-              <p className="mt-5 rounded-xl bg-app-bg px-4 py-3 text-sm text-obsessed">
+              <p className="mt-5 whitespace-pre-wrap rounded-xl bg-app-bg px-4 py-3 text-sm text-obsessed">
                 <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-muted">Lo que nos dijo</span>
                 {lead.summary}
               </p>
@@ -134,90 +117,43 @@ export default function LeadDetailPage({ params }: PageProps<"/leads/[id]">) {
           </Card>
 
           <Card>
-            <CardHeader
-              title="Propiedad de interés"
-              description={property ? "Datos consultados en 21Online." : undefined}
-              action={
-                property ? (
-                  <a
-                    href={`${ONLINE21_BASE_URL}/propiedades/ver/${property.id}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-sm font-medium text-dark-gold hover:text-obsessed"
-                  >
-                    21Online <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-                  </a>
-                ) : null
-              }
-            />
-            {property ? (
-              <div>
-                <Link href={`/propiedades/${property.id}`} className="group block rounded-lg focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/30">
-                  <p className="font-mono text-xs text-muted">
-                    {property.key} · {property.internalKey}
-                  </p>
-                  <p className="mt-1 text-lg font-semibold text-obsessed group-hover:text-dark-gold">{propertyPrice(property)}</p>
-                  <p className="text-sm text-muted">
-                    {property.subtype} en {property.operation} · {propertyAddress(property)}
-                  </p>
-                </Link>
-                {property.details ? (
-                  <ul className="mt-4 flex flex-wrap gap-2">
-                    {property.details.bedrooms ? <Spec icon={BedDouble}>{property.details.bedrooms} recámaras</Spec> : null}
-                    {property.details.bathrooms ? <Spec icon={Bath}>{property.details.bathrooms} baños</Spec> : null}
-                    {property.details.parking ? <Spec icon={Car}>{property.details.parking} estacionamientos</Spec> : null}
-                    {property.details.builtM2 ? <Spec icon={Ruler}>{property.details.builtM2} m² construcción</Spec> : null}
-                  </ul>
-                ) : null}
-              </div>
+            <CardHeader title="Propiedad de interés" description={lead.property ? "Consulta la ficha completa en 21Online." : undefined} />
+            {lead.property ? (
+              <PropertyMini property={lead.property} />
             ) : (
               <p className="text-sm text-muted">
-                {lead.interest === "SELL"
-                  ? "Este prospecto quiere vender: su propiedad todavía no está en el inventario."
-                  : "El cliente no mencionó una propiedad específica; el asesor le ofrecerá opciones según lo que busca."}
+                {lead.interest === "SELL" || lead.interest === "LEASE_OUT"
+                  ? "Este prospecto quiere vender o rentar su propiedad: todavía no está en el inventario."
+                  : "No mencionó una propiedad específica; el asesor le ofrecerá opciones según lo que busca."}
               </p>
             )}
           </Card>
 
-          {conversation ? (
-            <Card>
-              <CardHeader
-                title="Conversación de WhatsApp"
-                action={<Badge tone={controlTones[conversation.control]}>{controlLabels[conversation.control]}</Badge>}
-              />
-              <ul className="space-y-2">
-                {conversation.messages.slice(-3).map((m) => (
-                  <li key={m.id} className={cn("max-w-[85%] rounded-xl px-3.5 py-2 text-sm", m.from === "CLIENT" ? "bg-app-bg text-obsessed" : "ml-auto bg-gold/15 text-obsessed")}>
-                    <span className="mb-0.5 block text-[0.7rem] font-medium uppercase tracking-wide text-muted">
-                      {m.from === "CLIENT" ? lead.name.split(" ")[0] : m.from === "BOT" ? "Asistente" : "Equipo"}
-                    </span>
-                    {m.text}
-                  </li>
-                ))}
-              </ul>
-              <Link
-                href={`/conversaciones?c=${conversation.id}`}
-                className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-dark-gold hover:text-obsessed"
-              >
-                <MessagesSquare className="h-4 w-4" aria-hidden /> Abrir conversación completa
-              </Link>
-            </Card>
-          ) : null}
+          {lead.conversationId && can("CONVERSATION_VIEW") ? <ConversationPreview conversationId={lead.conversationId} name={lead.name} /> : null}
 
           <Card>
             <CardHeader title="Historial" />
-            <Timeline items={lead.activities} />
+            <Timeline items={activities} />
           </Card>
         </div>
 
         <aside className="min-w-0 space-y-5">
-          <StageCard lead={lead} />
-          <AdvisorCard lead={lead} advisorName={advisor?.name} advisors={crm.advisors.filter((a) => a.active)}>
-            <AdvisorChip advisor={advisor} />
-          </AdvisorCard>
-          {lead.interest === "SELL" ? (
+          {can("LEAD_MANAGE") ? <StageCard lead={lead} onChange={update} /> : null}
+          <Card>
+            <CardHeader title="Asesor" />
+            <AdvisorChip advisor={lead.advisor} />
+            {lead.assignmentMethod ? (
+              <p className="mt-2 text-xs text-muted">
+                Asignación: {assignmentLabels[lead.assignmentMethod]} — {assignmentHints[lead.assignmentMethod].toLowerCase()}.
+              </p>
+            ) : (
+              <p className="mt-2 text-xs text-warning-text">Ningún asesor estaba disponible cuando llegó. Asígnalo manualmente.</p>
+            )}
+            {can("LEAD_ASSIGN") ? <ReassignForm lead={lead} advisors={advisors.data ?? []} onChange={update} /> : null}
+          </Card>
+          {lead.interest === "SELL" || lead.interest === "LEASE_OUT" ? (
             <Card className="border-gold/50 bg-gold/5">
-              <CardHeader title="¿Firmó la intermediación?" description="Los prospectos que quieren vender pasan al Módulo 1 como expediente." />
+              <CardHeader title="¿Firmó la intermediación?" description="Los propietarios que firman pasan al Módulo 1 como expediente." />
               <Link
                 href="/expedientes/nuevo"
                 className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-brand-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-ink/90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/40"
@@ -226,7 +162,7 @@ export default function LeadDetailPage({ params }: PageProps<"/leads/[id]">) {
               </Link>
             </Card>
           ) : null}
-          <NoteCard leadId={lead.id} />
+          {can("LEAD_MANAGE") ? <NoteCard leadId={lead.id} onChange={update} /> : null}
         </aside>
       </div>
     </PageContainer>
@@ -242,28 +178,51 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Spec({ icon: Icon, children }: { icon: typeof Bath; children: ReactNode }) {
+function ConversationPreview({ conversationId, name }: { conversationId: string; name: string }) {
+  const conversation = useApi(() => getConversation(conversationId), [conversationId]);
+  if (!conversation.data) return null;
+  const c = conversation.data;
   return (
-    <li className="inline-flex items-center gap-1.5 rounded-full border border-border bg-app-bg px-3 py-1 text-xs text-obsessed">
-      <Icon className="h-3.5 w-3.5 text-muted" aria-hidden />
-      {children}
-    </li>
+    <Card>
+      <CardHeader title="Conversación de WhatsApp" action={<Badge tone={controlTones[c.conversation.control]}>{controlLabels[c.conversation.control]}</Badge>} />
+      <ul className="space-y-2">
+        {c.messages.slice(-3).map((m) => (
+          <li key={m.id} className={cn("max-w-[85%] rounded-xl px-3.5 py-2 text-sm", m.role === "CLIENT" ? "bg-app-bg text-obsessed" : "ml-auto bg-gold/15 text-obsessed")}>
+            <span className="mb-0.5 block text-[0.7rem] font-medium uppercase tracking-wide text-muted">
+              {m.role === "CLIENT" ? name.split(" ")[0] : m.role === "BOT" ? "Asistente" : "Equipo"}
+            </span>
+            {m.text}
+          </li>
+        ))}
+      </ul>
+      <Link href={`/conversaciones?c=${conversationId}`} className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-dark-gold hover:text-obsessed">
+        <MessagesSquare className="h-4 w-4" aria-hidden /> Abrir conversación completa
+      </Link>
+    </Card>
   );
 }
 
-function StageCard({ lead }: { lead: CrmLead }) {
+function StageCard({ lead, onChange }: { lead: LeadItem; onChange: (d: LeadDetail) => void }) {
   const { showToast } = useToast();
   const [pending, setPending] = useState<LeadStage | null>(null);
   const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
   const funnel = stageOrder.filter((s) => s !== "LOST");
   const reachedIndex = lead.stage === "LOST" ? -1 : funnel.indexOf(lead.stage);
 
-  const apply = (stage: LeadStage) => {
+  const apply = async (stage: LeadStage) => {
     if (stage === "LOST" && !reason.trim()) return;
-    changeLeadStage(lead.id, stage, reason.trim());
-    setPending(null);
-    setReason("");
-    showToast(`Etapa: ${stageLabels[stage]}`);
+    setSaving(true);
+    try {
+      onChange(await changeLeadStage(lead.id, stage, stage === "LOST" ? reason.trim() : undefined));
+      setPending(null);
+      setReason("");
+      showToast(`Etapa: ${stageLabels[stage]}`);
+    } catch (err) {
+      showToast(errorText(err));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -277,8 +236,8 @@ function StageCard({ lead }: { lead: CrmLead }) {
             <li key={stage}>
               <button
                 type="button"
-                onClick={() => (isCurrent ? null : stage === "WON" ? setPending("WON") : apply(stage))}
-                disabled={isCurrent}
+                onClick={() => (stage === "WON" ? setPending("WON") : void apply(stage))}
+                disabled={isCurrent || saving}
                 className={cn(
                   "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/30",
                   isCurrent ? "bg-gold/15 font-semibold text-obsessed" : "text-muted hover:bg-app-bg hover:text-obsessed",
@@ -286,10 +245,7 @@ function StageCard({ lead }: { lead: CrmLead }) {
                 aria-current={isCurrent ? "step" : undefined}
               >
                 <span
-                  className={cn(
-                    "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[0.65rem]",
-                    done ? "border-gold bg-gold text-brand-ink" : "border-border bg-card",
-                  )}
+                  className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[0.65rem]", done ? "border-gold bg-gold text-brand-ink" : "border-border bg-card")}
                   aria-hidden
                 >
                   {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : i + 1}
@@ -305,7 +261,7 @@ function StageCard({ lead }: { lead: CrmLead }) {
         <div className="mt-4 rounded-xl border border-success-text/30 bg-success-bg p-3 text-sm text-success-text">
           <p>¿Confirmas que el lead cerró operación?</p>
           <div className="mt-2 flex gap-2">
-            <Button size="sm" onClick={() => apply("WON")}>
+            <Button size="sm" onClick={() => void apply("WON")} disabled={saving}>
               Sí, cerrado ganado
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setPending(null)}>
@@ -329,7 +285,7 @@ function StageCard({ lead }: { lead: CrmLead }) {
               className="w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm text-obsessed focus:border-gold focus:outline-none focus:ring-4 focus:ring-gold/20"
             />
             <div className="flex gap-2">
-              <Button size="sm" variant="danger" onClick={() => apply("LOST")} disabled={!reason.trim()}>
+              <Button size="sm" variant="danger" onClick={() => void apply("LOST")} disabled={!reason.trim() || saving}>
                 Marcar como perdido
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setPending(null)}>
@@ -343,7 +299,7 @@ function StageCard({ lead }: { lead: CrmLead }) {
           </Button>
         )
       ) : (
-        <Button variant="secondary" size="sm" className="mt-3" onClick={() => apply("CONTACTED")}>
+        <Button variant="secondary" size="sm" className="mt-3" onClick={() => void apply("CONTACTED")} disabled={saving}>
           Reabrir seguimiento
         </Button>
       )}
@@ -351,60 +307,49 @@ function StageCard({ lead }: { lead: CrmLead }) {
   );
 }
 
-function AdvisorCard({
-  lead,
-  advisorName,
-  advisors,
-  children,
-}: {
-  lead: CrmLead;
-  advisorName?: string;
-  advisors: { id: string; name: string }[];
-  children: ReactNode;
-}) {
+function ReassignForm({ lead, advisors, onChange }: { lead: LeadItem; advisors: { userId: string; name: string }[]; onChange: (d: LeadDetail) => void }) {
   const { showToast } = useToast();
   const [target, setTarget] = useState("");
-  const options = advisors.filter((a) => a.id !== lead.advisorId);
+  const [saving, setSaving] = useState(false);
+  const options = advisors.filter((a) => a.userId !== lead.advisor?.id);
   return (
-    <Card>
-      <CardHeader title="Asesor" />
-      {children}
-      {lead.assignment ? (
-        <p className="mt-2 text-xs text-muted" title={assignmentHints[lead.assignment]}>
-          Asignación: {assignmentLabels[lead.assignment]} — {assignmentHints[lead.assignment].toLowerCase()}.
-        </p>
-      ) : (
-        <p className="mt-2 text-xs text-warning-text">Ningún asesor estaba disponible cuando llegó. Asígnalo manualmente.</p>
-      )}
+    <>
       <div className="mt-4 flex items-end gap-2">
         <Select
-          label={lead.advisorId ? "Reasignar a" : "Asignar a"}
+          label={lead.advisor ? "Reasignar a" : "Asignar a"}
           value={target}
           onChange={(e) => setTarget(e.target.value)}
-          options={[{ value: "", label: "Elige un asesor" }, ...options.map((a) => ({ value: a.id, label: a.name }))]}
+          options={[{ value: "", label: "Elige un asesor" }, ...options.map((a) => ({ value: a.userId, label: a.name }))]}
           containerClassName="min-w-0 flex-1"
         />
         <Button
           variant="secondary"
-          disabled={!target}
-          onClick={() => {
-            const name = options.find((a) => a.id === target)?.name;
-            reassignLead(lead.id, target);
-            setTarget("");
-            showToast(`Asignado a ${name}${advisorName ? ` (antes: ${advisorName})` : ""}`);
+          disabled={!target || saving}
+          onClick={async () => {
+            setSaving(true);
+            try {
+              onChange(await assignLead(lead.id, target));
+              setTarget("");
+              showToast("Lead asignado");
+            } catch (err) {
+              showToast(errorText(err));
+            } finally {
+              setSaving(false);
+            }
           }}
         >
-          {lead.advisorId ? <UserCheck className="h-4 w-4" aria-hidden /> : <UserPlus className="h-4 w-4" aria-hidden />}
-          {lead.advisorId ? "Reasignar" : "Asignar"}
+          {lead.advisor ? <UserCheck className="h-4 w-4" aria-hidden /> : <UserPlus className="h-4 w-4" aria-hidden />}
+          {lead.advisor ? "Reasignar" : "Asignar"}
         </Button>
       </div>
-      <p className="mt-2 text-xs text-muted">Al asignar, el asesor recibirá un aviso por WhatsApp con la ficha de la propiedad (cuando el bot esté conectado).</p>
-    </Card>
+      <p className="mt-2 text-xs text-muted">Si el asesor tiene WhatsApp configurado en Asesores, recibe un aviso con los datos del lead.</p>
+    </>
   );
 }
 
-function NoteCard({ leadId }: { leadId: string }) {
+function NoteCard({ leadId, onChange }: { leadId: string; onChange: (d: LeadDetail) => void }) {
   const [text, setText] = useState("");
+  const [saving, setSaving] = useState(false);
   const { showToast } = useToast();
   return (
     <Card>
@@ -423,11 +368,18 @@ function NoteCard({ leadId }: { leadId: string }) {
       <Button
         className="mt-2"
         variant="secondary"
-        disabled={!text.trim()}
-        onClick={() => {
-          addLeadNote(leadId, text.trim());
-          setText("");
-          showToast("Nota agregada");
+        disabled={!text.trim() || saving}
+        onClick={async () => {
+          setSaving(true);
+          try {
+            onChange(await addLeadNote(leadId, text.trim()));
+            setText("");
+            showToast("Nota agregada");
+          } catch (err) {
+            showToast(errorText(err));
+          } finally {
+            setSaving(false);
+          }
         }}
       >
         <StickyNote className="h-4 w-4" aria-hidden /> Guardar nota
@@ -436,7 +388,7 @@ function NoteCard({ leadId }: { leadId: string }) {
   );
 }
 
-const activityIcons: Record<LeadActivity["kind"], typeof Bot> = {
+const activityIcons: Record<ActivityKind, typeof Bot> = {
   CREATED: Bot,
   ASSIGNED: UserCheck,
   REASSIGNED: UserCheck,
@@ -444,14 +396,15 @@ const activityIcons: Record<LeadActivity["kind"], typeof Bot> = {
   NOTE: StickyNote,
   BOT: Bot,
   NOTICE: Bell,
+  FOLLOW_UP: MessagesSquare,
 };
 
-function Timeline({ items }: { items: LeadActivity[] }) {
+function Timeline({ items }: { items: LeadDetail["activities"] }) {
   if (items.length === 0) return <p className="text-sm text-muted">Sin movimientos.</p>;
   return (
     <ol className="space-y-4">
       {items.map((a) => {
-        const Icon = activityIcons[a.kind];
+        const Icon = activityIcons[a.kind] ?? Bot;
         return (
           <li key={a.id} className="flex gap-3">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-app-bg text-muted">
@@ -460,8 +413,8 @@ function Timeline({ items }: { items: LeadActivity[] }) {
             <div className="min-w-0 pt-1">
               <p className={cn("text-sm text-obsessed", a.kind === "NOTE" && "whitespace-pre-wrap")}>{a.text}</p>
               <p className="text-xs text-muted">
-                {formatDateTime(a.at)}
-                {a.by ? ` · ${a.by}` : ""}
+                {formatDateTime(a.createdAt)}
+                {a.actorName ? ` · ${a.actorName}` : ""}
               </p>
             </div>
           </li>

@@ -1,45 +1,89 @@
 "use client";
 
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { StateMessage } from "@/components/ui/StateMessage";
-import { useAuth } from "@/context/AuthProvider";
-import { propertyAddress, propertyPrice, sourceLabels, stageLabels, stageTones } from "@/lib/crm/labels";
+import { ApiError } from "@/lib/api/client";
+import type { LeadProperty, LeadSource, LeadStage } from "@/lib/api/crm";
+import { ONLINE21_BASE_URL, sourceLabels, stageLabels, stageTones } from "@/lib/crm/labels";
+import { useCan } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
-import type { CrmAdvisor, CrmProperty, LeadSource, LeadStage } from "@/types/crm";
-import { Building2, Footprints, Globe, Home, Info, Megaphone, MessageCircle, UserPlus, type LucideIcon } from "lucide-react";
+import { Building2, ExternalLink, Footprints, Globe, Home, Megaphone, MessageCircle, Phone, RefreshCw, UserPlus, type LucideIcon } from "lucide-react";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
-/** Roles que ven el CRM mientras es vista previa (el backend aún no tiene permisos de leads). */
-const CRM_ROLES = ["ADMINISTRATOR", "DIRECTOR", "ADMIN"];
-
+/** ¿Puede entrar al CRM? (el backend vuelve a validar cada llamada). */
 export function useCanSeeCrm(): boolean {
-  const { user } = useAuth();
-  return !!user && (CRM_ROLES.includes(user.role) || user.permissions.includes("*"));
+  const can = useCan();
+  return can("LEAD_VIEW_ALL") || can("LEAD_VIEW_OWN");
 }
 
-/** Oculta las pantallas del CRM a quien no debe verlas todavía. */
+/** Oculta las pantallas del CRM a quien no tiene permisos de leads. */
 export function CrmGate({ children }: { children: ReactNode }) {
   const allowed = useCanSeeCrm();
   if (!allowed) {
     return (
       <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-        <StateMessage kind="restricted" title="Acceso restringido" description="El CRM está en vista previa y por ahora solo lo ven administración y dirección." />
+        <StateMessage kind="restricted" title="Acceso restringido" description="Tu usuario no tiene permiso para consultar leads." />
       </div>
     );
   }
   return <>{children}</>;
 }
 
-export function PreviewNotice({ children }: { children?: ReactNode }) {
+export function errorText(err: unknown): string {
+  if (err instanceof ApiError && err.status === 403) return "Tu usuario no tiene permiso para esta acción.";
+  if (err instanceof ApiError && err.status === 404) return "No se encontró. Puede que se haya eliminado.";
+  if (err instanceof ApiError) return `El servidor respondió con un error (${err.status}). Intenta de nuevo en un momento.`;
+  return "No se pudo conectar con el servidor. Revisa tu conexión e intenta de nuevo.";
+}
+
+/** Carga datos de la API con estados de carga/error y recarga manual. */
+export function useApi<T>(load: () => Promise<T>, deps: unknown[]) {
+  const [data, setData] = useState<T | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [token, setToken] = useState(0);
+  // La carga se repite cuando cambian los valores de deps (son simples: texto, números, booleanos).
+  const key = JSON.stringify(deps);
+  const loadRef = useRef(load);
+  useEffect(() => {
+    loadRef.current = load;
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    loadRef
+      .current()
+      .then((result) => {
+        if (!cancelled) {
+          setData(result);
+          setError(null);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setError(errorText(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [key, token]);
+
+  const reload = useCallback(() => setToken((t) => t + 1), []);
+  return { data, error, setData, reload };
+}
+
+export function LoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <p className="mb-5 flex items-start gap-2.5 rounded-xl border border-info-text/20 bg-info-bg px-4 py-3 text-sm text-info-text">
-      <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-      <span>
-        <strong className="font-semibold">Vista previa con datos de ejemplo.</strong>{" "}
-        {children ?? "Los leads son ficticios y las propiedades son una muestra de 21Online. El bot de WhatsApp y la sincronización aún no están conectados; los cambios se pierden al recargar."}
-      </span>
-    </p>
+    <StateMessage
+      kind="error"
+      title="No se pudo cargar"
+      description={message}
+      action={
+        <Button variant="secondary" onClick={onRetry}>
+          <RefreshCw className="h-4 w-4" aria-hidden /> Reintentar
+        </Button>
+      }
+    />
   );
 }
 
@@ -54,9 +98,10 @@ export const sourceIcons: Record<LeadSource, LucideIcon> = {
   WEBSITE: Globe,
   REFERRAL: UserPlus,
   WALK_IN: Footprints,
+  PHONE: Phone,
 };
 
-export function SourceLabel({ source, detail, className }: { source: LeadSource; detail?: string; className?: string }) {
+export function SourceLabel({ source, detail, className }: { source: LeadSource; detail?: string | null; className?: string }) {
   const Icon = sourceIcons[source];
   return (
     <span className={cn("inline-flex min-w-0 items-center gap-1.5 text-sm text-muted", className)} title={detail ? `${sourceLabels[source]} · ${detail}` : sourceLabels[source]}>
@@ -74,7 +119,7 @@ export function Avatar({ name, className }: { name: string; className?: string }
   );
 }
 
-export function AdvisorChip({ advisor, emptyLabel = "Sin asignar" }: { advisor: CrmAdvisor | undefined; emptyLabel?: string }) {
+export function AdvisorChip({ advisor, emptyLabel = "Sin asignar" }: { advisor: { name: string } | null | undefined; emptyLabel?: string }) {
   if (!advisor) {
     return (
       <Badge tone="warning">
@@ -90,24 +135,29 @@ export function AdvisorChip({ advisor, emptyLabel = "Sin asignar" }: { advisor: 
   );
 }
 
-export function PropertyMini({ property, emptyLabel = "Sin propiedad identificada" }: { property: CrmProperty | undefined; emptyLabel?: string }) {
+/** Propiedad de 21Online asociada al lead (solo consulta; la ficha completa vive en 21Online). */
+export function PropertyMini({ property, emptyLabel = "Sin propiedad identificada" }: { property: LeadProperty | null | undefined; emptyLabel?: string }) {
   if (!property) return <span className="text-sm text-muted">{emptyLabel}</span>;
+  const label = property.title ?? property.key ?? "Propiedad";
   return (
-    <Link
-      href={`/propiedades/${property.id}`}
-      className="group flex min-w-0 items-start gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/30"
-      title={propertyAddress(property)}
-    >
+    <span className="flex min-w-0 items-start gap-2" title={label}>
       <Home className="mt-0.5 h-4 w-4 shrink-0 text-muted" aria-hidden />
       <span className="min-w-0">
-        <span className="block truncate text-sm font-medium text-obsessed group-hover:text-dark-gold">
-          {property.internalKey} · {property.neighborhood}
-        </span>
-        <span className="block truncate text-xs text-muted">
-          {property.subtype} en {property.operation} · {propertyPrice(property)}
-        </span>
+        <span className="block truncate text-sm font-medium text-obsessed">{label}</span>
+        {property.online21Id ? (
+          <a
+            href={`${ONLINE21_BASE_URL}/propiedades/ver/${property.online21Id}`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-muted hover:text-dark-gold"
+          >
+            {property.key ?? property.online21Id} <ExternalLink className="h-3 w-3" aria-hidden />
+          </a>
+        ) : (
+          <span className="block truncate text-xs text-muted">{property.key}</span>
+        )}
       </span>
-    </Link>
+    </span>
   );
 }
 
@@ -146,8 +196,7 @@ export function StatCard({
       </div>
     </>
   );
-  const className =
-    "flex min-w-0 items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(36,39,35,0.04)] sm:gap-4 sm:p-5";
+  const className = "flex min-w-0 items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-[0_1px_2px_rgba(36,39,35,0.04)] sm:gap-4 sm:p-5";
   return href ? (
     <Link href={href} className={cn(className, "transition-shadow duration-150 hover:shadow-md focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/30")}>
       {body}
@@ -210,14 +259,15 @@ export type Period = "today" | "7d" | "30d" | "all";
 
 export const periodLabels: Record<Period, string> = { today: "Hoy", "7d": "7 días", "30d": "30 días", all: "Todo" };
 
-export function periodStart(period: Period, now = Date.now()): number {
-  if (period === "all") return 0;
+/** Inicio del periodo en ISO (undefined = todo). */
+export function periodFrom(period: Period, now = Date.now()): string | undefined {
+  if (period === "all") return undefined;
   if (period === "today") {
     const d = new Date(now);
     d.setHours(0, 0, 0, 0);
-    return d.getTime();
+    return d.toISOString();
   }
-  return now - (period === "7d" ? 7 : 30) * 86_400_000;
+  return new Date(now - (period === "7d" ? 7 : 30) * 86_400_000).toISOString();
 }
 
 export function Segmented<T extends string>({
