@@ -3,9 +3,9 @@ import type { CrmAdvisor, CrmProperty } from "@/types/crm";
 // Muestra del inventario "En Promoción" de 21Online (plus.21onlinemx.com,
 // oficina 649) consultado el 11/10/2026. El repositorio es público: aquí solo
 // van calle sin número, colonia y datos del anuncio; nunca dueños, números
-// exteriores ni claves catastrales. Cuando exista la integración, esta
-// lista vendrá del backend (21Online no expone API; se sincronizará desde el
-// propio panel o su exportación de inventario).
+// exteriores ni claves catastrales. Cuando exista la integración, esta lista
+// vendrá del backend, que la leerá de la API REST de 21Online
+// (/api/propiedades, autenticación JWT; documentación en /api/docs.html).
 
 export const ONLINE21_BASE_URL = "https://plus.21onlinemx.com";
 
