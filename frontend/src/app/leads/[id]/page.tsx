@@ -15,6 +15,7 @@ import {
   getConversation,
   getLead,
   listAdvisors,
+  resendLeadNotice,
   type ActivityKind,
   type AdvisorRouting,
   type LeadDetail,
@@ -181,6 +182,7 @@ export default function LeadDetailPage({ params }: PageProps<"/leads/[id]">) {
                 <Home className="h-3.5 w-3.5" aria-hidden /> Asesor responsable de la propiedad: <span className="font-medium text-obsessed">{lead.propertyAdvisor.name}</span>
               </p>
             ) : null}
+            {lead.assignmentStatus === "ASSIGNED" ? <NoticeStatus leadId={lead.id} status={detail.data.advisorNoticeStatus} canResend={can("LEAD_MANAGE")} onChange={update} /> : null}
             {can("LEAD_ASSIGN") ? <ReassignForm lead={lead} advisors={advisors.data ?? []} onChange={update} /> : null}
           </Card>
           {lead.interest === "SELL" || lead.interest === "LEASE_OUT" ? (
@@ -439,6 +441,48 @@ function NoteCard({ leadId, onChange }: { leadId: string; onChange: (d: LeadDeta
         <StickyNote className="h-4 w-4" aria-hidden /> Guardar nota
       </Button>
     </Card>
+  );
+}
+
+const noticeText: Record<string, { label: string; tone: "success" | "warning" | "danger" | "neutral" }> = {
+  DONE: { label: "Ficha enviada por WhatsApp", tone: "success" },
+  PENDING: { label: "Ficha en envío", tone: "warning" },
+  FAILED: { label: "No se pudo enviar la ficha", tone: "danger" },
+  NOT_REQUIRED: { label: "Sin WhatsApp del asesor: ficha no enviada", tone: "neutral" },
+};
+
+/** Estado del envío de la ficha al asesor y reenvío manual. */
+function NoticeStatus({ leadId, status, canResend, onChange }: { leadId: string; status: string; canResend: boolean; onChange: (d: LeadDetail) => void }) {
+  const { showToast } = useToast();
+  const [sending, setSending] = useState(false);
+  const meta = noticeText[status] ?? noticeText.NOT_REQUIRED;
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+      <Badge tone={meta.tone}>
+        <Bell aria-hidden /> {meta.label}
+      </Badge>
+      {canResend ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={sending}
+          onClick={async () => {
+            setSending(true);
+            try {
+              onChange(await resendLeadNotice(leadId));
+              showToast("Ficha reenviada al asesor");
+            } catch (err) {
+              showToast(errorText(err));
+            } finally {
+              setSending(false);
+            }
+          }}
+        >
+          Reenviar ficha
+        </Button>
+      ) : null}
+      {status === "NOT_REQUIRED" ? <p className="w-full text-xs text-muted">Captura su WhatsApp en Asesores para que reciba la ficha de cada lead.</p> : null}
+    </div>
   );
 }
 

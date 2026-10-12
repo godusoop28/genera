@@ -238,6 +238,18 @@ public class LeadService {
     recorder.assignManually(lead, advisorId, name, state.status() == Status.AVAILABLE ? null : state.detail() + " — " + reason, user.id(), user.name());
   }
 
+  /** Vuelve a mandar la ficha al asesor que atiende el lead (p. ej. si cambió su WhatsApp o el aviso falló). */
+  public LeadDetail resendNotice(UUID id, CurrentUser user) {
+    Lead lead = load(id, user);
+    if (lead.getAssignmentStatus() != AssignmentStatus.ASSIGNED || lead.getAdvisorUserId() == null) {
+      throw new UnprocessableException("LEAD_NOT_ASSIGNED", "El lead todavía no tiene un asesor asignado.");
+    }
+    String name = staff.nameOf(lead.getAdvisorUserId(), new java.util.HashMap<>());
+    recorder.notifyAdvisor(lead, lead.getAdvisorUserId(), name, LeadRecorder.RESENT);
+    recorder.activity(lead, LeadActivity.Kind.NOTICE, "Se pidió reenviar la ficha a " + name + ".", user.id(), user.name());
+    return get(id, user);
+  }
+
   public LeadDetail addNote(UUID id, String text, CurrentUser user) {
     Lead lead = load(id, user);
     if (text == null || text.isBlank()) {

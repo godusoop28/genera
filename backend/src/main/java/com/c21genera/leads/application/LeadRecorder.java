@@ -4,6 +4,9 @@ import com.c21genera.leads.AssignmentMethod;
 import com.c21genera.leads.AssignmentStatus;
 import com.c21genera.leads.LeadInterest;
 import com.c21genera.leads.application.AssignmentService.Decision;
+import com.c21genera.leads.domain.AdvisorNotice;
+import com.c21genera.leads.domain.AdvisorNotice.ClientInfo;
+import com.c21genera.leads.domain.AdvisorNotice.PropertySheet;
 import com.c21genera.leads.domain.AdvisorProfile;
 import com.c21genera.leads.domain.AssignmentLog;
 import com.c21genera.leads.domain.Lead;
@@ -12,6 +15,8 @@ import com.c21genera.leads.domain.SyncStatus;
 import com.c21genera.leads.infrastructure.AdvisorProfileRepository;
 import com.c21genera.leads.infrastructure.AssignmentLogRepository;
 import com.c21genera.leads.infrastructure.LeadActivityRepository;
+import com.c21genera.online21.PropertyCatalog;
+import com.c21genera.online21.PropertyCatalog.CatalogProperty;
 import com.c21genera.online21.ProspectGateway;
 import com.c21genera.online21.ProspectGateway.ProspectRequest;
 import com.c21genera.shared.events.LeadEvents.LeadAssigned;
@@ -38,6 +43,7 @@ class LeadRecorder {
   private final AssignmentLogRepository logs;
   private final AdvisorProfileRepository profiles;
   private final ProspectGateway prospects;
+  private final PropertyCatalog catalog;
   private final StaffNames staff;
   private final ApplicationEventPublisher events;
   private final Clock clock;
@@ -47,6 +53,7 @@ class LeadRecorder {
       AssignmentLogRepository logs,
       AdvisorProfileRepository profiles,
       ProspectGateway prospects,
+      PropertyCatalog catalog,
       StaffNames staff,
       ApplicationEventPublisher events,
       Clock clock) {
@@ -54,6 +61,7 @@ class LeadRecorder {
     this.logs = logs;
     this.profiles = profiles;
     this.prospects = prospects;
+    this.catalog = catalog;
     this.staff = staff;
     this.events = events;
     this.clock = clock;
@@ -79,7 +87,7 @@ class LeadRecorder {
       String name = staff.nameOf(d.advisorId(), new java.util.HashMap<>());
       log(lead, reassignment ? AssignmentLog.Outcome.REASSIGNED : AssignmentLog.Outcome.ASSIGNED, d.advisorId(), d.reason(), d.rule(), d.shiftId(), mode, d.detail(), actorId, actorName);
       activity(lead, reassignment ? LeadActivity.Kind.REASSIGNED : LeadActivity.Kind.ASSIGNED, "Asignado a " + name + ": " + d.rule() + "." + (d.detail() != null ? " " + d.detail() + "." : ""), actorId, actorName);
-      notifyAdvisor(lead, d.advisorId(), name);
+      notifyAdvisor(lead, d.advisorId(), name, NEW_LEAD);
       return;
     }
     UUID reserved = d.status() == AssignmentStatus.PENDING_OWNER ? d.advisorId() : null;
@@ -103,15 +111,28 @@ class LeadRecorder {
         "Asignado manualmente a " + advisorName + "." + (exceptionReason != null ? " Excepción: " + exceptionReason : ""),
         actorId,
         actorName);
-    notifyAdvisor(lead, advisorId, advisorName);
+    notifyAdvisor(lead, advisorId, advisorName, NEW_LEAD);
   }
 
-  private void notifyAdvisor(Lead lead, UUID advisorId, String advisorName) {
+  static final String NEW_LEAD = "Nuevo lead de CENTURY 21 Genera";
+  static final String FOLLOW_UP = "Tu cliente volvió a escribir";
+  static final String RESENT = "Ficha del lead (reenvío)";
+
+  /**
+   * Publica la ficha para el asesor. El envío real lo hace el módulo del
+   * asistente después de confirmar la transacción. Sin WhatsApp configurado en
+   * el perfil queda "no aplica" (visible en el panel).
+   */
+  void notifyAdvisor(Lead lead, UUID advisorId, String advisorName, String headline) {
     String whatsapp = profiles.findById(advisorId).map(AdvisorProfile::getWhatsappPhone).orElse(null);
     if (whatsapp == null) {
       lead.markAdvisorNotice(SyncStatus.NOT_REQUIRED);
+    } else {
+      lead.markAdvisorNotice(SyncStatus.PENDING);
     }
-    events.publishEvent(new LeadAssigned(lead.getId(), advisorId, advisorName, whatsapp, notice(lead)));
+    events.publishEvent(
+        new LeadAssigned(
+            lead.getId(), advisorId, advisorName, whatsapp, notice(lead, headline, AdvisorNotice.TEXT_MAX), notice(lead, headline, AdvisorNotice.TEMPLATE_PARAM_MAX)));
   }
 
   /** Registra el prospecto en 21Online si la integración está activa. Nunca falla el flujo del lead. */
@@ -129,24 +150,58 @@ class LeadRecorder {
     return advisorUserId == null ? null : profiles.findById(advisorUserId).map(AdvisorProfile::getOnline21UserId).orElse(null);
   }
 
-  /** Aviso al asesor (texto plano, máx. ~1000 caracteres, sin enlaces al panel), como en Inova. */
-  static String notice(Lead lead) {
-    StringBuilder sb = new StringBuilder("Nuevo lead de CENTURY 21 Genera\n");
-    sb.append("Cliente: ").append(lead.getName());
-    if (lead.getPhone() != null) {
-      sb.append(" · ").append(lead.getPhone());
+  /** Ficha completa del lead para el asesor (ver {@link AdvisorNotice}). */
+  String notice(Lead lead, String headline, int max) {
+    PropertySheet sheet = null;
+    if (lead.getPropertyOnline21Id() != null) {
+      sheet = catalog.cached(lead.getPropertyOnline21Id()).map(LeadRecorder::sheetOf).orElse(null);
     }
-    sb.append("\nBusca: ").append(INTEREST_TEXT.getOrDefault(lead.getInterest(), "información"));
-    if (lead.getPropertyTitle() != null) {
-      sb.append("\nPropiedad: ").append(lead.getPropertyTitle());
-      if (lead.getPropertyKey() != null) {
-        sb.append(" (").append(lead.getPropertyKey()).append(")");
+    String reference = sheet == null ? join(lead.getPropertyTitle(), lead.getPropertyKey()) : null;
+    ClientInfo client =
+        new ClientInfo(
+            lead.getName(),
+            lead.getPhone(),
+            INTEREST_TEXT.getOrDefault(lead.getInterest(), "información"),
+            lead.getSourceDetail() != null ? lead.getSourceDetail() : lead.getSource().name(),
+            lead.getBudget() == null ? null : money(lead.getBudget()),
+            lead.getSummary(),
+            lead.getAssignmentRule(),
+            lead.getCoordinationNote());
+    return AdvisorNotice.build(headline, client, sheet, reference, max);
+  }
+
+  private static PropertySheet sheetOf(CatalogProperty p) {
+    String location = join(p.street(), p.neighborhood(), p.municipality());
+    return new PropertySheet(
+        Long.toString(p.id()),
+        p.internalKey(),
+        p.title(),
+        p.subtype(),
+        p.operation(),
+        p.price() == null ? null : money(p.price()) + ("renta".equalsIgnoreCase(p.operation()) ? " al mes" : ""),
+        location,
+        p.bedrooms(),
+        p.bathrooms() == null ? null : p.bathrooms().stripTrailingZeros().toPlainString(),
+        p.parking(),
+        p.builtM2() == null ? null : p.builtM2().stripTrailingZeros().toPlainString(),
+        p.landM2() == null ? null : p.landM2().stripTrailingZeros().toPlainString(),
+        p.description(),
+        p.publicUrl());
+  }
+
+  private static String money(java.math.BigDecimal amount) {
+    java.text.NumberFormat f = java.text.NumberFormat.getNumberInstance(java.util.Locale.forLanguageTag("es-MX"));
+    f.setMaximumFractionDigits(0);
+    return "$" + f.format(amount) + " MXN";
+  }
+
+  private static String join(String... parts) {
+    java.util.List<String> out = new java.util.ArrayList<>();
+    for (String part : parts) {
+      if (part != null && !part.isBlank()) {
+        out.add(part);
       }
     }
-    if (lead.getSummary() != null) {
-      sb.append("\nLo que dijo: ").append(lead.getSummary());
-    }
-    String text = sb.toString();
-    return text.length() > 1000 ? text.substring(0, 999) + "…" : text;
+    return out.isEmpty() ? null : String.join(", ", out);
   }
 }

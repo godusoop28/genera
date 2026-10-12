@@ -117,6 +117,10 @@ export function assignLead(id: string, advisorId: string, exceptionReason?: stri
   return apiClient.post<LeadDetail>(`/internal/leads/${id}/assign`, { advisorId, exceptionReason });
 }
 
+export function resendLeadNotice(id: string) {
+  return apiClient.post<LeadDetail>(`/internal/leads/${id}/resend-notice`);
+}
+
 export function addLeadNote(id: string, text: string) {
   return apiClient.post<LeadDetail>(`/internal/leads/${id}/notes`, { text });
 }

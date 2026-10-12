@@ -9,10 +9,12 @@ import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Component;
 
 /**
- * Avisa al asesor por WhatsApp cuando se le asigna un lead (como el aviso de
- * ManyChat en Inova). Con plantilla aprobada llega aunque el asesor no haya
- * escrito en 24 h; sin plantilla se intenta texto libre. El resultado queda en
- * el historial del lead.
+ * Manda al asesor la ficha del lead por WhatsApp (como el aviso de ManyChat en
+ * Inova). Con plantilla aprobada (WHATSAPP_ADVISOR_TEMPLATE) llega aunque el
+ * asesor no haya escrito en 24 h, con la ficha compacta en una sola línea
+ * (WhatsApp no permite saltos de línea en parámetros); sin plantilla se manda
+ * la ficha completa como texto libre, que solo llega dentro de la ventana de
+ * 24 h. El resultado queda en el historial del lead.
  */
 @Component
 class AdvisorNoticeListener {
@@ -39,7 +41,7 @@ class AdvisorNoticeListener {
     String to = event.advisorWhatsapp().replaceAll("\\D", "");
     SendResult result =
         properties.advisorTemplate() != null && !properties.advisorTemplate().isBlank()
-            ? whatsApp.sendTemplate(to, properties.advisorTemplate(), properties.advisorTemplateLanguage(), event.notice())
+            ? whatsApp.sendTemplate(to, properties.advisorTemplate(), properties.advisorTemplateLanguage(), event.compactNotice())
             : whatsApp.sendText(to, event.notice());
     leads.recordAdvisorNotice(event.leadId(), result.ok(), result.error());
   }

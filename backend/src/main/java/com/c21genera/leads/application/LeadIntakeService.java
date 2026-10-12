@@ -124,6 +124,10 @@ class LeadIntakeService implements LeadIntake {
       recorder.log(lead, AssignmentLog.Outcome.KEPT, responsible, AssignmentMethod.CONTINUITY, "Continuidad: se conserva al responsable del lead activo", null, null, null, null, null);
     }
     lead.touch(clock.instant());
+    if (lead.getAssignmentStatus() == AssignmentStatus.ASSIGNED && responsible != null) {
+      // El asesor recibe la ficha actualizada (nueva propiedad o conflicto incluidos).
+      recorder.notifyAdvisor(lead, responsible, staff.nameOf(responsible, names), LeadRecorder.FOLLOW_UP);
+    }
     HandoffStatus status = lead.getAssignmentStatus().isPending() ? statusOf(lead.getAssignmentStatus()) : HandoffStatus.EXISTING;
     return new HandoffResult(status, lead.getId(), staff.nameOf(responsible, names), AssignmentMethod.CONTINUITY, lead.getNextShiftAt(), conflict);
   }

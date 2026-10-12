@@ -131,6 +131,11 @@ class Online21Catalog implements PropertyCatalog {
   }
 
   @Override
+  public Optional<CatalogProperty> cached(long id) {
+    return index.stream().filter(p -> p.id() == id).findFirst();
+  }
+
+  @Override
   public List<String> referencesIn(String text) {
     return CatalogSearch.references(text);
   }

@@ -25,6 +25,12 @@ public interface PropertyCatalog {
   /** Busca una propiedad por id, clave pública ("634294--649") o clave interna ("GN 14"). */
   Lookup find(String reference);
 
+  /**
+   * Ficha desde el índice en memoria, SIN llamar a 21Online (para armar avisos
+   * dentro de una transacción sin bloquearla por la red). Vacío si no está.
+   */
+  Optional<CatalogProperty> cached(long id);
+
   /** Extrae referencias de propiedad mencionadas en un texto (ids de 6+ dígitos, claves con "--"). */
   List<String> referencesIn(String text);
 

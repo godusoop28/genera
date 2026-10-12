@@ -124,6 +124,12 @@ public class InternalLeadController {
     return leads.reassign(id, r.advisorId(), r.exceptionReason(), CurrentUser.from(jwt));
   }
 
+  @PostMapping("/api/v1/internal/leads/{id}/resend-notice")
+  @PreAuthorize("hasAuthority('LEAD_MANAGE')")
+  public LeadDetail resendNotice(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+    return leads.resendNotice(id, CurrentUser.from(jwt));
+  }
+
   @PostMapping("/api/v1/internal/leads/{id}/notes")
   @PreAuthorize("hasAuthority('LEAD_MANAGE')")
   public LeadDetail note(@PathVariable UUID id, @Valid @RequestBody NoteRequest r, @AuthenticationPrincipal Jwt jwt) {

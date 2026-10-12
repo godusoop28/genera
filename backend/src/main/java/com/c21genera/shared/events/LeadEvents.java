@@ -8,9 +8,11 @@ public final class LeadEvents {
   private LeadEvents() {}
 
   /**
-   * Un lead quedó asignado (nuevo, reasignado o por canalización del bot).
-   * advisorWhatsapp viene del perfil de ruteo del asesor (puede ser null);
-   * notice es el texto del aviso ya armado (sin enlaces al panel).
+   * Hay que mandarle al asesor la ficha del lead: quedó asignado (nuevo,
+   * reasignado, manual o al salir de pendiente), se reenvió desde el panel o
+   * su cliente volvió a escribir con algo nuevo. advisorWhatsapp viene del
+   * perfil de ruteo (puede ser null). notice: ficha completa para texto libre;
+   * compactNotice: versión corta que cabe en el parámetro de una plantilla.
    */
-  public record LeadAssigned(UUID leadId, UUID advisorUserId, String advisorName, String advisorWhatsapp, String notice) {}
+  public record LeadAssigned(UUID leadId, UUID advisorUserId, String advisorName, String advisorWhatsapp, String notice, String compactNotice) {}
 }
