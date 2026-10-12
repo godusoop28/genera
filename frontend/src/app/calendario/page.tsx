@@ -23,7 +23,9 @@ import {
   BUSINESS_TIMEZONE_LABEL,
   absenceKindLabels,
   addDays,
+  addMonths,
   advisorColor,
+  monthTitle,
   advisorStatusLabels,
   advisorStatusTones,
   formatDayLabel,
@@ -39,7 +41,7 @@ import { AlertTriangle, CalendarPlus, ChevronLeft, ChevronRight, Clock, Copy, Hi
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
-type View = "people" | "week" | "day" | "agenda";
+type View = "month" | "people" | "week" | "day" | "agenda";
 
 export default function CalendarioPage() {
   return (
@@ -57,8 +59,8 @@ function CalendarScreen() {
   const canView = can("CALENDAR_VIEW_ALL") || can("CALENDAR_VIEW_OWN");
 
   // En celular la vista cómoda es la agenda.
-  // Vista principal: tabla sencilla de horarios por asesor (fácil de leer también en celular).
-  const [view, setView] = useState<View>("people");
+  // Vista principal: calendario del mes, como uno de pared.
+  const [view, setView] = useState<View>("month");
   const [anchor, setAnchor] = useState<string | null>(null); // día seleccionado (Ciudad de México)
   const [advisorFilter, setAdvisorFilter] = useState(params.get("asesor") ?? "");
   const [kindFilter, setKindFilter] = useState<"" | ShiftKind>("");
@@ -70,8 +72,8 @@ function CalendarScreen() {
   const [absenceModal, setAbsenceModal] = useState<{ absence: CalendarAbsence | null } | null>(null);
   const [copyOpen, setCopyOpen] = useState(false);
 
-  const from = anchor ? (view === "day" ? anchor : weekStart(anchor)) : null;
-  const to = from ? (view === "day" ? from : addDays(from, 6)) : null;
+  const from = anchor ? (view === "day" ? anchor : view === "month" ? weekStart(addMonths(anchor, 0)) : weekStart(anchor)) : null;
+  const to = anchor && from ? (view === "day" ? from : view === "month" ? addDays(weekStart(addDays(addMonths(anchor, 1), -1)), 6) : addDays(from, 6)) : null;
   const requestKey = `${from}|${to}|${token}`;
   const loading = loadedKey !== requestKey;
 
@@ -121,7 +123,10 @@ function CalendarScreen() {
     [data, advisorFilter, kindFilter],
   );
   const absences = useMemo(() => (data?.absences ?? []).filter((a) => !advisorFilter || a.advisorId === advisorFilter), [data, advisorFilter]);
-  const days = from && to ? Array.from({ length: view === "day" ? 1 : 7 }, (_, i) => addDays(from, i)) : [];
+  const dayCount = !from || !to ? 0 : view === "day" ? 1 : view === "month" ? Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1 : 7;
+  const days = from ? Array.from({ length: dayCount }, (_, i) => addDays(from, i)) : [];
+  const step = (n: number) => setAnchor(view === "month" ? addMonths(anchor!, n) : addDays(anchor!, view === "day" ? n : n * 7));
+  const unit = view === "month" ? "Mes" : view === "day" ? "Día" : "Semana";
 
   if (!canView) {
     return (
@@ -167,17 +172,17 @@ function CalendarScreen() {
 
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="secondary" size="sm" aria-label={view === "day" ? "Día anterior" : "Semana anterior"} onClick={() => setAnchor(addDays(anchor!, view === "day" ? -1 : -7))}>
-                <ChevronLeft className="h-4 w-4" aria-hidden />
+              <Button variant="secondary" aria-label={`${unit} anterior`} onClick={() => step(-1)}>
+                <ChevronLeft className="h-5 w-5" aria-hidden />
               </Button>
-              <Button variant="secondary" size="sm" onClick={() => setAnchor(data.today)}>
+              <Button variant="secondary" onClick={() => setAnchor(data.today)}>
                 Hoy
               </Button>
-              <Button variant="secondary" size="sm" aria-label={view === "day" ? "Día siguiente" : "Semana siguiente"} onClick={() => setAnchor(addDays(anchor!, view === "day" ? 1 : 7))}>
-                <ChevronRight className="h-4 w-4" aria-hidden />
+              <Button variant="secondary" aria-label={`${unit} siguiente`} onClick={() => step(1)}>
+                <ChevronRight className="h-5 w-5" aria-hidden />
               </Button>
-              <p className="ml-1 text-sm font-semibold text-obsessed" aria-live="polite">
-                {view === "day" ? formatDayLabel(from) : `${formatDayLabel(from)} – ${formatDayLabel(to)}`}
+              <p className="ml-1 text-lg font-semibold capitalize text-obsessed" aria-live="polite">
+                {view === "month" ? monthTitle(anchor!) : view === "day" ? formatDayLabel(from) : `${formatDayLabel(from)} – ${formatDayLabel(to)}`}
                 {loading ? <span className="ml-2 text-xs font-normal text-muted">Actualizando…</span> : null}
               </p>
             </div>
@@ -207,9 +212,10 @@ function CalendarScreen() {
                 value={view}
                 onChange={setView}
                 options={[
-                  { id: "people", label: "Horarios" },
-                  { id: "week", label: "Calendario" },
-                  { id: "agenda", label: "Lista por día" },
+                  { id: "month", label: "Mes" },
+                  { id: "week", label: "Semana" },
+                  { id: "people", label: "Por asesor" },
+                  { id: "agenda", label: "Lista" },
                 ]}
               />
             </div>
@@ -217,7 +223,23 @@ function CalendarScreen() {
 
           {view !== "people" ? <Legend data={data} onPick={(id) => setAdvisorFilter(advisorFilter === id ? "" : id)} selected={advisorFilter} /> : null}
 
-          {view === "people" ? (
+          {view === "month" ? (
+            <MonthGrid
+              days={days}
+              month={anchor!.slice(0, 7)}
+              occurrences={occurrences}
+              absences={absences}
+              today={data.today}
+              canAdd={editable}
+              onOpen={(o) => canOpen(o) && setShiftModal({ occurrence: o, draft: null })}
+              onOpenAbsence={(a) => editable && setAbsenceModal({ absence: a })}
+              onAdd={(date) => setShiftModal({ occurrence: null, draft: { advisorId: advisorFilter || fixedAdvisorId || "", date } })}
+              onSelectDay={(d) => {
+                setAnchor(d);
+                setView("day");
+              }}
+            />
+          ) : view === "people" ? (
             <PeopleWeek
               days={days}
               advisors={data.advisors.filter((a) => !advisorFilter || a.userId === advisorFilter)}
@@ -335,6 +357,132 @@ function NowPanel({ data }: { data: CalendarView }) {
         {data.gaps.length > 0 ? <p className="mt-1 text-sm text-obsessed">Esta semana hay horas sin nadie atendiendo (en rojo en el calendario).</p> : null}
       </div>
     </section>
+  );
+}
+
+/** Calendario del mes: cada día muestra quién trabaja y a qué hora. */
+function MonthGrid({
+  days,
+  month,
+  occurrences,
+  absences,
+  today,
+  canAdd,
+  onOpen,
+  onOpenAbsence,
+  onAdd,
+  onSelectDay,
+}: {
+  days: string[];
+  month: string;
+  occurrences: ShiftOccurrence[];
+  absences: CalendarAbsence[];
+  today: string;
+  canAdd: boolean;
+  onOpen: (o: ShiftOccurrence) => void;
+  onOpenAbsence: (a: CalendarAbsence) => void;
+  onAdd: (date: string) => void;
+  onSelectDay: (date: string) => void;
+}) {
+  const MAX = 4;
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="grid grid-cols-7 border-b border-border bg-app-bg">
+        {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d) => (
+          <p key={d} className="px-2 py-2.5 text-center text-sm font-semibold text-muted">
+            {d}
+          </p>
+        ))}
+      </div>
+      <div className="grid grid-cols-7">
+        {days.map((d, i) => {
+          const inMonth = d.slice(0, 7) === month;
+          const items = occurrences.filter((o) => o.date === d).sort((a, b) => a.start.localeCompare(b.start));
+          const away = absences.filter((a) => a.start.slice(0, 10) <= d && a.end.slice(0, 10) >= d && !(a.end.slice(0, 10) === d && a.end.slice(11, 16) === "00:00"));
+          const chips = [...away.map((a) => ({ type: "absence" as const, a })), ...items.map((o) => ({ type: "shift" as const, o }))];
+          const isToday = d === today;
+          return (
+            <div
+              key={d}
+              className={cn(
+                "group relative flex min-h-24 flex-col gap-1 border-border p-1 sm:min-h-32 sm:p-1.5",
+                i % 7 !== 0 && "border-l",
+                i >= 7 && "border-t",
+                !inMonth && "bg-app-bg/60",
+                isToday && "bg-gold/10",
+              )}
+            >
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => onSelectDay(d)}
+                  aria-label={`Ver el ${formatDayLabel(d)}`}
+                  className={cn(
+                    "flex h-8 min-w-8 items-center justify-center rounded-full px-1.5 text-base font-semibold focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/30",
+                    isToday ? "bg-gold text-brand-ink" : inMonth ? "text-obsessed hover:bg-app-bg" : "text-muted",
+                  )}
+                >
+                  {Number(d.slice(8, 10))}
+                </button>
+                {canAdd && d >= today ? (
+                  <button
+                    type="button"
+                    onClick={() => onAdd(d)}
+                    aria-label={`Agregar horario el ${formatDayLabel(d)}`}
+                    className="flex h-8 w-8 items-center justify-center rounded-full text-lg text-muted opacity-100 hover:bg-gold/20 hover:text-obsessed sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+                  >
+                    +
+                  </button>
+                ) : null}
+              </div>
+              <ul className="flex flex-col gap-1">
+                {chips.slice(0, MAX).map((c) =>
+                  c.type === "absence" ? (
+                    <li key={`a-${c.a.id}`}>
+                      <button
+                        type="button"
+                        onClick={() => onOpenAbsence(c.a)}
+                        className="w-full truncate rounded-md bg-manual-bg px-1.5 py-1 text-left text-xs font-medium text-manual-text sm:text-sm"
+                        title={`${c.a.advisorName}: ${absenceKindLabels[c.a.kind]}`}
+                      >
+                        <Plane className="mr-1 inline h-3.5 w-3.5" aria-hidden />
+                        {c.a.advisorName.split(" ")[0]}
+                      </button>
+                    </li>
+                  ) : (
+                    <li key={`s-${c.o.shiftId}-${c.o.date}`}>
+                      <button
+                        type="button"
+                        onClick={() => onOpen(c.o)}
+                        title={`${c.o.advisorName} · ${hhmm(c.o.start)} a ${hhmm(c.o.end)}${c.o.kind === "GUARD" ? " · guardia" : ""}`}
+                        className={cn(
+                          "w-full overflow-hidden rounded-md border-l-4 px-1.5 py-1 text-left text-xs leading-tight hover:shadow focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/40 sm:text-sm",
+                          c.o.fullyAbsent && "line-through opacity-60",
+                        )}
+                        style={{ background: advisorColor(c.o.advisorId).bg, borderLeftColor: advisorColor(c.o.advisorId).border, color: advisorColor(c.o.advisorId).text }}
+                      >
+                        <span className="block truncate font-semibold">
+                          {c.o.kind === "GUARD" ? <Shield className="mr-0.5 inline h-3.5 w-3.5" aria-hidden /> : null}
+                          {c.o.advisorName.split(" ")[0]}
+                        </span>
+                        <span className="block truncate">
+                          {hhmm(c.o.start)}–{hhmm(c.o.end)}
+                        </span>
+                      </button>
+                    </li>
+                  ),
+                )}
+              </ul>
+              {chips.length > MAX ? (
+                <button type="button" onClick={() => onSelectDay(d)} className="text-left text-xs font-medium text-dark-gold hover:underline sm:text-sm">
+                  +{chips.length - MAX} más
+                </button>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

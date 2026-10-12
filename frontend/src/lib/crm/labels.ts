@@ -124,6 +124,21 @@ export function isoDay(date: string): number {
   return w === 0 ? 7 : w;
 }
 
+const monthLong = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+
+/** Primer día del mes de la fecha, desplazado n meses ("2026-10-12", 1 → "2026-11-01"). */
+export function addMonths(date: string, n: number): string {
+  const [y, m] = date.slice(0, 10).split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1 + n, 1));
+  return t.toISOString().slice(0, 10);
+}
+
+/** "octubre de 2026". */
+export function monthTitle(date: string): string {
+  const [y, m] = date.slice(0, 10).split("-").map(Number);
+  return `${monthLong[m - 1]} de ${y}`;
+}
+
 export function weekStart(date: string): string {
   return addDays(date, 1 - isoDay(date));
 }
