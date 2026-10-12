@@ -23,4 +23,15 @@ public interface LeadRepository extends JpaRepository<Lead, UUID>, JpaSpecificat
   /** Leads asignados desde una fecha, por asesor (para la ruleta y el límite diario). */
   @Query("select l.advisorUserId, count(l) from Lead l where l.advisorUserId is not null and l.assignedAt >= :since group by l.advisorUserId")
   List<Object[]> countAssignedSince(@Param("since") Instant since);
+
+  /**
+   * Pendientes por antigüedad, bloqueados para este proceso: otra instancia o
+   * un alta simultánea no puede tomar el mismo lead (SKIP LOCKED).
+   */
+  @Query(
+      value = "select * from lead where assignment_status in ('PENDING_OWNER', 'PENDING_SCHEDULE') order by pending_since nulls first, created_at limit :limit for update skip locked",
+      nativeQuery = true)
+  List<Lead> lockPending(@Param("limit") int limit);
+
+  long countByAssignmentStatusIn(List<com.c21genera.leads.AssignmentStatus> statuses);
 }

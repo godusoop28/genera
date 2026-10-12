@@ -34,6 +34,7 @@ public class CrmDashboardService {
       long total,
       long assigned,
       long unassigned,
+      long pendingAssignment,
       long open,
       long won,
       long closed,
@@ -73,7 +74,7 @@ public class CrmDashboardService {
     }
     List<AdvisorRow> byAdvisor =
         period.stream()
-            .filter(l -> l.getAdvisorUserId() != null)
+            .filter(l -> l.getAdvisorUserId() != null && l.getAssignmentStatus() == com.c21genera.leads.AssignmentStatus.ASSIGNED)
             .collect(Collectors.groupingBy(Lead::getAdvisorUserId, LinkedHashMap::new, Collectors.toList()))
             .entrySet()
             .stream()
@@ -97,8 +98,9 @@ public class CrmDashboardService {
     return new Dashboard(
         from,
         period.size(),
-        period.stream().filter(l -> l.getAdvisorUserId() != null).count(),
-        period.stream().filter(l -> l.getAdvisorUserId() == null).count(),
+        period.stream().filter(l -> l.getAssignmentStatus() == com.c21genera.leads.AssignmentStatus.ASSIGNED).count(),
+        period.stream().filter(l -> l.getAssignmentStatus() == com.c21genera.leads.AssignmentStatus.UNASSIGNED).count(),
+        period.stream().filter(l -> l.getAssignmentStatus().isPending()).count(),
         period.stream().filter(l -> l.getStage().isOpen()).count(),
         won,
         won + byStage.get(LeadStage.LOST),

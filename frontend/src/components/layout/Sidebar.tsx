@@ -6,7 +6,7 @@ import { useCanSeeCrm } from "@/components/crm/CrmUi";
 import { useAuth } from "@/context/AuthProvider";
 import { useCan } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-import { FilePlus2, Files, LayoutDashboard, LogOut, MessagesSquare, Users, UserRoundSearch, UsersRound } from "lucide-react";
+import { CalendarDays, FilePlus2, Files, LayoutDashboard, LogOut, MessagesSquare, Users, UserRoundSearch, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -20,9 +20,10 @@ const navItems = [
 
 // CRM (Módulo 3). Las propiedades no tienen pantalla aquí: se consultan en
 // 21Online y su gestión es el Módulo 2.
-const crmItems = [
+const crmItems: { href: string; label: string; icon: typeof Files; permission?: string; anyOf?: string[] }[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/leads", label: "Leads", icon: UserRoundSearch },
+  { href: "/calendario", label: "Calendario", icon: CalendarDays, anyOf: ["CALENDAR_VIEW_ALL", "CALENDAR_VIEW_OWN"] },
   { href: "/conversaciones", label: "Conversaciones", icon: MessagesSquare, permission: "CONVERSATION_VIEW" },
   { href: "/asesores", label: "Asesores", icon: UsersRound, permission: "ADVISOR_ROUTING_MANAGE" },
 ];
@@ -68,7 +69,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           <>
             <p className="px-3.5 pb-1 pt-5 text-[0.68rem] font-semibold uppercase tracking-wider text-white/40">CRM</p>
             {crmItems
-              .filter((item) => !item.permission || can(item.permission))
+              .filter((item) => (!item.permission || can(item.permission)) && (!item.anyOf || item.anyOf.some((p) => can(p))))
               .map((item) => (
               <NavLink key={item.href} item={item} active={isActive(item.href, pathname)} onNavigate={onNavigate} />
             ))}

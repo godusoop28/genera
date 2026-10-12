@@ -3,6 +3,7 @@
 import { AdvisorChip, LoadError, PropertyMini, Segmented, SourceLabel, StageBadge, StatCard, useApi } from "@/components/crm/CrmUi";
 import { NewLeadModal } from "@/components/crm/NewLeadModal";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { Select } from "@/components/ui/Select";
@@ -19,6 +20,7 @@ import { Suspense, useEffect, useState } from "react";
 const groupLabels: Record<LeadGroup, string> = {
   ALL: "Todos",
   UNASSIGNED: "Sin asignar",
+  PENDING: "Pendientes por horario",
   NEW: "Nuevos",
   OPEN: "En seguimiento",
   WON: "Ganados",
@@ -87,7 +89,7 @@ function LeadsScreen() {
       <section aria-label="Resumen" className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
         <StatCard icon={Users} value={counts?.ALL ?? "—"} label="Leads" hint={filtering ? "Con los filtros actuales" : "Todos los registrados"} />
         <StatCard icon={Inbox} tone="warning" value={counts?.NEW ?? "—"} label="Nuevos" hint="Aún sin primer contacto" />
-        <StatCard icon={UserPlus} tone="danger" value={counts?.UNASSIGNED ?? "—"} label="Sin asignar" hint="Necesitan un asesor" />
+        <StatCard icon={UserPlus} tone="danger" value={counts ? counts.UNASSIGNED + counts.PENDING : "—"} label="Sin asesor" hint={counts ? `${counts.PENDING} esperan turno` : "Necesitan un asesor"} />
         <StatCard icon={CheckCircle2} tone="success" value={counts?.WON ?? "—"} label="Ganados" hint="Cerraron operación" />
       </section>
 
@@ -189,7 +191,11 @@ function LeadTable({ leads }: { leads: LeadItem[] }) {
               </p>
             </div>
             <PropertyMini property={lead.property} />
-            <AdvisorChip advisor={lead.advisor} />
+            <div className="min-w-0 space-y-1">
+              <AdvisorChip advisor={lead.advisor} emptyLabel={lead.assignmentStatus === "PENDING_SCHEDULE" ? "Pendiente por horario" : "Sin asignar"} />
+              {lead.assignmentStatus === "PENDING_OWNER" ? <Badge tone="info">Espera su turno</Badge> : null}
+              {lead.coordinationNote ? <Badge tone="warning">Coordinar</Badge> : null}
+            </div>
             <div>
               <StageBadge stage={lead.stage} />
             </div>

@@ -6,6 +6,9 @@ import com.c21genera.leads.LeadSource;
 import com.c21genera.leads.LeadStage;
 import com.c21genera.leads.application.AdvisorRoutingService;
 import com.c21genera.leads.application.AdvisorRoutingService.AdvisorRouting;
+import com.c21genera.leads.application.AdvisorRoutingService.SettingsView;
+import com.c21genera.leads.domain.AssignmentEngine.Mode;
+import com.c21genera.leads.domain.AssignmentSettings.OwnerOffShiftPolicy;
 import com.c21genera.leads.application.AdvisorRoutingService.UpdateRouting;
 import com.c21genera.leads.application.CrmDashboardService;
 import com.c21genera.leads.application.CrmDashboardService.Dashboard;
@@ -23,7 +26,6 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.time.LocalTime;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -56,7 +58,7 @@ public class InternalLeadController {
 
   public record StageRequest(@NotNull LeadStage stage, @Size(max = 500) String lostReason) {}
 
-  public record ReassignRequest(@NotNull UUID advisorId) {}
+  public record ReassignRequest(@NotNull UUID advisorId, @Size(max = 500) String exceptionReason) {}
 
   public record NoteRequest(@NotBlank @Size(max = 4000) String text) {}
 
@@ -71,16 +73,17 @@ public class InternalLeadController {
       @Size(max = 2000) String summary,
       BigDecimal budget,
       UUID advisorId,
+      @Size(max = 500) String exceptionReason,
       boolean autoAssign) {}
 
   public record RoutingRequest(
       boolean receivesLeads,
       @Min(0) @Max(100) int weight,
       @Min(1) @Max(500) Integer dailyLimit,
-      LocalTime shiftStart,
-      LocalTime shiftEnd,
       Long online21UserId,
       @Size(max = 20) String whatsappPhone) {}
+
+  public record SettingsRequest(@NotNull Mode roundMode, @NotNull OwnerOffShiftPolicy ownerOffShiftPolicy) {}
 
   @GetMapping("/api/v1/internal/leads")
   public LeadPage list(
@@ -105,7 +108,7 @@ public class InternalLeadController {
   @PreAuthorize("hasAuthority('LEAD_MANAGE')")
   public LeadDetail create(@Valid @RequestBody CreateLeadRequest r, @AuthenticationPrincipal Jwt jwt) {
     return leads.create(
-        new CreateLead(r.name(), r.phone(), r.email(), r.source(), r.sourceDetail(), r.interest(), r.propertyReference(), r.summary(), r.budget(), r.advisorId(), r.autoAssign()),
+        new CreateLead(r.name(), r.phone(), r.email(), r.source(), r.sourceDetail(), r.interest(), r.propertyReference(), r.summary(), r.budget(), r.advisorId(), r.exceptionReason(), r.autoAssign()),
         CurrentUser.from(jwt));
   }
 
@@ -118,7 +121,7 @@ public class InternalLeadController {
   @PostMapping("/api/v1/internal/leads/{id}/assign")
   @PreAuthorize("hasAuthority('LEAD_ASSIGN')")
   public LeadDetail assign(@PathVariable UUID id, @Valid @RequestBody ReassignRequest r, @AuthenticationPrincipal Jwt jwt) {
-    return leads.reassign(id, r.advisorId(), CurrentUser.from(jwt));
+    return leads.reassign(id, r.advisorId(), r.exceptionReason(), CurrentUser.from(jwt));
   }
 
   @PostMapping("/api/v1/internal/leads/{id}/notes")
@@ -141,6 +144,18 @@ public class InternalLeadController {
   @PutMapping("/api/v1/internal/crm/advisors/{userId}")
   @PreAuthorize("hasAuthority('ADVISOR_ROUTING_MANAGE')")
   public AdvisorRouting updateAdvisor(@PathVariable UUID userId, @Valid @RequestBody RoutingRequest r) {
-    return routing.update(userId, new UpdateRouting(r.receivesLeads(), r.weight(), r.dailyLimit(), r.shiftStart(), r.shiftEnd(), r.online21UserId(), r.whatsappPhone()));
+    return routing.update(userId, new UpdateRouting(r.receivesLeads(), r.weight(), r.dailyLimit(), r.online21UserId(), r.whatsappPhone()));
+  }
+
+  /** Política de asignación (ronda y qué hacer si el asesor de la propiedad está fuera de horario) y alerta de cobertura. */
+  @GetMapping("/api/v1/internal/crm/assignment-settings")
+  public SettingsView settings() {
+    return routing.settings();
+  }
+
+  @PutMapping("/api/v1/internal/crm/assignment-settings")
+  @PreAuthorize("hasAuthority('ADVISOR_ROUTING_MANAGE')")
+  public SettingsView updateSettings(@Valid @RequestBody SettingsRequest r, @AuthenticationPrincipal Jwt jwt) {
+    return routing.updateSettings(r.roundMode(), r.ownerOffShiftPolicy(), CurrentUser.from(jwt));
   }
 }

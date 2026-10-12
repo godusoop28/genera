@@ -155,6 +155,8 @@ class AssistantAgent {
       List<String> unverified = unverifiedRefs(reply, s);
       boolean falseClaim = AssistantPolicy.claimsAssignment(reply) && !assignmentConfirmed(s) && !s.humanRequested;
       boolean internal = AssistantPolicy.mentionsInternalProcess(reply);
+      boolean pendingPromise = isPending(s) && AssistantPolicy.promisesAvailability(reply);
+      internal = internal || pendingPromise;
       if ((!unverified.isEmpty() || falseClaim || internal) && corrections < AssistantContract.MAX_CORRECTIONS) {
         corrections++;
         response.path("output").forEach(items::add);
@@ -165,7 +167,9 @@ class AssistantAgent {
         if (falseClaim) {
           fixes.add("- Afirmas una asignación o aviso que el sistema NO confirmó. No lo afirmes; usa la herramienta o di lo que realmente ocurrió.");
         }
-        if (internal) {
+        if (pendingPromise) {
+          fixes.add("- La solicitud quedó pendiente: no digas que el asesor está disponible ni prometas tiempos; di que le contactarán en su horario de atención.");
+        } else if (internal) {
           fixes.add("- No menciones la 'ruleta' ni cómo se elige al asesor; di solo a quién quedó asignada la solicitud.");
         }
         items.add(Map.of("role", "developer", "content", String.join("\n", fixes)));
@@ -173,6 +177,9 @@ class AssistantAgent {
       }
       if (!unverified.isEmpty() || falseClaim) {
         throw new AiCallException("La respuesta sigue afirmando datos no verificados tras la corrección", false, null);
+      }
+      if (pendingPromise) {
+        throw new AiCallException("La respuesta promete disponibilidad de un lead pendiente tras la corrección", false, null);
       }
       if (internal) {
         reply = AssistantPolicy.stripInternalProcess(reply);
@@ -248,7 +255,7 @@ class AssistantAgent {
 
   private String handoffText(TurnInput in) {
     String advisor = null;
-    if (in.handoffState() == HandoffState.ASSIGNED || in.handoffState() == HandoffState.EXISTING_LEAD || !in.handoffInSession()) {
+    if (in.handoffState() == HandoffState.ASSIGNED || in.handoffState() == HandoffState.EXISTING_LEAD || in.handoffState() == HandoffState.PENDING_OWNER || !in.handoffInSession()) {
       advisor = leads.recentLeadFor(AssistantTools.phone(in)).map(LeadIntake.RecentLead::advisorName).orElse(null);
     }
     String with = advisor != null ? " con " + advisor : "";
@@ -260,7 +267,8 @@ class AssistantAgent {
     return switch (in.handoffState()) {
       case ASSIGNED -> "ya canalizado" + with + " en esta sesión (no vuelvas a pedir datos; el asesor le dará seguimiento)";
       case EXISTING_LEAD -> "ya tenía asesor asignado" + with + " (no pidas otro)";
-      case NO_ADVISOR -> "se intentó canalizar pero no había asesores disponibles; quedó pendiente para el equipo";
+      case NO_ADVISOR -> "quedó registrado pendiente: un asesor lo contactará al iniciar su horario de atención (no prometas horas ni digas que hay alguien disponible)";
+      case PENDING_OWNER -> "quedó reservado" + with + ", asesor de la propiedad, que lo contactará en su próximo horario de atención (no digas que está disponible ahora)";
       case NOT_APPLICABLE -> "no es cliente inmobiliario; su asunto quedó registrado para gerencia";
       case HUMAN_REQUESTED -> "pidió hablar con una persona; quedó registrado para el equipo";
       case NONE -> "todavía no canalizado";
@@ -303,11 +311,17 @@ class AssistantAgent {
     return out;
   }
 
+  private static boolean isPending(TurnState s) {
+    HandoffState st = s.handoff != null ? s.handoff.state() : s.input.handoffState();
+    return st == HandoffState.PENDING_OWNER || st == HandoffState.NO_ADVISOR;
+  }
+
   private static boolean assignmentConfirmed(TurnState s) {
-    if (s.handoff != null && (s.handoff.state() == HandoffState.ASSIGNED || s.handoff.state() == HandoffState.EXISTING_LEAD)) {
+    // "Quedó registrada con X" también es real cuando está reservado para el asesor de la propiedad.
+    if (s.handoff != null && (s.handoff.state() == HandoffState.ASSIGNED || s.handoff.state() == HandoffState.EXISTING_LEAD || s.handoff.state() == HandoffState.PENDING_OWNER || s.handoff.state() == HandoffState.NO_ADVISOR)) {
       return true;
     }
-    return s.input.handoffState() == HandoffState.ASSIGNED || s.input.handoffState() == HandoffState.EXISTING_LEAD;
+    return s.input.handoffState() == HandoffState.ASSIGNED || s.input.handoffState() == HandoffState.EXISTING_LEAD || s.input.handoffState() == HandoffState.PENDING_OWNER;
   }
 
   private static Map<String, Fact> factsOf(JsonNode node) {

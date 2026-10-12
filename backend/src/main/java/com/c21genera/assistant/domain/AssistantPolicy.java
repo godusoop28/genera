@@ -150,6 +150,14 @@ public final class AssistantPolicy {
 
   private static final Pattern INTERNAL_PROCESS = Pattern.compile("\\bruleta\\b", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
+  /** Promesas de disponibilidad que el bot no puede confirmar. */
+  private static final Pattern AVAILABILITY_PROMISE =
+      Pattern.compile("\\b(está disponible (?:ahora|en este momento)|te (?:llama|escribe|contacta) (?:ahora|en (?:unos )?minutos|de inmediato)|en (?:unos )?minutos te)", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+
+  public static boolean promisesAvailability(String reply) {
+    return AVAILABILITY_PROMISE.matcher(reply).find();
+  }
+
   private static final Pattern ASSIGNMENT_CLAIM =
       Pattern.compile(
           "\\b(asign(?:é|e|ado|ada|amos)|te canaliz(?:o|é|amos|aré)|(?:ya )?registr(?:é|amos) tu solicitud|te (?:va|van) a contactar|te contactar(?:á|a|án|an)|ya (?:le )?avis(?:é|e|amos)|notifiqu(?:é|e)|ya (?:tienes|tiene) (?:un )?asesor)",

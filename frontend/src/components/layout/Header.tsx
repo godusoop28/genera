@@ -27,6 +27,7 @@ function breadcrumbFor(pathname: string): Crumb[] {
   if (pathname.startsWith("/leads")) return [{ label: "Leads" }];
   if (pathname.startsWith("/conversaciones")) return [{ label: "Conversaciones" }];
   if (pathname.startsWith("/asesores")) return [{ label: "Asesores" }];
+  if (pathname.startsWith("/calendario")) return [{ label: "Calendario de asesores" }];
   return [];
 }
 

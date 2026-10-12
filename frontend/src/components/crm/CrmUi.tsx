@@ -33,6 +33,8 @@ export function CrmGate({ children }: { children: ReactNode }) {
 
 export function errorText(err: unknown): string {
   if (err instanceof ApiError && err.status === 403) return "Tu usuario no tiene permiso para esta acción.";
+  // Validaciones del servidor (horario inválido, traslape, motivo requerido…): su mensaje ya es claro.
+  if (err instanceof ApiError && (err.status === 400 || err.status === 409 || err.status === 422) && err.message) return err.message;
   if (err instanceof ApiError && err.status === 404) return "No se encontró. Puede que se haya eliminado.";
   if (err instanceof ApiError) return `El servidor respondió con un error (${err.status}). Intenta de nuevo en un momento.`;
   return "No se pudo conectar con el servidor. Revisa tu conexión e intenta de nuevo.";

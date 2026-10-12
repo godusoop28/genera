@@ -1,12 +1,16 @@
 package com.c21genera.leads.application;
 
 import com.c21genera.leads.AssignmentMethod;
+import com.c21genera.leads.AssignmentStatus;
 import com.c21genera.leads.LeadInterest;
+import com.c21genera.leads.application.AssignmentService.Decision;
 import com.c21genera.leads.domain.AdvisorProfile;
+import com.c21genera.leads.domain.AssignmentLog;
 import com.c21genera.leads.domain.Lead;
 import com.c21genera.leads.domain.LeadActivity;
 import com.c21genera.leads.domain.SyncStatus;
 import com.c21genera.leads.infrastructure.AdvisorProfileRepository;
+import com.c21genera.leads.infrastructure.AssignmentLogRepository;
 import com.c21genera.leads.infrastructure.LeadActivityRepository;
 import com.c21genera.online21.ProspectGateway;
 import com.c21genera.online21.ProspectGateway.ProspectRequest;
@@ -17,7 +21,7 @@ import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
-/** Escrituras comunes del lead: actividades, asignación (con su aviso) y registro en 21Online. */
+/** Escrituras comunes del lead: actividades, decisiones de asignación (con su bitácora y aviso) y registro en 21Online. */
 @Component
 class LeadRecorder {
 
@@ -31,15 +35,26 @@ class LeadRecorder {
           LeadInterest.OTHER, "información");
 
   private final LeadActivityRepository activities;
+  private final AssignmentLogRepository logs;
   private final AdvisorProfileRepository profiles;
   private final ProspectGateway prospects;
+  private final StaffNames staff;
   private final ApplicationEventPublisher events;
   private final Clock clock;
 
-  LeadRecorder(LeadActivityRepository activities, AdvisorProfileRepository profiles, ProspectGateway prospects, ApplicationEventPublisher events, Clock clock) {
+  LeadRecorder(
+      LeadActivityRepository activities,
+      AssignmentLogRepository logs,
+      AdvisorProfileRepository profiles,
+      ProspectGateway prospects,
+      StaffNames staff,
+      ApplicationEventPublisher events,
+      Clock clock) {
     this.activities = activities;
+    this.logs = logs;
     this.profiles = profiles;
     this.prospects = prospects;
+    this.staff = staff;
     this.events = events;
     this.clock = clock;
   }
@@ -48,16 +63,50 @@ class LeadRecorder {
     activities.save(new LeadActivity(lead.getId(), kind, text, actorId, actorName, clock.instant()));
   }
 
-  /** Asigna, deja constancia y publica el evento para que el asistente avise al asesor por WhatsApp. */
-  void assign(Lead lead, UUID advisorId, String advisorName, AssignmentMethod method, boolean reassignment, UUID actorId, String actorName) {
-    lead.assignTo(advisorId, method, clock.instant());
-    String how =
-        switch (method) {
-          case PROPERTY_OWNER -> " por ser el asesor de la propiedad en 21Online";
-          case ROULETTE -> " por la ruleta de asignación";
-          case MANUAL -> " manualmente";
-        };
-    activity(lead, reassignment ? LeadActivity.Kind.REASSIGNED : LeadActivity.Kind.ASSIGNED, "Asignado a " + advisorName + how + ".", actorId, actorName);
+  void log(Lead lead, AssignmentLog.Outcome outcome, UUID advisorId, AssignmentMethod reason, String rule, UUID shiftId, String roundMode, String detail, UUID actorId, String actorName) {
+    logs.save(new AssignmentLog(lead.getId(), outcome, advisorId, reason, rule, shiftId, roundMode, detail, actorId, actorName, clock.instant()));
+  }
+
+  /** Aplica la decisión del servicio de asignación al lead (actor null = el sistema). */
+  void apply(Lead lead, Decision d, UUID actorId, String actorName) {
+    if (d.propertyAdvisorUserId() != null) {
+      lead.propertyOwner(d.propertyAdvisorUserId(), lead.getPropertyAdvisorOnline21Id());
+    }
+    String mode = d.roundMode() == null ? null : d.roundMode().name();
+    if (d.status() == AssignmentStatus.ASSIGNED) {
+      boolean reassignment = lead.getAdvisorUserId() != null && !lead.getAdvisorUserId().equals(d.advisorId()) && lead.getAssignmentStatus() == AssignmentStatus.ASSIGNED;
+      lead.assignTo(d.advisorId(), d.reason(), d.rule(), d.shiftId(), clock.instant());
+      String name = staff.nameOf(d.advisorId(), new java.util.HashMap<>());
+      log(lead, reassignment ? AssignmentLog.Outcome.REASSIGNED : AssignmentLog.Outcome.ASSIGNED, d.advisorId(), d.reason(), d.rule(), d.shiftId(), mode, d.detail(), actorId, actorName);
+      activity(lead, reassignment ? LeadActivity.Kind.REASSIGNED : LeadActivity.Kind.ASSIGNED, "Asignado a " + name + ": " + d.rule() + "." + (d.detail() != null ? " " + d.detail() + "." : ""), actorId, actorName);
+      notifyAdvisor(lead, d.advisorId(), name);
+      return;
+    }
+    UUID reserved = d.status() == AssignmentStatus.PENDING_OWNER ? d.advisorId() : null;
+    boolean changed = lead.getAssignmentStatus() != d.status() || lead.getPendingReason() == null || !lead.getPendingReason().equals(d.pendingReason());
+    lead.pending(d.status(), reserved, d.rule(), d.pendingReason(), d.nextShiftAt(), clock.instant());
+    if (changed) {
+      log(lead, AssignmentLog.Outcome.PENDING, reserved, d.reason(), d.rule(), null, mode, d.pendingReason(), actorId, actorName);
+      activity(lead, LeadActivity.Kind.ASSIGNED, (d.status() == AssignmentStatus.PENDING_OWNER ? "Reservado para el asesor de la propiedad: " : "Pendiente por horario: ") + d.pendingReason() + ".", actorId, actorName);
+    }
+  }
+
+  /** Asignación manual (ya validada por quien llama). */
+  void assignManually(Lead lead, UUID advisorId, String advisorName, String exceptionReason, UUID actorId, String actorName) {
+    boolean reassignment = lead.getAdvisorUserId() != null && lead.getAssignmentStatus() == AssignmentStatus.ASSIGNED;
+    String rule = "Asignación manual" + (exceptionReason != null ? " con excepción" : "");
+    lead.assignTo(advisorId, AssignmentMethod.MANUAL, rule, null, clock.instant());
+    log(lead, reassignment ? AssignmentLog.Outcome.REASSIGNED : AssignmentLog.Outcome.ASSIGNED, advisorId, AssignmentMethod.MANUAL, rule, null, null, exceptionReason, actorId, actorName);
+    activity(
+        lead,
+        reassignment ? LeadActivity.Kind.REASSIGNED : LeadActivity.Kind.ASSIGNED,
+        "Asignado manualmente a " + advisorName + "." + (exceptionReason != null ? " Excepción: " + exceptionReason : ""),
+        actorId,
+        actorName);
+    notifyAdvisor(lead, advisorId, advisorName);
+  }
+
+  private void notifyAdvisor(Lead lead, UUID advisorId, String advisorName) {
     String whatsapp = profiles.findById(advisorId).map(AdvisorProfile::getWhatsappPhone).orElse(null);
     if (whatsapp == null) {
       lead.markAdvisorNotice(SyncStatus.NOT_REQUIRED);

@@ -14,11 +14,11 @@ public interface AdvisorProfileRepository extends JpaRepository<AdvisorProfile, 
   Optional<AdvisorProfile> findByOnline21UserId(Long online21UserId);
 
   /**
-   * Bloquea las filas de quienes reciben leads mientras se elige al asesor:
-   * dos leads simultáneos no pueden leer el mismo conteo y caer en la misma
-   * persona por una condición de carrera.
+   * Bloquea todos los perfiles mientras se decide una asignación: dos leads
+   * simultáneos no pueden leer el mismo conteo ni el mismo estado de la ronda
+   * (y así no se duplica la asignación ni se rebasa un límite).
    */
   @Lock(LockModeType.PESSIMISTIC_WRITE)
-  @Query("select p from AdvisorProfile p where p.receivesLeads = true order by p.userId")
-  List<AdvisorProfile> lockReceiving();
+  @Query("select p from AdvisorProfile p order by p.userId")
+  List<AdvisorProfile> lockAll();
 }

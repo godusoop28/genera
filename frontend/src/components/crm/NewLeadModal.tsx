@@ -26,10 +26,12 @@ export function NewLeadModal({ open, onClose, advisors }: { open: boolean; onClo
     propertyReference: "",
     summary: "",
     assign: "auto",
+    exceptionReason: "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (key: keyof typeof form) => (value: string) => setForm((f) => ({ ...f, [key]: value }));
+  const chosen = advisors.find((a) => a.userId === form.assign);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -47,6 +49,7 @@ export function NewLeadModal({ open, onClose, advisors }: { open: boolean; onClo
         propertyReference: form.propertyReference.trim() || undefined,
         summary: form.summary.trim() || undefined,
         advisorId: canAssign && form.assign !== "auto" && form.assign !== "none" ? form.assign : undefined,
+        exceptionReason: form.exceptionReason.trim() || undefined,
         autoAssign: canAssign && form.assign === "auto",
       });
       onClose();
@@ -69,7 +72,7 @@ export function NewLeadModal({ open, onClose, advisors }: { open: boolean; onClo
           <Button variant="secondary" onClick={onClose} type="button">
             Cancelar
           </Button>
-          <Button type="submit" form="new-lead-form" disabled={saving || !form.name.trim()}>
+          <Button type="submit" form="new-lead-form" disabled={saving || !form.name.trim() || (!!chosen && chosen.status !== "AVAILABLE" && !form.exceptionReason.trim())}>
             {saving ? "Guardando…" : "Registrar"}
           </Button>
         </>
@@ -119,12 +122,20 @@ export function NewLeadModal({ open, onClose, advisors }: { open: boolean; onClo
             options={[
               { value: "auto", label: "Automático (asesor de la propiedad o ruleta)" },
               { value: "none", label: "Dejar sin asignar" },
-              ...advisors.map((a) => ({ value: a.userId, label: a.name })),
+              ...advisors.map((a) => ({ value: a.userId, label: `${a.name} · ${a.status === "AVAILABLE" ? "disponible" : a.statusDetail.toLowerCase()}` })),
             ]}
           />
         ) : (
           <p className="text-sm text-muted sm:col-span-2">Quedará asignado a ti.</p>
         )}
+        {chosen && chosen.status !== "AVAILABLE" ? (
+          <Input
+            label={`${chosen.name} no está disponible (${chosen.statusDetail.toLowerCase()}): motivo de la excepción`}
+            value={form.exceptionReason}
+            onChange={(e) => set("exceptionReason")(e.target.value)}
+            containerClassName="sm:col-span-2"
+          />
+        ) : null}
         {error ? (
           <p role="alert" className="rounded-xl bg-danger-bg px-4 py-3 text-sm text-danger-text sm:col-span-2">
             {error}

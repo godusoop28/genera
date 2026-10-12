@@ -70,15 +70,32 @@ function DashboardContent({ data }: { data: CrmDashboard }) {
 
   return (
     <div className="space-y-5">
+      {data.pendingAssignment > 0 ? (
+        <div className="flex flex-col gap-3 rounded-xl border border-info-text/25 bg-info-bg px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <Clock className="mt-0.5 h-5 w-5 shrink-0 text-info-text" aria-hidden />
+            <div>
+              <p className="text-sm font-semibold text-obsessed">
+                {data.pendingAssignment} lead{data.pendingAssignment === 1 ? "" : "s"} esperando turno
+              </p>
+              <p className="text-xs text-muted">Se asignan solos cuando empiece un turno elegible. Revisa el calendario si no hay turnos próximos.</p>
+            </div>
+          </div>
+          <Link href="/leads?grupo=PENDING" className="inline-flex min-h-9 items-center gap-1.5 self-start rounded-xl border border-border bg-card px-3 py-1.5 text-sm font-medium text-obsessed hover:bg-app-bg sm:self-auto">
+            Ver pendientes <ArrowRight className="h-4 w-4" aria-hidden />
+          </Link>
+        </div>
+      ) : null}
+
       {data.unassigned > 0 && can("LEAD_ASSIGN") ? (
         <div className="flex flex-col gap-3 rounded-xl border border-warning-text/25 bg-warning-bg px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning-text" aria-hidden />
             <div>
               <p className="text-sm font-semibold text-obsessed">
-                {data.unassigned} lead{data.unassigned === 1 ? "" : "s"} sin asesor
+                {data.unassigned} lead{data.unassigned === 1 ? "" : "s"} sin asignar
               </p>
-              <p className="text-xs text-muted">Llegaron cuando ningún asesor estaba disponible. Asígnalos para que no se enfríen.</p>
+              <p className="text-xs text-muted">No están en espera automática (registrados sin asignar o antes del calendario). Asígnalos para que no se enfríen.</p>
             </div>
           </div>
           <Link

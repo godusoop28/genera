@@ -6,10 +6,13 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
-import java.time.LocalTime;
 import java.util.UUID;
 
-/** Configuración de ruteo de un usuario interno: si recibe leads de la ruleta y cuántos. */
+/**
+ * Configuración de ruteo de un usuario interno: si recibe leads, peso, límite
+ * diario, vínculo con 21Online y estado persistente de la ronda. La
+ * disponibilidad por horario NO vive aquí: la da el calendario (crm_shift).
+ */
 @Entity
 @Table(name = "crm_advisor_profile")
 public class AdvisorProfile extends AuditableEntity {
@@ -25,15 +28,22 @@ public class AdvisorProfile extends AuditableEntity {
 
   private Integer dailyLimit;
 
-  private LocalTime shiftStart;
-
-  private LocalTime shiftEnd;
-
   private Instant pausedUntil;
 
   private Long online21UserId;
 
   private String whatsappPhone;
+
+  /** Horario simple anterior al calendario (solo referencia para completar el calendario). */
+  private String legacyShift;
+
+  @Column(nullable = false)
+  private boolean calendarNeedsSetup;
+
+  private Instant roundLastAt;
+
+  @Column(nullable = false)
+  private int roundCurrentWeight;
 
   protected AdvisorProfile() {}
 
@@ -41,19 +51,33 @@ public class AdvisorProfile extends AuditableEntity {
     this.userId = userId;
   }
 
-  public void update(
-      boolean receivesLeads, int weight, Integer dailyLimit, LocalTime shiftStart, LocalTime shiftEnd, Long online21UserId, String whatsappPhone) {
+  public void update(boolean receivesLeads, int weight, Integer dailyLimit, Long online21UserId, String whatsappPhone) {
     this.receivesLeads = receivesLeads;
     this.weight = Math.max(0, Math.min(100, weight));
     this.dailyLimit = dailyLimit != null && dailyLimit > 0 ? dailyLimit : null;
-    this.shiftStart = shiftStart;
-    this.shiftEnd = shiftEnd;
     this.online21UserId = online21UserId;
     this.whatsappPhone = whatsappPhone == null || whatsappPhone.isBlank() ? null : whatsappPhone.replaceAll("[^0-9+]", "");
   }
 
   public void pauseUntil(Instant until) {
     this.pausedUntil = until;
+  }
+
+  public boolean pausedAt(Instant t) {
+    return !receivesLeads || (pausedUntil != null && pausedUntil.isAfter(t));
+  }
+
+  public void calendarConfigured() {
+    this.calendarNeedsSetup = false;
+  }
+
+  /** Estado de la ronda tras recibir un lead por ronda (equitativa: fecha; ponderada: peso acumulado). */
+  public void roundAssigned(Instant at) {
+    this.roundLastAt = at;
+  }
+
+  public void roundWeight(int current) {
+    this.roundCurrentWeight = current;
   }
 
   public UUID getUserId() {
@@ -72,14 +96,6 @@ public class AdvisorProfile extends AuditableEntity {
     return dailyLimit;
   }
 
-  public LocalTime getShiftStart() {
-    return shiftStart;
-  }
-
-  public LocalTime getShiftEnd() {
-    return shiftEnd;
-  }
-
   public Instant getPausedUntil() {
     return pausedUntil;
   }
@@ -90,5 +106,21 @@ public class AdvisorProfile extends AuditableEntity {
 
   public String getWhatsappPhone() {
     return whatsappPhone;
+  }
+
+  public String getLegacyShift() {
+    return legacyShift;
+  }
+
+  public boolean isCalendarNeedsSetup() {
+    return calendarNeedsSetup;
+  }
+
+  public Instant getRoundLastAt() {
+    return roundLastAt;
+  }
+
+  public int getRoundCurrentWeight() {
+    return roundCurrentWeight;
   }
 }

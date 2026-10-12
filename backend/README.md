@@ -234,3 +234,47 @@ respuesta de `GET /api/propiedades` de 21Online (el mapeo acepta JSON-LD y
 arreglo plano), qué acepta `POST /api/prospectos`
 (`ONLINE21_PUSH_PROSPECTS=false` por defecto) y el comportamiento del modelo
 de `AI_MODEL` con la Responses API (herramientas + JSON Schema estricto).
+
+### Calendario de turnos, guardias y rondas (V028)
+
+El calendario (`crm_shift`, `crm_shift_skip`, `crm_absence`) es la **única**
+fuente de disponibilidad para asignar; se calcula en el servidor en
+America/Mexico_City y se lee en cada asignación (un cambio aplica de inmediato,
+sin reiniciar). El horario simple anterior se conservó como
+`crm_advisor_profile.legacy_shift` y esos asesores quedaron con
+`calendar_needs_setup = true` (no se inventaron días).
+
+- Turnos de una fecha o semanales (días, desde, hasta opcional), varios bloques
+  por día, nocturnos (fin ≤ inicio = termina al día siguiente), jornada o
+  guardia, y si participan en la asignación automática. Sin traslapes del mismo
+  asesor; varios asesores sí pueden coincidir.
+- Editar/eliminar: "solo este turno" omite la fecha de la serie y crea un turno
+  puntual; "toda la serie" corta la serie el día anterior y crea otra. Lo pasado
+  no se modifica. Todo queda en `crm_calendar_audit`.
+- Ausencias (vacaciones, permiso, descanso, no disponible) prevalecen sobre los
+  turnos. "Recibe leads / en pausa" sigue aplicando.
+- Ronda persistente (`round_last_at`, `round_current_weight`): EQUAL (le toca a
+  quien recibió hace más tiempo) o WEIGHTED (smooth weighted round robin). Se
+  decide con los perfiles bloqueados (`lockAll`), así que dos asignaciones
+  simultáneas no duplican ni rebasan límites. El límite diario usa la fecha de
+  Ciudad de México.
+- Política `crm_assignment_settings.owner_off_shift_policy`: RESPECT_OWNER
+  (predeterminado: el lead queda `PENDING_OWNER`, reservado para el asesor de la
+  propiedad hasta su próximo turno) o ROUTE_TO_GUARD (lo atiende un disponible,
+  prefiere guardias, conservando `property_advisor_user_id`). Dueño no
+  vinculado, desactivado, en pausa o sin turnos en 21 días → ronda de respaldo
+  con el motivo visible.
+- Sin nadie disponible: `PENDING_SCHEDULE` con `next_shift_at`;
+  `PendingAssignmentWorker` (cada minuto, `FOR UPDATE SKIP LOCKED`) los atiende
+  por antigüedad al empezar un turno. El estado de asignación es independiente
+  de la etapa comercial. Un lead asignado no cambia de asesor al terminar el turno.
+- Cada decisión queda en `lead_assignment_log` (motivo, regla, turno, modo de
+  ronda, espera). La asignación manual a alguien no disponible exige motivo.
+- Permisos: `CALENDAR_VIEW_ALL`/`CALENDAR_MANAGE` (administración y dirección),
+  `CALENDAR_VIEW_OWN` (asesor), `CALENDAR_EDIT_OWN` (explícito, nadie lo tiene
+  por defecto). La política la cambia `ADVISOR_ROUTING_MANAGE`.
+
+Probado con pruebas unitarias y de servicio con repositorios simulados
+(`ScheduleTest`, `AssignmentEngineTest`, `AssignmentScenariosTest`,
+`LeadIntakeContinuityTest`). El bloqueo de filas, la migración V028 y el
+procesamiento de pendientes contra Postgres real se verifican en el despliegue.

@@ -2,11 +2,16 @@ package com.c21genera.leads.application;
 
 import com.c21genera.identity.CurrentUser;
 import com.c21genera.leads.AssignmentMethod;
+import com.c21genera.leads.AssignmentStatus;
 import com.c21genera.leads.LeadInterest;
 import com.c21genera.leads.LeadSource;
 import com.c21genera.leads.LeadStage;
+import com.c21genera.leads.application.AvailabilityService.AdvisorState;
+import com.c21genera.leads.application.AvailabilityService.Status;
+import com.c21genera.leads.domain.AssignmentLog;
 import com.c21genera.leads.domain.Lead;
 import com.c21genera.leads.domain.LeadActivity;
+import com.c21genera.leads.infrastructure.AssignmentLogRepository;
 import com.c21genera.leads.infrastructure.LeadActivityRepository;
 import com.c21genera.leads.infrastructure.LeadRepository;
 import com.c21genera.online21.PropertyCatalog;
@@ -38,6 +43,7 @@ public class LeadService {
   public enum Group {
     ALL,
     UNASSIGNED,
+    PENDING,
     NEW,
     OPEN,
     WON,
@@ -46,7 +52,8 @@ public class LeadService {
     boolean matches(Lead l) {
       return switch (this) {
         case ALL -> true;
-        case UNASSIGNED -> l.getAdvisorUserId() == null;
+        case UNASSIGNED -> l.getAssignmentStatus() == AssignmentStatus.UNASSIGNED || (l.getAdvisorUserId() == null && !l.getAssignmentStatus().isPending());
+        case PENDING -> l.getAssignmentStatus().isPending();
         case NEW -> l.getStage() == LeadStage.NEW;
         case OPEN -> l.getStage().isOpen();
         case WON -> l.getStage() == LeadStage.WON;
@@ -78,11 +85,21 @@ public class LeadService {
       String lostReason,
       Instant createdAt,
       Instant lastActivityAt,
-      UUID conversationId) {}
+      UUID conversationId,
+      AssignmentStatus assignmentStatus,
+      String assignmentRule,
+      String pendingReason,
+      Instant nextShiftAt,
+      AdvisorRef propertyAdvisor,
+      String coordinationNote) {}
 
   public record ActivityView(UUID id, LeadActivity.Kind kind, String text, String actorName, Instant createdAt) {}
 
-  public record LeadDetail(LeadItem lead, List<ActivityView> activities, String online21SyncStatus, String advisorNoticeStatus) {}
+  /** Una entrada de la bitácora de asignación: cuándo, a quién, por qué, con qué regla y turno. */
+  public record AssignmentView(
+      UUID id, AssignmentLog.Outcome outcome, AdvisorRef advisor, AssignmentMethod reason, String rule, UUID shiftId, String roundMode, String detail, String actorName, Instant createdAt) {}
+
+  public record LeadDetail(LeadItem lead, List<ActivityView> activities, List<AssignmentView> assignments, String online21SyncStatus, String advisorNoticeStatus) {}
 
   public record LeadPage(List<LeadItem> items, long total, int page, int totalPages, Map<Group, Long> counts) {}
 
@@ -97,12 +114,15 @@ public class LeadService {
       String summary,
       BigDecimal budget,
       UUID advisorId,
+      String exceptionReason,
       boolean autoAssign) {}
 
   private final LeadRepository leads;
   private final LeadActivityRepository activities;
+  private final AssignmentLogRepository assignmentLogs;
   private final LeadRecorder recorder;
   private final AssignmentService assignment;
+  private final AvailabilityService availability;
   private final StaffNames staff;
   private final PropertyCatalog catalog;
   private final Clock clock;
@@ -110,13 +130,17 @@ public class LeadService {
   LeadService(
       LeadRepository leads,
       LeadActivityRepository activities,
+      AssignmentLogRepository assignmentLogs,
       LeadRecorder recorder,
       AssignmentService assignment,
+      AvailabilityService availability,
       StaffNames staff,
       PropertyCatalog catalog,
       Clock clock) {
     this.leads = leads;
     this.activities = activities;
+    this.assignmentLogs = assignmentLogs;
+    this.availability = availability;
     this.recorder = recorder;
     this.assignment = assignment;
     this.staff = staff;
@@ -149,7 +173,23 @@ public class LeadService {
         activities.findByLeadIdOrderByCreatedAtDesc(id).stream()
             .map(a -> new ActivityView(a.getId(), a.getKind(), a.getText(), a.getActorName(), a.getCreatedAt()))
             .toList();
-    return new LeadDetail(item(lead, names), timeline, lead.getOnline21SyncStatus().name(), lead.getAdvisorNoticeStatus().name());
+    List<AssignmentView> assignments =
+        assignmentLogs.findByLeadIdOrderByCreatedAtDesc(id).stream()
+            .map(
+                a ->
+                    new AssignmentView(
+                        a.getId(),
+                        a.getOutcome(),
+                        a.getAdvisorUserId() == null ? null : new AdvisorRef(a.getAdvisorUserId(), staff.nameOf(a.getAdvisorUserId(), names)),
+                        a.getReason(),
+                        a.getRule(),
+                        a.getShiftId(),
+                        a.getRoundMode(),
+                        a.getDetail(),
+                        a.getActorName(),
+                        a.getCreatedAt()))
+            .toList();
+    return new LeadDetail(item(lead, names), timeline, assignments, lead.getOnline21SyncStatus().name(), lead.getAdvisorNoticeStatus().name());
   }
 
   public LeadDetail changeStage(UUID id, LeadStage stage, String lostReason, CurrentUser user) {
@@ -169,19 +209,33 @@ public class LeadService {
     return get(id, user);
   }
 
-  public LeadDetail reassign(UUID id, UUID advisorId, CurrentUser user) {
+  /**
+   * Asignación manual. Si el asesor está fuera de horario, ausente, en pausa o
+   * ya alcanzó su límite, se exige un motivo de excepción (queda en la bitácora).
+   */
+  public LeadDetail reassign(UUID id, UUID advisorId, String exceptionReason, CurrentUser user) {
     Lead lead = load(id, user);
-    if (advisorId == null || advisorId.equals(lead.getAdvisorUserId())) {
+    if (advisorId == null || (advisorId.equals(lead.getAdvisorUserId()) && lead.getAssignmentStatus() == AssignmentStatus.ASSIGNED)) {
       return get(id, user);
     }
+    assignManually(lead, advisorId, exceptionReason, user);
+    return get(id, user);
+  }
+
+  private void assignManually(Lead lead, UUID advisorId, String exceptionReason, CurrentUser user) {
     String name =
         staff.activeStaff().stream()
             .filter(m -> m.id().equals(advisorId))
             .map(m -> m.name())
             .findFirst()
             .orElseThrow(() -> new UnprocessableException("ADVISOR_INACTIVE", "Ese usuario no está activo."));
-    recorder.assign(lead, advisorId, name, AssignmentMethod.MANUAL, lead.getAdvisorUserId() != null, user.id(), user.name());
-    return get(id, user);
+    AdvisorState state = availability.state(availability.snapshot(null), advisorId);
+    String reason = exceptionReason == null || exceptionReason.isBlank() ? null : exceptionReason.trim();
+    if (state.status() != Status.AVAILABLE && reason == null) {
+      throw new UnprocessableException(
+          "ASSIGNMENT_EXCEPTION_REASON_REQUIRED", name + ": " + state.detail() + ". Indica el motivo de la excepción para asignarlo de todos modos.");
+    }
+    recorder.assignManually(lead, advisorId, name, state.status() == Status.AVAILABLE ? null : state.detail() + " — " + reason, user.id(), user.name());
   }
 
   public LeadDetail addNote(UUID id, String text, CurrentUser user) {
@@ -208,6 +262,7 @@ public class LeadService {
       if (property.isPresent()) {
         draft.attachProperty(property.get().id(), property.get().key(), property.get().shortTitle());
         propertyAdvisor = property.get().advisorOnline21Id();
+        draft.propertyOwner(null, propertyAdvisor);
       } else {
         draft.attachProperty(null, req.propertyReference().trim(), null);
       }
@@ -216,20 +271,17 @@ public class LeadService {
     Lead lead = leads.save(draft);
     recorder.activity(lead, LeadActivity.Kind.CREATED, "Registrado por " + user.name() + ".", user.id(), user.name());
 
-    Map<UUID, String> names = staff.names();
     boolean canAssign = user.hasPermission("LEAD_ASSIGN");
     if (req.advisorId() != null && canAssign) {
-      recorder.assign(lead, req.advisorId(), staff.nameOf(req.advisorId(), names), AssignmentMethod.MANUAL, false, user.id(), user.name());
+      assignManually(lead, req.advisorId(), req.exceptionReason(), user);
     } else if (req.autoAssign() && canAssign) {
-      Long owner = propertyAdvisor;
-      assignment
-          .choose(owner, false)
-          .ifPresentOrElse(
-              a -> recorder.assign(lead, a.advisorUserId(), staff.nameOf(a.advisorUserId(), names), a.method(), false, user.id(), user.name()),
-              () -> recorder.activity(lead, LeadActivity.Kind.ASSIGNED, "No había asesor disponible: queda pendiente de asignar.", null, null));
+      // Mismo servicio único que usa el bot.
+      recorder.apply(lead, assignment.decideNew(propertyAdvisor, false), user.id(), user.name());
     } else if (!user.hasPermission("LEAD_VIEW_ALL")) {
       // Un asesor que registra su propio prospecto se lo queda.
-      recorder.assign(lead, user.id(), user.name(), AssignmentMethod.MANUAL, false, user.id(), user.name());
+      recorder.assignManually(lead, user.id(), user.name(), null, user.id(), user.name());
+    } else {
+      lead.markUnassigned("Registrado sin asignar");
     }
     recorder.pushToOnline21(lead, propertyAdvisor != null ? propertyAdvisor : recorder.online21IdOf(lead.getAdvisorUserId()));
     return get(lead.getId(), user);
@@ -295,7 +347,13 @@ public class LeadService {
         l.getLostReason(),
         l.getCreatedAt(),
         l.getLastActivityAt(),
-        l.getConversationId());
+        l.getConversationId(),
+        l.getAssignmentStatus(),
+        l.getAssignmentRule(),
+        l.getPendingReason(),
+        l.getNextShiftAt(),
+        l.getPropertyAdvisorUserId() == null ? null : new AdvisorRef(l.getPropertyAdvisorUserId(), staff.nameOf(l.getPropertyAdvisorUserId(), names)),
+        l.getCoordinationNote());
   }
 
   static String stageLabel(LeadStage stage) {

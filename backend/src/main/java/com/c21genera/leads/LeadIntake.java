@@ -1,6 +1,7 @@
 package com.c21genera.leads;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -40,15 +41,21 @@ public interface LeadIntake {
   record PropertyRef(long online21Id, String key, String title, Long advisorOnline21Id) {}
 
   enum HandoffStatus {
-    /** Lead nuevo asignado a un asesor. */
+    /** Lead nuevo asignado a un asesor disponible. */
     ASSIGNED,
-    /** Ya tenía un lead reciente con asesor: se anexó la nueva solicitud. */
+    /** Ya tenía un lead activo con asesor: se anexó la nueva solicitud (continuidad). */
     EXISTING,
-    /** Se registró el lead pero no había asesor disponible: queda para el equipo. */
-    NO_ADVISOR
+    /** Reservado para el asesor de la propiedad, que está fuera de horario: lo atenderá en su próximo turno. */
+    PENDING_OWNER,
+    /** Registrado sin asesor porque nadie estaba disponible: se asigna solo al empezar un turno. */
+    PENDING_SCHEDULE
   }
 
-  record HandoffResult(HandoffStatus status, UUID leadId, String advisorName, AssignmentMethod method) {}
+  /**
+   * @param conflict el cliente ya tenía asesor y preguntó por una propiedad de OTRO asesor: quedó señalado para coordinación
+   * @param nextShiftAt solo informativo para el equipo; al cliente no se le promete horario
+   */
+  record HandoffResult(HandoffStatus status, UUID leadId, String advisorName, AssignmentMethod method, Instant nextShiftAt, boolean conflict) {}
 
   record RecentLead(UUID leadId, String advisorName, LeadStage stage) {}
 }

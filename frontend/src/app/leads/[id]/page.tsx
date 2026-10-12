@@ -16,13 +16,18 @@ import {
   getLead,
   listAdvisors,
   type ActivityKind,
+  type AdvisorRouting,
   type LeadDetail,
   type LeadItem,
   type LeadStage,
 } from "@/lib/api/crm";
 import {
+  advisorStatusLabels,
   assignmentHints,
   assignmentLabels,
+  assignmentStatusLabels,
+  assignmentStatusTones,
+  formatInstantMx,
   controlLabels,
   controlTones,
   formatDateTime,
@@ -35,7 +40,7 @@ import {
 } from "@/lib/crm/labels";
 import { useCan } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Bell, Bot, CheckCircle2, FilePlus2, MessageCircle, MessagesSquare, StickyNote, UserCheck, UserPlus } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bell, Bot, CheckCircle2, FilePlus2, Home, MessageCircle, MessagesSquare, StickyNote, UserCheck, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { use, useState, type ReactNode } from "react";
 
@@ -94,6 +99,14 @@ export default function LeadDetailPage({ params }: PageProps<"/leads/[id]">) {
         </>
       }
     >
+      {lead.coordinationNote ? (
+        <p className="mb-5 flex items-start gap-2.5 rounded-xl border border-warning-text/25 bg-warning-bg px-4 py-3 text-sm text-warning-text">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span>
+            <strong className="font-semibold">Requiere coordinación:</strong> {lead.coordinationNote}
+          </span>
+        </p>
+      ) : null}
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="min-w-0 space-y-5">
           <Card>
@@ -131,6 +144,13 @@ export default function LeadDetailPage({ params }: PageProps<"/leads/[id]">) {
 
           {lead.conversationId && can("CONVERSATION_VIEW") ? <ConversationPreview conversationId={lead.conversationId} name={lead.name} /> : null}
 
+          {detail.data.assignments.length ? (
+            <Card>
+              <CardHeader title="Asignación: por qué y cuándo" />
+              <AssignmentLogList entries={detail.data.assignments} />
+            </Card>
+          ) : null}
+
           <Card>
             <CardHeader title="Historial" />
             <Timeline items={activities} />
@@ -140,15 +160,27 @@ export default function LeadDetailPage({ params }: PageProps<"/leads/[id]">) {
         <aside className="min-w-0 space-y-5">
           {can("LEAD_MANAGE") ? <StageCard lead={lead} onChange={update} /> : null}
           <Card>
-            <CardHeader title="Asesor" />
-            <AdvisorChip advisor={lead.advisor} />
-            {lead.assignmentMethod ? (
+            <CardHeader title="Asesor que atiende" action={<Badge tone={assignmentStatusTones[lead.assignmentStatus]}>{assignmentStatusLabels[lead.assignmentStatus]}</Badge>} />
+            <AdvisorChip advisor={lead.advisor} emptyLabel={lead.assignmentStatus === "PENDING_SCHEDULE" ? "Pendiente por horario" : "Sin asignar"} />
+            {lead.assignmentStatus === "ASSIGNED" && lead.assignmentMethod ? (
               <p className="mt-2 text-xs text-muted">
-                Asignación: {assignmentLabels[lead.assignmentMethod]} — {assignmentHints[lead.assignmentMethod].toLowerCase()}.
+                Motivo: {assignmentLabels[lead.assignmentMethod]} — {lead.assignmentRule ?? assignmentHints[lead.assignmentMethod]}.
               </p>
-            ) : (
-              <p className="mt-2 text-xs text-warning-text">Ningún asesor estaba disponible cuando llegó. Asígnalo manualmente.</p>
-            )}
+            ) : null}
+            {lead.assignmentStatus === "PENDING_OWNER" || lead.assignmentStatus === "PENDING_SCHEDULE" ? (
+              <div className="mt-3 rounded-xl bg-app-bg px-3 py-2 text-xs text-obsessed">
+                <p>{lead.pendingReason ?? "En espera de un turno disponible."}</p>
+                <p className="mt-1 text-muted">
+                  {lead.nextShiftAt ? `Próximo turno disponible: ${formatInstantMx(lead.nextShiftAt)} (se asigna solo).` : "No hay un próximo turno en el calendario: asígnalo manualmente o configura turnos."}
+                </p>
+              </div>
+            ) : null}
+            {lead.assignmentStatus === "UNASSIGNED" ? <p className="mt-2 text-xs text-warning-text">{lead.pendingReason ?? "Sin asesor."} Asígnalo manualmente.</p> : null}
+            {lead.propertyAdvisor && lead.propertyAdvisor.id !== lead.advisor?.id ? (
+              <p className="mt-3 flex items-center gap-1.5 border-t border-border pt-3 text-xs text-muted">
+                <Home className="h-3.5 w-3.5" aria-hidden /> Asesor responsable de la propiedad: <span className="font-medium text-obsessed">{lead.propertyAdvisor.name}</span>
+              </p>
+            ) : null}
             {can("LEAD_ASSIGN") ? <ReassignForm lead={lead} advisors={advisors.data ?? []} onChange={update} /> : null}
           </Card>
           {lead.interest === "SELL" || lead.interest === "LEASE_OUT" ? (
@@ -307,11 +339,14 @@ function StageCard({ lead, onChange }: { lead: LeadItem; onChange: (d: LeadDetai
   );
 }
 
-function ReassignForm({ lead, advisors, onChange }: { lead: LeadItem; advisors: { userId: string; name: string }[]; onChange: (d: LeadDetail) => void }) {
+function ReassignForm({ lead, advisors, onChange }: { lead: LeadItem; advisors: AdvisorRouting[]; onChange: (d: LeadDetail) => void }) {
   const { showToast } = useToast();
   const [target, setTarget] = useState("");
+  const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
-  const options = advisors.filter((a) => a.userId !== lead.advisor?.id);
+  const options = advisors.filter((a) => a.userId !== lead.advisor?.id || lead.assignmentStatus !== "ASSIGNED");
+  const selected = advisors.find((a) => a.userId === target);
+  const needsException = !!selected && selected.status !== "AVAILABLE";
   return (
     <>
       <div className="mt-4 flex items-end gap-2">
@@ -319,17 +354,18 @@ function ReassignForm({ lead, advisors, onChange }: { lead: LeadItem; advisors: 
           label={lead.advisor ? "Reasignar a" : "Asignar a"}
           value={target}
           onChange={(e) => setTarget(e.target.value)}
-          options={[{ value: "", label: "Elige un asesor" }, ...options.map((a) => ({ value: a.userId, label: a.name }))]}
+          options={[{ value: "", label: "Elige un asesor" }, ...options.map((a) => ({ value: a.userId, label: `${a.name} · ${advisorStatusLabels[a.status]}` }))]}
           containerClassName="min-w-0 flex-1"
         />
         <Button
           variant="secondary"
-          disabled={!target || saving}
+          disabled={!target || saving || (needsException && !reason.trim())}
           onClick={async () => {
             setSaving(true);
             try {
-              onChange(await assignLead(lead.id, target));
+              onChange(await assignLead(lead.id, target, needsException ? reason.trim() : undefined));
               setTarget("");
+              setReason("");
               showToast("Lead asignado");
             } catch (err) {
               showToast(errorText(err));
@@ -342,6 +378,24 @@ function ReassignForm({ lead, advisors, onChange }: { lead: LeadItem; advisors: 
           {lead.advisor ? "Reasignar" : "Asignar"}
         </Button>
       </div>
+      {needsException ? (
+        <div className="mt-3 space-y-1.5 rounded-xl border border-warning-text/25 bg-warning-bg p-3">
+          <p className="text-xs text-warning-text">
+            {selected.name}: {selected.statusDetail}
+            {selected.nextShift ? ` · próximo turno ${selected.nextShift.slice(11, 16)}` : ""}. Para asignarlo de todos modos indica el motivo de la excepción.
+          </p>
+          <label htmlFor="exception-reason" className="sr-only">
+            Motivo de la excepción
+          </label>
+          <input
+            id="exception-reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Ej. el cliente pidió específicamente a este asesor"
+            className="w-full rounded-xl border border-border bg-card px-3 py-2 text-sm text-obsessed focus:border-gold focus:outline-none focus:ring-4 focus:ring-gold/20"
+          />
+        </div>
+      ) : null}
       <p className="mt-2 text-xs text-muted">Si el asesor tiene WhatsApp configurado en Asesores, recibe un aviso con los datos del lead.</p>
     </>
   );
@@ -385,6 +439,38 @@ function NoteCard({ leadId, onChange }: { leadId: string; onChange: (d: LeadDeta
         <StickyNote className="h-4 w-4" aria-hidden /> Guardar nota
       </Button>
     </Card>
+  );
+}
+
+const outcomeLabels: Record<LeadDetail["assignments"][number]["outcome"], string> = {
+  ASSIGNED: "Asignado",
+  REASSIGNED: "Reasignado",
+  PENDING: "En espera",
+  KEPT: "Se conservó",
+  CONFLICT: "Conflicto",
+};
+
+function AssignmentLogList({ entries }: { entries: LeadDetail["assignments"] }) {
+  return (
+    <ol className="space-y-3">
+      {entries.map((e) => (
+        <li key={e.id} className="rounded-xl border border-border p-3 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={e.outcome === "CONFLICT" ? "warning" : e.outcome === "PENDING" ? "info" : "success"}>{outcomeLabels[e.outcome]}</Badge>
+            {e.advisor ? <span className="font-medium text-obsessed">{e.advisor.name}</span> : null}
+            {e.reason ? <span className="text-xs text-muted">· {assignmentLabels[e.reason]}</span> : null}
+            <span className="ml-auto text-xs text-muted">{formatInstantMx(e.createdAt)}</span>
+          </div>
+          <p className="mt-1 text-obsessed">{e.rule}</p>
+          {e.detail ? <p className="text-xs text-muted">{e.detail}</p> : null}
+          <p className="text-xs text-muted">
+            {e.roundMode ? `Ronda ${e.roundMode === "EQUAL" ? "equitativa" : "ponderada"} · ` : ""}
+            {e.shiftId ? "Dentro de un turno del calendario · " : ""}
+            {e.actorName ? `Por ${e.actorName}` : "Automático"}
+          </p>
+        </li>
+      ))}
+    </ol>
   );
 }
 

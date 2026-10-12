@@ -33,6 +33,8 @@ public class Conversation extends AuditableEntity {
     ASSIGNED,
     EXISTING_LEAD,
     NO_ADVISOR,
+    /** Reservado para el asesor de la propiedad, que lo atenderá en su próximo turno. */
+    PENDING_OWNER,
     NOT_APPLICABLE,
     HUMAN_REQUESTED
   }

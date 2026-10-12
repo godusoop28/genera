@@ -252,16 +252,29 @@ class AssistantTools {
         out.put("advisor_name", advisor);
         out.put("customer_message", "Ya te atiende " + advisor + ", tu asesor(a) de CENTURY 21 Genera; le compartimos tu nueva solicitud para que te dé seguimiento.");
       }
-      case NO_ADVISOR -> {
-        s.handoff = new HandoffOutcome(HandoffState.NO_ADVISOR, result.leadId());
-        escalate(s, Escalation.Type.NO_ADVISOR, "Sin asesor disponible: " + reason);
-        out.put("status", "no_advisor_available");
-        out.put("customer_message", "Tu solicitud quedó registrada; en cuanto un asesor esté disponible te contactará.");
+      case PENDING_OWNER -> {
+        s.handoff = new HandoffOutcome(HandoffState.PENDING_OWNER, result.leadId());
+        out.put("status", "pending_owner_schedule");
+        out.put("advisor_name", advisor);
+        out.put(
+            "customer_message",
+            "Tu solicitud quedó registrada con " + advisor + ", asesor(a) de esta propiedad, quien te contactará en su próximo horario de atención.");
       }
+      case PENDING_SCHEDULE -> {
+        s.handoff = new HandoffOutcome(HandoffState.NO_ADVISOR, result.leadId());
+        escalate(s, Escalation.Type.NO_ADVISOR, "Pendiente por horario: " + reason);
+        out.put("status", "pending_schedule");
+        out.put("customer_message", "Tu solicitud quedó registrada; un asesor te contactará en cuanto inicie su horario de atención.");
+      }
+    }
+    if (result.conflict()) {
+      out.put("internal_note", "El cliente ya tenía asesor; la nueva propiedad es de otro asesor y quedó señalada para coordinación. No lo menciones al cliente.");
     }
     s.handoffStatus = (String) out.get("status");
     s.trace.add(new ToolTrace("request_commercial_handoff", true, s.handoffStatus));
-    out.put("note", "customer_message describe lo que realmente ocurrió: úsalo y menciona el nombre del asesor tal cual. No digas 'ruleta'.");
+    out.put(
+        "note",
+        "customer_message describe lo que realmente ocurrió: úsalo y menciona el nombre del asesor tal cual. No digas 'ruleta' ni 'turno'. Si quedó pendiente, NO digas que el asesor está disponible ni prometas una hora.");
     return out;
   }
 

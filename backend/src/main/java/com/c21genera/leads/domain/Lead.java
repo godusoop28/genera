@@ -1,6 +1,7 @@
 package com.c21genera.leads.domain;
 
 import com.c21genera.leads.AssignmentMethod;
+import com.c21genera.leads.AssignmentStatus;
 import com.c21genera.leads.LeadInterest;
 import com.c21genera.leads.LeadSource;
 import com.c21genera.leads.LeadStage;
@@ -81,6 +82,26 @@ public class Lead extends AuditableEntity {
   @Column(nullable = false)
   private Instant lastActivityAt;
 
+  @Enumerated(EnumType.STRING)
+  @Column(nullable = false)
+  private AssignmentStatus assignmentStatus = AssignmentStatus.UNASSIGNED;
+
+  private String assignmentRule;
+
+  private UUID assignmentShiftId;
+
+  private String pendingReason;
+
+  private Instant pendingSince;
+
+  private Instant nextShiftAt;
+
+  private UUID propertyAdvisorUserId;
+
+  private Long propertyAdvisorOnline21Id;
+
+  private String coordinationNote;
+
   protected Lead() {}
 
   public Lead(String name, String phone, LeadSource source, String sourceDetail, LeadInterest interest, Instant now) {
@@ -123,12 +144,53 @@ public class Lead extends AuditableEntity {
     this.propertyTitle = title;
   }
 
-  public void assignTo(UUID advisorUserId, AssignmentMethod method, Instant now) {
+  /** Queda atendido por el asesor (una vez asignado no se cambia al terminar su jornada). */
+  public void assignTo(UUID advisorUserId, AssignmentMethod method, String rule, UUID shiftId, Instant now) {
     this.advisorUserId = advisorUserId;
     this.assignmentMethod = method;
+    this.assignmentRule = rule;
+    this.assignmentShiftId = shiftId;
+    this.assignmentStatus = AssignmentStatus.ASSIGNED;
     this.assignedAt = now;
+    this.pendingReason = null;
+    this.pendingSince = null;
+    this.nextShiftAt = null;
     this.advisorNoticeStatus = SyncStatus.PENDING;
     touch(now);
+  }
+
+  /**
+   * En espera: PENDING_OWNER conserva al asesor de la propiedad como
+   * responsable (sin contar todavía en su límite ni avisarle); PENDING_SCHEDULE
+   * queda sin asesor hasta que empiece un turno elegible.
+   */
+  public void pending(AssignmentStatus status, UUID reservedFor, String rule, String reason, Instant nextShiftAt, Instant now) {
+    this.assignmentStatus = status;
+    this.advisorUserId = reservedFor;
+    this.assignmentMethod = reservedFor != null ? AssignmentMethod.PROPERTY_OWNER : null;
+    this.assignmentRule = rule;
+    this.assignmentShiftId = null;
+    this.assignedAt = null;
+    this.pendingReason = reason;
+    if (this.pendingSince == null) {
+      this.pendingSince = now;
+    }
+    this.nextShiftAt = nextShiftAt;
+    this.advisorNoticeStatus = SyncStatus.NOT_REQUIRED;
+  }
+
+  public void markUnassigned(String reason) {
+    this.assignmentStatus = AssignmentStatus.UNASSIGNED;
+    this.pendingReason = reason;
+  }
+
+  public void propertyOwner(UUID userId, Long online21Id) {
+    this.propertyAdvisorUserId = userId;
+    this.propertyAdvisorOnline21Id = online21Id;
+  }
+
+  public void coordination(String note) {
+    this.coordinationNote = note == null || note.isBlank() ? null : (note.length() > 1000 ? note.substring(0, 1000) : note);
   }
 
   public void changeStage(LeadStage stage, String lostReason, Instant now) {
@@ -260,5 +322,41 @@ public class Lead extends AuditableEntity {
 
   public Instant getLastActivityAt() {
     return lastActivityAt;
+  }
+
+  public AssignmentStatus getAssignmentStatus() {
+    return assignmentStatus;
+  }
+
+  public String getAssignmentRule() {
+    return assignmentRule;
+  }
+
+  public UUID getAssignmentShiftId() {
+    return assignmentShiftId;
+  }
+
+  public String getPendingReason() {
+    return pendingReason;
+  }
+
+  public Instant getPendingSince() {
+    return pendingSince;
+  }
+
+  public Instant getNextShiftAt() {
+    return nextShiftAt;
+  }
+
+  public UUID getPropertyAdvisorUserId() {
+    return propertyAdvisorUserId;
+  }
+
+  public Long getPropertyAdvisorOnline21Id() {
+    return propertyAdvisorOnline21Id;
+  }
+
+  public String getCoordinationNote() {
+    return coordinationNote;
   }
 }

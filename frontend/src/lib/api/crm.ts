@@ -7,8 +7,9 @@ import { apiClient } from "@/lib/api/client";
 export type LeadStage = "NEW" | "CONTACTED" | "APPOINTMENT" | "VISITED" | "NEGOTIATION" | "WON" | "LOST";
 export type LeadSource = "WHATSAPP_BOT" | "PORTAL" | "CAMPAIGN" | "WEBSITE" | "REFERRAL" | "WALK_IN" | "PHONE";
 export type LeadInterest = "BUY" | "RENT" | "SELL" | "LEASE_OUT" | "INVEST" | "OTHER";
-export type AssignmentMethod = "PROPERTY_OWNER" | "ROULETTE" | "MANUAL";
-export type LeadGroup = "ALL" | "UNASSIGNED" | "NEW" | "OPEN" | "WON" | "LOST";
+export type AssignmentMethod = "PROPERTY_OWNER" | "CONTINUITY" | "ROULETTE" | "GUARD" | "MANUAL";
+export type AssignmentStatus = "ASSIGNED" | "PENDING_OWNER" | "PENDING_SCHEDULE" | "UNASSIGNED";
+export type LeadGroup = "ALL" | "UNASSIGNED" | "PENDING" | "NEW" | "OPEN" | "WON" | "LOST";
 export type ActivityKind = "CREATED" | "ASSIGNED" | "REASSIGNED" | "STAGE" | "NOTE" | "BOT" | "NOTICE" | "FOLLOW_UP";
 
 export interface LeadProperty {
@@ -35,6 +36,26 @@ export interface LeadItem {
   createdAt: string;
   lastActivityAt: string;
   conversationId: string | null;
+  assignmentStatus: AssignmentStatus;
+  assignmentRule: string | null;
+  pendingReason: string | null;
+  nextShiftAt: string | null;
+  /** Asesor responsable de la PROPIEDAD (21Online), distinto del que atiende el lead. */
+  propertyAdvisor: { id: string; name: string } | null;
+  coordinationNote: string | null;
+}
+
+export interface LeadAssignmentEntry {
+  id: string;
+  outcome: "ASSIGNED" | "PENDING" | "KEPT" | "CONFLICT" | "REASSIGNED";
+  advisor: { id: string; name: string } | null;
+  reason: AssignmentMethod | null;
+  rule: string;
+  shiftId: string | null;
+  roundMode: string | null;
+  detail: string | null;
+  actorName: string | null;
+  createdAt: string;
 }
 
 export interface LeadActivity {
@@ -48,6 +69,7 @@ export interface LeadActivity {
 export interface LeadDetail {
   lead: LeadItem;
   activities: LeadActivity[];
+  assignments: LeadAssignmentEntry[];
   online21SyncStatus: string;
   advisorNoticeStatus: string;
 }
@@ -91,8 +113,8 @@ export function changeLeadStage(id: string, stage: LeadStage, lostReason?: strin
   return apiClient.post<LeadDetail>(`/internal/leads/${id}/stage`, { stage, lostReason });
 }
 
-export function assignLead(id: string, advisorId: string) {
-  return apiClient.post<LeadDetail>(`/internal/leads/${id}/assign`, { advisorId });
+export function assignLead(id: string, advisorId: string, exceptionReason?: string) {
+  return apiClient.post<LeadDetail>(`/internal/leads/${id}/assign`, { advisorId, exceptionReason });
 }
 
 export function addLeadNote(id: string, text: string) {
@@ -110,6 +132,7 @@ export interface CreateLeadInput {
   summary?: string;
   budget?: number;
   advisorId?: string;
+  exceptionReason?: string;
   autoAssign: boolean;
 }
 
@@ -122,6 +145,7 @@ export interface CrmDashboard {
   total: number;
   assigned: number;
   unassigned: number;
+  pendingAssignment: number;
   open: number;
   won: number;
   closed: number;
@@ -137,6 +161,8 @@ export function getCrmDashboard(from?: string) {
   return apiClient.get<CrmDashboard>(`/internal/crm/dashboard${query({ from })}`);
 }
 
+export type AdvisorStatus = "AVAILABLE" | "OFF_SHIFT" | "ABSENT" | "PAUSED" | "LIMIT_REACHED" | "NO_CALENDAR";
+
 export interface AdvisorRouting {
   userId: string;
   name: string;
@@ -145,16 +171,21 @@ export interface AdvisorRouting {
   receivesLeads: boolean;
   weight: number;
   dailyLimit: number | null;
-  shiftStart: string | null;
-  shiftEnd: string | null;
   online21UserId: number | null;
   whatsappPhone: string | null;
+  status: AdvisorStatus;
+  statusDetail: string;
+  currentShiftEnd: string | null;
+  currentShiftKind: "REGULAR" | "GUARD" | null;
+  nextShift: string | null;
+  needsCalendar: boolean;
+  legacyShift: string | null;
   assignedToday: number;
   openLeads: number;
   wonLeads: number;
 }
 
-export type AdvisorRoutingInput = Pick<AdvisorRouting, "receivesLeads" | "weight" | "dailyLimit" | "shiftStart" | "shiftEnd" | "online21UserId" | "whatsappPhone">;
+export type AdvisorRoutingInput = Pick<AdvisorRouting, "receivesLeads" | "weight" | "dailyLimit" | "online21UserId" | "whatsappPhone">;
 
 export function listAdvisors() {
   return apiClient.get<AdvisorRouting[]>("/internal/crm/advisors");
@@ -162,6 +193,178 @@ export function listAdvisors() {
 
 export function updateAdvisor(userId: string, input: AdvisorRoutingInput) {
   return apiClient.put<AdvisorRouting>(`/internal/crm/advisors/${userId}`, input);
+}
+
+export type RoundMode = "EQUAL" | "WEIGHTED";
+export type OwnerOffShiftPolicy = "RESPECT_OWNER" | "ROUTE_TO_GUARD";
+
+export interface AssignmentSettings {
+  roundMode: RoundMode;
+  ownerOffShiftPolicy: OwnerOffShiftPolicy;
+  updatedByName: string | null;
+  pendingLeads: number;
+  nextCoverage: string | null;
+  noUpcomingCoverage: boolean;
+  timezone: string;
+}
+
+export function getAssignmentSettings() {
+  return apiClient.get<AssignmentSettings>("/internal/crm/assignment-settings");
+}
+
+export function updateAssignmentSettings(roundMode: RoundMode, ownerOffShiftPolicy: OwnerOffShiftPolicy) {
+  return apiClient.put<AssignmentSettings>("/internal/crm/assignment-settings", { roundMode, ownerOffShiftPolicy });
+}
+
+// ---------------------------------------------------------------------------
+// Calendario de turnos (todas las fechas y horas son de Ciudad de México,
+// como texto "YYYY-MM-DDTHH:mm:ss" sin zona: no dependen del dispositivo).
+// ---------------------------------------------------------------------------
+
+export type ShiftKind = "REGULAR" | "GUARD";
+export type ShiftRecurrence = "ONCE" | "WEEKLY";
+export type AbsenceKind = "VACATION" | "PERMISSION" | "REST" | "UNAVAILABLE";
+export type EditScope = "OCCURRENCE" | "SERIES";
+
+export interface LocalRange {
+  start: string;
+  end: string;
+}
+
+export interface ShiftOccurrence {
+  shiftId: string;
+  advisorId: string;
+  advisorName: string;
+  kind: ShiftKind;
+  assignable: boolean;
+  recurrence: ShiftRecurrence;
+  date: string;
+  start: string;
+  end: string;
+  notes: string | null;
+  absentParts: LocalRange[];
+  fullyAbsent: boolean;
+  days: number[];
+  seriesStart: string;
+  seriesEnd: string | null;
+  createdByName: string | null;
+  updatedByName: string | null;
+}
+
+export interface CalendarAbsence {
+  id: string;
+  advisorId: string;
+  advisorName: string;
+  kind: AbsenceKind;
+  start: string;
+  end: string;
+  notes: string | null;
+  createdByName: string | null;
+}
+
+export interface PersonNow {
+  advisorId: string;
+  name: string;
+  kind: ShiftKind;
+  assignable: boolean;
+  start: string;
+  end: string;
+}
+
+export interface CalendarAdvisor {
+  userId: string;
+  name: string;
+  roleCode: string;
+  status: AdvisorStatus;
+  statusDetail: string;
+  nextShift: string | null;
+  needsCalendar: boolean;
+  legacyShift: string | null;
+}
+
+export interface CalendarView {
+  timezone: string;
+  today: string;
+  now: string;
+  from: string;
+  to: string;
+  canManage: boolean;
+  canEditOwn: boolean;
+  advisors: CalendarAdvisor[];
+  occurrences: ShiftOccurrence[];
+  absences: CalendarAbsence[];
+  gaps: LocalRange[];
+  onShiftNow: PersonNow[];
+  nextUp: PersonNow[];
+  nextCoverage: string | null;
+}
+
+export interface ShiftInput {
+  advisorId: string;
+  kind: ShiftKind;
+  recurrence: ShiftRecurrence;
+  days: number[];
+  startDate: string;
+  endDate: string | null;
+  startTime: string;
+  endTime: string;
+  assignable: boolean;
+  notes: string | null;
+}
+
+export interface AbsenceInput {
+  advisorId: string;
+  kind: AbsenceKind;
+  start: string;
+  end: string;
+  notes: string | null;
+}
+
+export interface CalendarAuditEntry {
+  id: string;
+  entity: string;
+  entityId: string | null;
+  advisorName: string | null;
+  action: string;
+  detail: string;
+  actorName: string | null;
+  createdAt: string;
+}
+
+export function getCalendar(from: string, to: string) {
+  return apiClient.get<CalendarView>(`/internal/crm/calendar${query({ from, to })}`);
+}
+
+export function getCalendarAudit() {
+  return apiClient.get<CalendarAuditEntry[]>("/internal/crm/calendar/audit");
+}
+
+export function createShift(input: ShiftInput) {
+  return apiClient.post<{ id: string }>("/internal/crm/calendar/shifts", input);
+}
+
+export function updateShift(id: string, input: ShiftInput, scope: EditScope, date: string) {
+  return apiClient.put<{ id: string }>(`/internal/crm/calendar/shifts/${id}${query({ scope, date })}`, input);
+}
+
+export function deleteShift(id: string, scope: EditScope, date: string) {
+  return apiClient.delete<void>(`/internal/crm/calendar/shifts/${id}${query({ scope, date })}`);
+}
+
+export function copyShifts(sourceFrom: string, days: number, targetFrom: string, advisorId?: string) {
+  return apiClient.post<{ created: number; skipped: number; skippedDetails: string[] }>("/internal/crm/calendar/copy", { sourceFrom, days, targetFrom, advisorId });
+}
+
+export function createAbsence(input: AbsenceInput) {
+  return apiClient.post<{ id: string }>("/internal/crm/calendar/absences", input);
+}
+
+export function updateAbsence(id: string, input: AbsenceInput) {
+  return apiClient.put<void>(`/internal/crm/calendar/absences/${id}`, input);
+}
+
+export function deleteAbsence(id: string) {
+  return apiClient.delete<void>(`/internal/crm/calendar/absences/${id}`);
 }
 
 // ---------------------------------------------------------------------------
