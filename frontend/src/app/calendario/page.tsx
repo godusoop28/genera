@@ -39,7 +39,7 @@ import { AlertTriangle, CalendarPlus, ChevronLeft, ChevronRight, Clock, Copy, Hi
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
-type View = "week" | "day" | "agenda";
+type View = "people" | "week" | "day" | "agenda";
 
 export default function CalendarioPage() {
   return (
@@ -57,7 +57,8 @@ function CalendarScreen() {
   const canView = can("CALENDAR_VIEW_ALL") || can("CALENDAR_VIEW_OWN");
 
   // En celular la vista cómoda es la agenda.
-  const [view, setView] = useState<View>(() => (typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches ? "agenda" : "week"));
+  // Vista principal: tabla sencilla de horarios por asesor (fácil de leer también en celular).
+  const [view, setView] = useState<View>("people");
   const [anchor, setAnchor] = useState<string | null>(null); // día seleccionado (Ciudad de México)
   const [advisorFilter, setAdvisorFilter] = useState(params.get("asesor") ?? "");
   const [kindFilter, setKindFilter] = useState<"" | ShiftKind>("");
@@ -143,14 +144,14 @@ function CalendarScreen() {
       action={
         editable && data ? (
           <>
-            <Button variant="secondary" onClick={() => setCopyOpen(true)}>
-              <Copy className="h-4 w-4" aria-hidden /> Copiar
+            <Button variant="secondary" size="lg" onClick={() => setCopyOpen(true)}>
+              <Copy className="h-5 w-5" aria-hidden /> Repetir semana
             </Button>
-            <Button variant="secondary" onClick={() => setAbsenceModal({ absence: null })}>
-              <Plane className="h-4 w-4" aria-hidden /> Ausencia
+            <Button variant="secondary" size="lg" onClick={() => setAbsenceModal({ absence: null })}>
+              <Plane className="h-5 w-5" aria-hidden /> Vacaciones o día libre
             </Button>
-            <Button onClick={() => setShiftModal({ occurrence: null, draft: { advisorId: advisorFilter || fixedAdvisorId || "", date: anchor ?? data.today } })}>
-              <CalendarPlus className="h-4 w-4" aria-hidden /> Nuevo turno
+            <Button size="lg" onClick={() => setShiftModal({ occurrence: null, draft: { advisorId: advisorFilter || fixedAdvisorId || "", date: anchor ?? data.today } })}>
+              <CalendarPlus className="h-5 w-5" aria-hidden /> Agregar horario
             </Button>
           </>
         ) : null
@@ -191,32 +192,44 @@ function CalendarScreen() {
                 />
               ) : null}
               <Select
-                aria-label="Filtrar por tipo de turno"
+                aria-label="Mostrar"
                 value={kindFilter}
                 onChange={(e) => setKindFilter(e.target.value as "" | ShiftKind)}
                 options={[
-                  { value: "", label: "Jornadas y guardias" },
-                  { value: "REGULAR", label: "Solo jornadas" },
+                  { value: "", label: "Todos los horarios" },
+                  { value: "REGULAR", label: "Solo horario normal" },
                   { value: "GUARD", label: "Solo guardias" },
                 ]}
-                containerClassName="sm:w-48"
+                containerClassName="sm:w-52"
               />
               <Segmented
                 label="Vista"
                 value={view}
                 onChange={setView}
                 options={[
-                  { id: "week", label: "Semana" },
-                  { id: "day", label: "Día" },
-                  { id: "agenda", label: "Agenda" },
+                  { id: "people", label: "Horarios" },
+                  { id: "week", label: "Calendario" },
+                  { id: "agenda", label: "Lista por día" },
                 ]}
               />
             </div>
           </div>
 
-          <Legend data={data} onPick={(id) => setAdvisorFilter(advisorFilter === id ? "" : id)} selected={advisorFilter} />
+          {view !== "people" ? <Legend data={data} onPick={(id) => setAdvisorFilter(advisorFilter === id ? "" : id)} selected={advisorFilter} /> : null}
 
-          {data.occurrences.length === 0 && data.absences.length === 0 ? (
+          {view === "people" ? (
+            <PeopleWeek
+              days={days}
+              advisors={data.advisors.filter((a) => !advisorFilter || a.userId === advisorFilter)}
+              occurrences={occurrences}
+              absences={absences}
+              today={data.today}
+              canAdd={(id) => editable && (data.canManage || id === user?.id)}
+              onOpen={(o) => canOpen(o) && setShiftModal({ occurrence: o, draft: null })}
+              onAdd={(advisorId, date) => setShiftModal({ occurrence: null, draft: { advisorId, date } })}
+              onOpenAbsence={(a) => editable && setAbsenceModal({ absence: a })}
+            />
+          ) : data.occurrences.length === 0 && data.absences.length === 0 ? (
             <StateMessage
               kind="empty"
               title="Sin turnos en estas fechas"
@@ -241,7 +254,7 @@ function CalendarScreen() {
             />
           )}
 
-          {absences.length > 0 && view !== "agenda" ? <AbsenceList absences={absences} onOpen={(a) => editable && setAbsenceModal({ absence: a })} /> : null}
+          {absences.length > 0 && view === "week" ? <AbsenceList absences={absences} onOpen={(a) => editable && setAbsenceModal({ absence: a })} /> : null}
           <AuditPanel />
         </div>
       )}
@@ -274,57 +287,187 @@ function NowPanel({ data }: { data: CalendarView }) {
   return (
     <section aria-label="Cobertura" className="grid grid-cols-1 gap-3 lg:grid-cols-3">
       <div className="rounded-xl border border-border bg-card p-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted">De turno ahora</p>
+        <p className="text-sm font-semibold text-muted">Atendiendo ahora</p>
         {data.onShiftNow.length === 0 ? (
-          <p className="mt-2 text-sm text-muted">Nadie está de turno en este momento.</p>
+          <p className="mt-2 text-base text-muted">Nadie está atendiendo en este momento.</p>
         ) : (
           <ul className="mt-2 space-y-1.5">
             {data.onShiftNow.map((p) => (
-              <li key={`${p.advisorId}-${p.start}`} className="flex items-center gap-2 text-sm">
+              <li key={`${p.advisorId}-${p.start}`} className="flex items-center gap-2 text-base">
                 <Dot id={p.advisorId} />
-                <span className="truncate font-medium text-obsessed">{p.name}</span>
-                <span className="shrink-0 text-xs text-muted">hasta {hhmm(p.end)}</span>
+                <span className="truncate font-semibold text-obsessed">{p.name}</span>
+                <span className="shrink-0 text-sm text-muted">hasta las {hhmm(p.end)}</span>
                 {p.kind === "GUARD" ? <Badge tone="info">Guardia</Badge> : null}
-                {!p.assignable ? <Badge tone="neutral">Sin ronda</Badge> : null}
               </li>
             ))}
           </ul>
         )}
       </div>
       <div className="rounded-xl border border-border bg-card p-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted">Entra después</p>
+        <p className="text-sm font-semibold text-muted">Después entran</p>
         {data.nextUp.length === 0 ? (
-          <p className="mt-2 text-sm text-muted">No hay más turnos en las próximas 48 h.</p>
+          <p className="mt-2 text-base text-muted">Nadie más en los próximos dos días.</p>
         ) : (
           <ul className="mt-2 space-y-1.5">
             {data.nextUp.map((p) => (
-              <li key={`${p.advisorId}-${p.start}`} className="flex items-center gap-2 text-sm">
+              <li key={`${p.advisorId}-${p.start}`} className="flex items-center gap-2 text-base">
                 <Dot id={p.advisorId} />
-                <span className="truncate font-medium text-obsessed">{p.name}</span>
-                <span className="shrink-0 text-xs text-muted">{formatLocal(p.start)}</span>
+                <span className="truncate font-semibold text-obsessed">{p.name}</span>
+                <span className="shrink-0 text-sm text-muted">{formatLocal(p.start)}</span>
               </li>
             ))}
           </ul>
         )}
       </div>
       <div className={cn("rounded-xl border p-4", data.gaps.length || noCoverageNow ? "border-warning-text/25 bg-warning-bg" : "border-border bg-card")}>
-        <p className="text-xs font-medium uppercase tracking-wide text-muted">Cobertura de la asignación</p>
+        <p className="text-sm font-semibold text-muted">Clientes nuevos</p>
         {noCoverageNow ? (
-          <p className="mt-2 flex items-start gap-2 text-sm text-warning-text">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-            Ahora nadie recibe leads: los nuevos quedan “Pendiente por horario”
-            {data.nextCoverage ? ` hasta ${formatLocal(data.nextCoverage)}.` : ". No hay ningún turno próximo: revisa el calendario."}
+          <p className="mt-2 flex items-start gap-2 text-base text-warning-text">
+            <AlertTriangle className="mt-1 h-5 w-5 shrink-0" aria-hidden />
+            <span>
+              Ahora nadie los está recibiendo. Quedan guardados y se reparten
+              {data.nextCoverage ? ` cuando entre alguien (${formatLocal(data.nextCoverage)}).` : " cuando haya un horario. Agrega horarios."}
+            </span>
           </p>
         ) : (
-          <p className="mt-2 text-sm text-success-text">Hay asesores recibiendo leads ahora.</p>
+          <p className="mt-2 text-base text-success-text">Sí hay quien los reciba ahora.</p>
         )}
-        {data.gaps.length > 0 ? (
-          <p className="mt-1 text-sm text-obsessed">
-            {data.gaps.length} periodo{data.gaps.length === 1 ? "" : "s"} sin cobertura en estas fechas (marcados en rojo).
-          </p>
-        ) : null}
+        {data.gaps.length > 0 ? <p className="mt-1 text-sm text-obsessed">Esta semana hay horas sin nadie atendiendo (en rojo en el calendario).</p> : null}
       </div>
     </section>
+  );
+}
+
+/** Tabla sencilla: una fila por asesor, una columna por día, con los horarios en letra grande. */
+function PeopleWeek({
+  days,
+  advisors,
+  occurrences,
+  absences,
+  today,
+  canAdd,
+  onOpen,
+  onAdd,
+  onOpenAbsence,
+}: {
+  days: string[];
+  advisors: CalendarView["advisors"];
+  occurrences: ShiftOccurrence[];
+  absences: CalendarAbsence[];
+  today: string;
+  canAdd: (advisorId: string) => boolean;
+  onOpen: (o: ShiftOccurrence) => void;
+  onAdd: (advisorId: string, date: string) => void;
+  onOpenAbsence: (a: CalendarAbsence) => void;
+}) {
+  if (advisors.length === 0) {
+    return <StateMessage kind="empty" title="No hay asesores" description="Da de alta asesores en Usuarios y permisos." />;
+  }
+  const cell = (advisorId: string, d: string) => {
+    const blocks = occurrences.filter((o) => o.advisorId === advisorId && o.date === d).sort((a, b) => a.start.localeCompare(b.start));
+    const away = absences.filter((a) => a.advisorId === advisorId && a.start.slice(0, 10) <= d && a.end.slice(0, 10) >= d && !(a.end.slice(0, 10) === d && a.end.slice(11, 16) === "00:00"));
+    return (
+      <div className="flex flex-col gap-1.5">
+        {away.map((a) => (
+          <button key={a.id} type="button" onClick={() => onOpenAbsence(a)} className="rounded-lg bg-manual-bg px-2 py-1.5 text-left text-sm font-medium text-manual-text">
+            <Plane className="mr-1 inline h-4 w-4" aria-hidden />
+            {absenceKindLabels[a.kind]}
+          </button>
+        ))}
+        {blocks.map((o) => {
+          const c = advisorColor(o.advisorId);
+          return (
+            <button
+              key={`${o.shiftId}-${o.date}`}
+              type="button"
+              onClick={() => onOpen(o)}
+              className={cn("rounded-lg border-l-4 px-2 py-1.5 text-left text-base font-semibold leading-snug hover:shadow focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/40", o.fullyAbsent && "line-through opacity-60")}
+              style={{ background: c.bg, borderLeftColor: c.border, color: c.text }}
+            >
+              {hhmm(o.start)} a {hhmm(o.end)}
+              {o.kind === "GUARD" ? (
+                <span className="mt-0.5 flex items-center gap-1 text-xs font-medium">
+                  <Shield className="h-3.5 w-3.5" aria-hidden /> Guardia
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+        {blocks.length === 0 && away.length === 0 ? (
+          canAdd(advisorId) && d >= today ? (
+            <button
+              type="button"
+              onClick={() => onAdd(advisorId, d)}
+              className="rounded-lg border-2 border-dashed border-border px-2 py-2 text-sm text-muted hover:border-gold hover:text-obsessed"
+              aria-label={`Agregar horario el ${formatDayLabel(d)}`}
+            >
+              + Agregar
+            </button>
+          ) : (
+            <span className="px-2 py-2 text-sm text-muted">Descansa</span>
+          )
+        ) : null}
+      </div>
+    );
+  };
+
+  return (
+    <>
+      {/* Computadora: tabla */}
+      <div className="hidden overflow-x-auto rounded-xl border border-border bg-card md:block">
+        <table className="w-full min-w-[900px] border-collapse">
+          <thead>
+            <tr className="bg-app-bg">
+              <th className="w-48 px-3 py-3 text-left text-sm font-semibold text-muted">Asesor</th>
+              {days.map((d) => (
+                <th key={d} className={cn("px-2 py-3 text-left text-sm font-semibold capitalize", d === today ? "bg-gold/15 text-dark-gold" : "text-obsessed")}>
+                  {formatDayLabel(d)}
+                  {d === today ? " · hoy" : ""}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {advisors.map((a) => (
+              <tr key={a.userId} className="border-t border-border align-top">
+                <th scope="row" className="px-3 py-3 text-left">
+                  <span className="flex items-center gap-2">
+                    <Dot id={a.userId} />
+                    <span className="text-base font-semibold text-obsessed">{a.name}</span>
+                  </span>
+                  <span className="mt-1 block text-sm font-normal text-muted">{advisorStatusLabels[a.status]}</span>
+                </th>
+                {days.map((d) => (
+                  <td key={d} className={cn("px-2 py-3", d === today && "bg-gold/5")}>
+                    {cell(a.userId, d)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {/* Celular: una tarjeta por asesor */}
+      <ul className="space-y-3 md:hidden">
+        {advisors.map((a) => (
+          <li key={a.userId} className="rounded-xl border border-border bg-card">
+            <p className="flex items-center gap-2 border-b border-border px-4 py-3">
+              <Dot id={a.userId} />
+              <span className="text-base font-semibold text-obsessed">{a.name}</span>
+              <span className="ml-auto text-sm text-muted">{advisorStatusLabels[a.status]}</span>
+            </p>
+            <ul className="divide-y divide-border">
+              {days.map((d) => (
+                <li key={d} className={cn("grid grid-cols-[96px_minmax(0,1fr)] items-start gap-3 px-4 py-3", d === today && "bg-gold/5")}>
+                  <span className={cn("pt-1.5 text-sm font-semibold capitalize", d === today ? "text-dark-gold" : "text-muted")}>{formatDayLabel(d)}</span>
+                  {cell(a.userId, d)}
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 
