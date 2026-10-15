@@ -1,0 +1,38 @@
+name: genera_mobile
+description: "CENTURY 21 Genera — app móvil del personal interno"
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  http: ^1.6.0
+  provider: ^6.1.5+1
+  go_router: ^17.5.0
+  shared_preferences: ^2.5.6
+  flutter_secure_storage: ^11.2.0
+  file_picker: ^13.1.0
+  image_picker: ^1.2.4
+  url_launcher: ^6.3.3
+  intl: ^0.20.2
+  http_parser: ^4.1.2
+  share_plus: ^13.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/brand/
