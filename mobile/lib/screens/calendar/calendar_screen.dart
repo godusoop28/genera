@@ -45,16 +45,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 
   String get from => switch (view) {
-        CalView.day => anchor,
-        CalView.month => weekStart(addMonths(anchor, 0)),
-        _ => weekStart(anchor),
-      };
+    CalView.day => anchor,
+    CalView.month => weekStart(addMonths(anchor, 0)),
+    _ => weekStart(anchor),
+  };
 
   String get to => switch (view) {
-        CalView.day => from,
-        CalView.month => addDays(weekStart(addDays(addMonths(anchor, 1), -1)), 6),
-        _ => addDays(from, 6),
-      };
+    CalView.day => from,
+    CalView.month => addDays(weekStart(addDays(addMonths(anchor, 1), -1)), 6),
+    _ => addDays(from, 6),
+  };
 
   Future<void> load() async {
     final id = ++_request;
@@ -123,7 +123,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
         context,
         advisors: editableAdvisors,
         occurrence: o,
-        draft: o == null ? (advisorId: advisorId ?? (advisorFilter.isNotEmpty ? advisorFilter : (fixedAdvisorId ?? '')), date: date ?? anchor, startTime: startTime, endTime: endTime) : null,
+        draft: o == null
+            ? (advisorId: advisorId ?? (advisorFilter.isNotEmpty ? advisorFilter : (fixedAdvisorId ?? '')), date: date ?? anchor, startTime: startTime, endTime: endTime)
+            : null,
         fixedAdvisorId: fixedAdvisorId,
         today: d.today,
         onSaved: saved,
@@ -149,13 +151,27 @@ class _CalendarScreenState extends State<CalendarScreen> {
             icon: const Icon(Icons.more_vert),
             onSelected: (v) {
               if (v == 'copy') {
-                showCopySheet(context, advisors: editableAdvisors, selectedDay: anchor, weekFrom: weekStart(anchor), fixedAdvisorId: fixedAdvisorId, today: d.today, onSaved: saved);
+                showCopySheet(
+                  context,
+                  advisors: editableAdvisors,
+                  selectedDay: anchor,
+                  weekFrom: weekStart(anchor),
+                  fixedAdvisorId: fixedAdvisorId,
+                  today: d.today,
+                  onSaved: saved,
+                );
               }
               if (v == 'absence') openAbsence(null);
             },
             itemBuilder: (_) => const [
-              PopupMenuItem(value: 'absence', child: ListTile(leading: Icon(Icons.flight_outlined), title: Text('Vacaciones o día libre'), contentPadding: EdgeInsets.zero)),
-              PopupMenuItem(value: 'copy', child: ListTile(leading: Icon(Icons.copy_outlined), title: Text('Repetir semana'), contentPadding: EdgeInsets.zero)),
+              PopupMenuItem(
+                value: 'absence',
+                child: ListTile(leading: Icon(Icons.flight_outlined), title: Text('Vacaciones o día libre'), contentPadding: EdgeInsets.zero),
+              ),
+              PopupMenuItem(
+                value: 'copy',
+                child: ListTile(leading: Icon(Icons.copy_outlined), title: Text('Repetir semana'), contentPadding: EdgeInsets.zero),
+              ),
             ],
           ),
       ],
@@ -172,7 +188,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
         onRefresh: load,
         bottomPadding: 96,
         children: [
-          Row(children: [Icon(Icons.schedule, size: 14, color: c.muted), const SizedBox(width: 6), const Expanded(child: MutedText(businessTimezoneLabel, size: 12.5))]),
+          Row(
+            children: [
+              Icon(Icons.schedule, size: 14, color: c.muted),
+              const SizedBox(width: 6),
+              const Expanded(child: MutedText(businessTimezoneLabel, size: 12.5)),
+            ],
+          ),
           const SizedBox(height: 12),
           if (error != null && d == null)
             LoadError(message: error!, onRetry: load)
@@ -181,19 +203,28 @@ class _CalendarScreenState extends State<CalendarScreen> {
           else ...[
             _NowPanel(data: d),
             const SizedBox(height: 14),
-            Row(children: [
-              IconButton.outlined(tooltip: '$unit anterior', onPressed: () => step(-1), icon: const Icon(Icons.chevron_left)),
-              const SizedBox(width: 4),
-              OutlinedButton(onPressed: () => go(d.today), child: Text('Hoy', style: TextStyle(color: c.fg))),
-              const SizedBox(width: 4),
-              IconButton.outlined(tooltip: '$unit siguiente', onPressed: () => step(1), icon: const Icon(Icons.chevron_right)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(title,
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: c.fg), maxLines: 2, overflow: TextOverflow.ellipsis),
-              ),
-              if (loading) const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-            ]),
+            Row(
+              children: [
+                IconButton.outlined(tooltip: '$unit anterior', onPressed: () => step(-1), icon: const Icon(Icons.chevron_left)),
+                const SizedBox(width: 4),
+                OutlinedButton(
+                  onPressed: () => go(d.today),
+                  child: Text('Hoy', style: TextStyle(color: c.fg)),
+                ),
+                const SizedBox(width: 4),
+                IconButton.outlined(tooltip: '$unit siguiente', onPressed: () => step(1), icon: const Icon(Icons.chevron_right)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: c.fg),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (loading) const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+              ],
+            ),
             const SizedBox(height: 12),
             FilterChips<CalView>(
               value: view == CalView.day ? CalView.week : view,
@@ -204,39 +235,34 @@ class _CalendarScreenState extends State<CalendarScreen> {
               },
             ),
             const SizedBox(height: 10),
-            Row(children: [
-              if (d.advisors.length > 1) ...[
+            Row(
+              children: [
+                if (d.advisors.length > 1) ...[
+                  Expanded(
+                    child: AppSelect<String>(
+                      value: advisorFilter,
+                      options: [(value: '', label: 'Todos los asesores'), for (final a in d.advisors) (value: a.userId, label: a.name)],
+                      onChanged: (v) => setState(() => advisorFilter = v),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 Expanded(
                   child: AppSelect<String>(
-                    value: advisorFilter,
-                    options: [(value: '', label: 'Todos los asesores'), for (final a in d.advisors) (value: a.userId, label: a.name)],
-                    onChanged: (v) => setState(() => advisorFilter = v),
+                    value: kindFilter,
+                    options: const [(value: '', label: 'Todos los horarios'), (value: 'REGULAR', label: 'Solo horario normal'), (value: 'GUARD', label: 'Solo guardias')],
+                    onChanged: (v) => setState(() => kindFilter = v),
                   ),
                 ),
-                const SizedBox(width: 8),
               ],
-              Expanded(
-                child: AppSelect<String>(
-                  value: kindFilter,
-                  options: const [(value: '', label: 'Todos los horarios'), (value: 'REGULAR', label: 'Solo horario normal'), (value: 'GUARD', label: 'Solo guardias')],
-                  onChanged: (v) => setState(() => kindFilter = v),
-                ),
-              ),
-            ]),
+            ),
             const SizedBox(height: 12),
             if (view != CalView.people) ...[
               _Legend(data: d, selected: advisorFilter, onPick: (id) => setState(() => advisorFilter = advisorFilter == id ? '' : id)),
               const SizedBox(height: 12),
             ],
             if (view == CalView.month)
-              _MonthGrid(
-                days: days,
-                month: anchor.substring(0, 7),
-                occurrences: occurrences,
-                absences: absences,
-                today: d.today,
-                onSelectDay: (day) => go(day, CalView.day),
-              )
+              _MonthGrid(days: days, month: anchor.substring(0, 7), occurrences: occurrences, absences: absences, today: d.today, onSelectDay: (day) => go(day, CalView.day))
             else if (view == CalView.people)
               _PeopleWeek(
                 days: days,
@@ -275,8 +301,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 today: d.today,
                 onOpen: (o) => openShift(o),
                 onCreate: editable
-                    ? (date, hour) => openShift(null,
-                        date: date, startTime: '${hour.toString().padLeft(2, '0')}:00', endTime: '${math.min(hour + 4, 23).toString().padLeft(2, '0')}:00')
+                    ? (date, hour) =>
+                          openShift(null, date: date, startTime: '${hour.toString().padLeft(2, '0')}:00', endTime: '${math.min(hour + 4, 23).toString().padLeft(2, '0')}:00')
                     : null,
                 onSelectDay: (day) => go(day, CalView.day),
               ),
@@ -293,7 +319,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
               ),
               if (editable && anchor.compareTo(d.today) >= 0) ...[
                 const SizedBox(height: 10),
-                Btn('Agregar horario este día', icon: Icons.add, variant: BtnVariant.secondary, onPressed: () => openShift(null, date: anchor)),
+                Btn(
+                  'Agregar horario este día',
+                  icon: Icons.add,
+                  variant: BtnVariant.secondary,
+                  onPressed: () => openShift(null, date: anchor),
+                ),
               ],
             ],
             if (absences.isNotEmpty && view == CalView.week) ...[const SizedBox(height: 12), _AbsenceList(absences: absences, onOpen: openAbsence)],
@@ -317,58 +348,86 @@ class _NowPanel extends StatelessWidget {
     final c = context.c;
     final noCoverageNow = data.onShiftNow.where((p) => p.assignable).isEmpty;
     Widget person(PersonNow p, String trailing, {bool guard = false}) => Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Row(children: [
-            AdvisorDot(p.advisorId),
-            const SizedBox(width: 8),
-            Flexible(child: Text(p.name, style: TextStyle(fontWeight: FontWeight.w600, color: c.fg), overflow: TextOverflow.ellipsis)),
-            const SizedBox(width: 6),
-            MutedText(trailing, size: 12.5),
-            if (guard) ...[const SizedBox(width: 6), const AppBadge('Guardia', tone: Tone.info)],
-          ]),
-        );
-    final warn = data.gaps.isNotEmpty || noCoverageNow;
-    return Column(children: [
-      AppCard(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Atendiendo ahora', style: TextStyle(fontWeight: FontWeight.w600, color: c.muted, fontSize: 13)),
-          if (data.onShiftNow.isEmpty) const Padding(padding: EdgeInsets.only(top: 6), child: MutedText('Nadie está atendiendo en este momento.')),
-          for (final p in data.onShiftNow) person(p, 'hasta las ${hhmm(p.end)}', guard: p.kind == 'GUARD'),
-          const SizedBox(height: 12),
-          Text('Después entran', style: TextStyle(fontWeight: FontWeight.w600, color: c.muted, fontSize: 13)),
-          if (data.nextUp.isEmpty) const Padding(padding: EdgeInsets.only(top: 6), child: MutedText('Nadie más en los próximos dos días.')),
-          for (final p in data.nextUp) person(p, formatLocal(p.start)),
-        ]),
-      ),
-      const SizedBox(height: 10),
-      AppCard(
-        color: warn ? c.warningBg : null,
-        borderColor: warn ? c.warningText.withValues(alpha: 0.25) : null,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Clientes nuevos', style: TextStyle(fontWeight: FontWeight.w600, color: c.muted, fontSize: 13)),
-          const SizedBox(height: 6),
-          if (noCoverageNow)
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Icon(Icons.warning_amber_rounded, color: c.warningText, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Ahora nadie los está recibiendo. Quedan guardados y se reparten'
-                  '${data.nextCoverage != null ? ' cuando entre alguien (${formatLocal(data.nextCoverage!)}).' : ' cuando haya un horario. Agrega horarios.'}',
-                  style: TextStyle(color: c.warningText, fontSize: 14),
-                ),
-              ),
-            ])
-          else
-            Text('Sí hay quien los reciba ahora.', style: TextStyle(color: c.successText, fontSize: 14)),
-          if (data.gaps.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text('Esta semana hay horas sin nadie atendiendo (en rojo en el calendario).', style: TextStyle(fontSize: 13, color: c.fg)),
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        children: [
+          AdvisorDot(p.advisorId),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              p.name,
+              style: TextStyle(fontWeight: FontWeight.w600, color: c.fg),
+              overflow: TextOverflow.ellipsis,
             ),
-        ]),
+          ),
+          const SizedBox(width: 6),
+          MutedText(trailing, size: 12.5),
+          if (guard) ...[const SizedBox(width: 6), const AppBadge('Guardia', tone: Tone.info)],
+        ],
       ),
-    ]);
+    );
+    final warn = data.gaps.isNotEmpty || noCoverageNow;
+    return Column(
+      children: [
+        AppCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Atendiendo ahora',
+                style: TextStyle(fontWeight: FontWeight.w600, color: c.muted, fontSize: 13),
+              ),
+              if (data.onShiftNow.isEmpty) const Padding(padding: EdgeInsets.only(top: 6), child: MutedText('Nadie está atendiendo en este momento.')),
+              for (final p in data.onShiftNow) person(p, 'hasta las ${hhmm(p.end)}', guard: p.kind == 'GUARD'),
+              const SizedBox(height: 12),
+              Text(
+                'Después entran',
+                style: TextStyle(fontWeight: FontWeight.w600, color: c.muted, fontSize: 13),
+              ),
+              if (data.nextUp.isEmpty) const Padding(padding: EdgeInsets.only(top: 6), child: MutedText('Nadie más en los próximos dos días.')),
+              for (final p in data.nextUp) person(p, formatLocal(p.start)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        AppCard(
+          color: warn ? c.warningBg : null,
+          borderColor: warn ? c.warningText.withValues(alpha: 0.25) : null,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Clientes nuevos',
+                style: TextStyle(fontWeight: FontWeight.w600, color: c.muted, fontSize: 13),
+              ),
+              const SizedBox(height: 6),
+              if (noCoverageNow)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.warning_amber_rounded, color: c.warningText, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Ahora nadie los está recibiendo. Quedan guardados y se reparten'
+                        '${data.nextCoverage != null ? ' cuando entre alguien (${formatLocal(data.nextCoverage!)}).' : ' cuando haya un horario. Agrega horarios.'}',
+                        style: TextStyle(color: c.warningText, fontSize: 14),
+                      ),
+                    ),
+                  ],
+                )
+              else
+                Text('Sí hay quien los reciba ahora.', style: TextStyle(color: c.successText, fontSize: 14)),
+              if (data.gaps.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text('Esta semana hay horas sin nadie atendiendo (en rojo en el calendario).', style: TextStyle(fontSize: 13, color: c.fg)),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -383,34 +442,41 @@ class _Legend extends StatelessWidget {
     final c = context.c;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: Row(children: [
-        for (final a in data.advisors)
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: Material(
-              color: selected == a.userId ? Brand.gold.withValues(alpha: 0.15) : c.card,
-              shape: StadiumBorder(side: BorderSide(color: selected == a.userId ? Brand.gold : c.border)),
-              child: InkWell(
-                customBorder: const StadiumBorder(),
-                onTap: () => onPick(a.userId),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                  child: Row(children: [
-                    AdvisorDot(a.userId),
-                    const SizedBox(width: 6),
-                    Text(a.name, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: c.fg)),
-                    const SizedBox(width: 6),
-                    AppBadge(label(advisorStatusLabels, a.status), tone: advisorStatusTones[a.status] ?? Tone.neutral),
-                    if (a.needsCalendar) ...[
-                      const SizedBox(width: 4),
-                      AppBadge('Completar calendario${a.legacyShift != null ? ' (antes ${a.legacyShift})' : ''}', tone: Tone.danger),
-                    ],
-                  ]),
+      child: Row(
+        children: [
+          for (final a in data.advisors)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Material(
+                color: selected == a.userId ? Brand.gold.withValues(alpha: 0.15) : c.card,
+                shape: StadiumBorder(side: BorderSide(color: selected == a.userId ? Brand.gold : c.border)),
+                child: InkWell(
+                  customBorder: const StadiumBorder(),
+                  onTap: () => onPick(a.userId),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    child: Row(
+                      children: [
+                        AdvisorDot(a.userId),
+                        const SizedBox(width: 6),
+                        Text(
+                          a.name,
+                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: c.fg),
+                        ),
+                        const SizedBox(width: 6),
+                        AppBadge(label(advisorStatusLabels, a.status), tone: advisorStatusTones[a.status] ?? Tone.neutral),
+                        if (a.needsCalendar) ...[
+                          const SizedBox(width: 4),
+                          AppBadge('Completar calendario${a.legacyShift != null ? ' (antes ${a.legacyShift})' : ''}', tone: Tone.danger),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-      ]),
+        ],
+      ),
     );
   }
 }
@@ -434,85 +500,152 @@ class _MonthGrid extends StatelessWidget {
     const maxChips = 3;
     final weeks = [for (var i = 0; i < days.length; i += 7) days.sublist(i, math.min(i + 7, days.length))];
     return Container(
-      decoration: BoxDecoration(color: c.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: c.border)),
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: c.border),
+      ),
       clipBehavior: Clip.antiAlias,
-      child: Column(children: [
-        Container(
-          color: c.appBg,
-          child: Row(children: [
-            for (final d in const ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'])
-              Expanded(child: Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(d, textAlign: TextAlign.center, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.muted)))),
-          ]),
-        ),
-        for (final week in weeks)
-          IntrinsicHeight(
-            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              for (var i = 0; i < week.length; i++)
-                Expanded(
-                  child: Builder(builder: (context) {
-                    final d = week[i];
-                    final inMonth = d.substring(0, 7) == month;
-                    final isToday = d == today;
-                    final items = occurrences.where((o) => o.date == d).toList()..sort((a, b) => a.start.compareTo(b.start));
-                    final away = absences.where((a) => _absentOn(a, d)).toList();
-                    final total = items.length + away.length;
-                    return InkWell(
-                      onTap: () => onSelectDay(d),
-                      child: Container(
-                        constraints: const BoxConstraints(minHeight: 84),
-                        padding: const EdgeInsets.all(2),
-                        decoration: BoxDecoration(
-                          color: isToday ? Brand.gold.withValues(alpha: 0.1) : (inMonth ? null : c.appBg.withValues(alpha: 0.6)),
-                          border: Border(top: BorderSide(color: c.border), left: i == 0 ? BorderSide.none : BorderSide(color: c.border)),
-                        ),
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                          Center(
-                            child: Container(
-                              width: 24,
-                              height: 24,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(color: isToday ? Brand.gold : null, shape: BoxShape.circle),
-                              child: Text('${int.parse(d.substring(8, 10))}',
-                                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: isToday ? Brand.ink : (inMonth ? c.fg : c.muted))),
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          for (final a in away.take(maxChips))
-                            _chip(context, bg: c.manualBg, border: c.manualText, text: c.manualText, label: '✈ ${a.advisorName.split(' ').first}'),
-                          for (final o in items.take(math.max(0, maxChips - away.length)))
-                            _chip(
-                              context,
-                              bg: advisorColor(o.advisorId).bg,
-                              border: advisorColor(o.advisorId).border,
-                              text: advisorColor(o.advisorId).text,
-                              label: '${o.kind == 'GUARD' ? '🛡' : ''}${o.advisorName.split(' ').first}',
-                              sub: '${hhmm(o.start)}–${hhmm(o.end)}',
-                              struck: o.fullyAbsent,
-                            ),
-                          if (total > maxChips) Text('+${total - maxChips} más', textAlign: TextAlign.center, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: c.goldText)),
-                        ]),
+      child: Column(
+        children: [
+          Container(
+            color: c.appBg,
+            child: Row(
+              children: [
+                for (final d in const ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'])
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        d,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.muted),
                       ),
-                    );
-                  }),
-                ),
-            ]),
+                    ),
+                  ),
+              ],
+            ),
           ),
-      ]),
+          for (final week in weeks)
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (var i = 0; i < week.length; i++)
+                    Expanded(
+                      child: Builder(
+                        builder: (context) {
+                          final d = week[i];
+                          final inMonth = d.substring(0, 7) == month;
+                          final isToday = d == today;
+                          final items = occurrences.where((o) => o.date == d).toList()..sort((a, b) => a.start.compareTo(b.start));
+                          final away = absences.where((a) => _absentOn(a, d)).toList();
+                          final total = items.length + away.length;
+                          return InkWell(
+                            onTap: () => onSelectDay(d),
+                            child: Container(
+                              constraints: const BoxConstraints(minHeight: 84),
+                              padding: const EdgeInsets.all(2),
+                              decoration: BoxDecoration(
+                                color: isToday ? Brand.gold.withValues(alpha: 0.1) : (inMonth ? null : c.appBg.withValues(alpha: 0.6)),
+                                border: Border(
+                                  top: BorderSide(color: c.border),
+                                  left: i == 0 ? BorderSide.none : BorderSide(color: c.border),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Center(
+                                    child: Container(
+                                      width: 24,
+                                      height: 24,
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(color: isToday ? Brand.gold : null, shape: BoxShape.circle),
+                                      child: Text(
+                                        '${int.parse(d.substring(8, 10))}',
+                                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: isToday ? Brand.ink : (inMonth ? c.fg : c.muted)),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  for (final a in away.take(maxChips))
+                                    _chip(context, bg: c.manualBg, border: c.manualText, text: c.manualText, icon: Icons.flight_outlined, label: a.advisorName.split(' ').first),
+                                  for (final o in items.take(math.max(0, maxChips - away.length)))
+                                    _chip(
+                                      context,
+                                      bg: advisorColor(o.advisorId).bg,
+                                      border: advisorColor(o.advisorId).border,
+                                      text: advisorColor(o.advisorId).text,
+                                      icon: o.kind == 'GUARD' ? Icons.shield_outlined : null,
+                                      label: o.advisorName.split(' ').first,
+                                      sub: '${_compactTime(o.start)}–${_compactTime(o.end)}',
+                                      struck: o.fullyAbsent,
+                                    ),
+                                  if (total > maxChips)
+                                    Text(
+                                      '+${total - maxChips} más',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: c.goldText),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 
-  Widget _chip(BuildContext context, {required Color bg, required Color border, required Color text, required String label, String? sub, bool struck = false}) => Container(
+  /// "09:00" → "9", "09:30" → "9:30" (cabe en una celda del mes en el celular).
+  static String _compactTime(String local) {
+    final h = int.parse(local.substring(11, 13));
+    final m = local.substring(14, 16);
+    return m == '00' ? '$h' : '$h:$m';
+  }
+
+  Widget _chip(BuildContext context, {required Color bg, required Color border, required Color text, required String label, IconData? icon, String? sub, bool struck = false}) =>
+      Container(
         margin: const EdgeInsets.only(bottom: 2),
         padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
-        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(4), border: Border(left: BorderSide(color: border, width: 3))),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label,
-              maxLines: 1,
-              overflow: TextOverflow.clip,
-              textScaler: TextScaler.noScaling,
-              style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: text, decoration: struck ? TextDecoration.lineThrough : null)),
-          if (sub != null) Text(sub, maxLines: 1, overflow: TextOverflow.clip, textScaler: TextScaler.noScaling, style: TextStyle(fontSize: 8.5, color: text)),
-        ]),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(4),
+          border: Border(left: BorderSide(color: border, width: 3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                if (icon != null) Icon(icon, size: 9, color: text),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.clip,
+                    textScaler: TextScaler.noScaling,
+                    style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: text, decoration: struck ? TextDecoration.lineThrough : null),
+                  ),
+                ),
+              ],
+            ),
+            if (sub != null)
+              Text(
+                sub,
+                maxLines: 1,
+                overflow: TextOverflow.clip,
+                textScaler: TextScaler.noScaling,
+                style: TextStyle(fontSize: 8.5, color: text),
+              ),
+          ],
+        ),
       );
 }
 
@@ -546,71 +679,103 @@ class _PeopleWeek extends StatelessWidget {
     Widget cell(String advisorId, String d) {
       final blocks = occurrences.where((o) => o.advisorId == advisorId && o.date == d).toList()..sort((a, b) => a.start.compareTo(b.start));
       final away = absences.where((a) => a.advisorId == advisorId && _absentOn(a, d)).toList();
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        for (final a in away)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Material(
-              color: c.manualBg,
-              borderRadius: BorderRadius.circular(8),
-              child: InkWell(
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final a in away)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Material(
+                color: c.manualBg,
                 borderRadius: BorderRadius.circular(8),
-                onTap: () => onOpenAbsence(a),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                  child: Row(children: [
-                    Icon(Icons.flight_outlined, size: 15, color: c.manualText),
-                    const SizedBox(width: 6),
-                    Text(label(absenceKindLabels, a.kind), style: TextStyle(color: c.manualText, fontWeight: FontWeight.w500)),
-                  ]),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => onOpenAbsence(a),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    child: Row(
+                      children: [
+                        Icon(Icons.flight_outlined, size: 15, color: c.manualText),
+                        const SizedBox(width: 6),
+                        Text(
+                          label(absenceKindLabels, a.kind),
+                          style: TextStyle(color: c.manualText, fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-        for (final o in blocks)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: _ShiftBlock(occurrence: o, onTap: () => onOpen(o), big: true),
-          ),
-        if (blocks.isEmpty && away.isEmpty)
-          canAdd(advisorId) && d.compareTo(today) >= 0
-              ? OutlinedButton(onPressed: () => onAdd(advisorId, d), child: Text('+ Agregar', style: TextStyle(color: c.muted)))
-              : Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: MutedText('Descansa', size: 13)),
-      ]);
+          for (final o in blocks)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: _ShiftBlock(occurrence: o, onTap: () => onOpen(o), big: true),
+            ),
+          if (blocks.isEmpty && away.isEmpty)
+            canAdd(advisorId) && d.compareTo(today) >= 0
+                ? OutlinedButton(
+                    onPressed: () => onAdd(advisorId, d),
+                    child: Text('+ Agregar', style: TextStyle(color: c.muted)),
+                  )
+                : Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: MutedText('Descansa', size: 13)),
+        ],
+      );
     }
 
     return Column(
-      children: spaced(advisors.map((a) => AppCard(
+      children: spaced(
+        advisors.map(
+          (a) => AppCard(
             padding: EdgeInsets.zero,
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Padding(
-                padding: const EdgeInsets.all(14),
-                child: Row(children: [
-                  AdvisorDot(a.userId),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text(a.name, style: TextStyle(fontWeight: FontWeight.w600, color: c.fg, fontSize: 15))),
-                  MutedText(label(advisorStatusLabels, a.status), size: 12.5),
-                ]),
-              ),
-              for (final d in days) ...[
-                Divider(height: 1, color: c.border),
-                Container(
-                  color: d == today ? Brand.gold.withValues(alpha: 0.05) : null,
-                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    SizedBox(
-                      width: 92,
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Text(formatDayLabel(d), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: d == today ? c.goldText : c.muted)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Row(
+                    children: [
+                      AdvisorDot(a.userId),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          a.name,
+                          style: TextStyle(fontWeight: FontWeight.w600, color: c.fg, fontSize: 15),
+                        ),
                       ),
-                    ),
-                    Expanded(child: cell(a.userId, d)),
-                  ]),
+                      MutedText(label(advisorStatusLabels, a.status), size: 12.5),
+                    ],
+                  ),
                 ),
+                for (final d in days) ...[
+                  Divider(height: 1, color: c.border),
+                  Container(
+                    color: d == today ? Brand.gold.withValues(alpha: 0.05) : null,
+                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 92,
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              formatDayLabel(d),
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: d == today ? c.goldText : c.muted),
+                            ),
+                          ),
+                        ),
+                        Expanded(child: cell(a.userId, d)),
+                      ],
+                    ),
+                  ),
+                ],
               ],
-            ]),
-          )), 12),
+            ),
+          ),
+        ),
+        12,
+      ),
     );
   }
 }
@@ -635,13 +800,27 @@ class _ShiftBlock extends StatelessWidget {
           onTap: onTap,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            decoration: BoxDecoration(border: Border(left: BorderSide(color: col.border, width: 4)), borderRadius: BorderRadius.circular(8)),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${hhmm(o.start)} a ${hhmm(o.end)}',
-                  style: TextStyle(fontSize: big ? 15 : 13, fontWeight: FontWeight.w600, color: col.text, decoration: o.fullyAbsent ? TextDecoration.lineThrough : null)),
-              if (o.kind == 'GUARD')
-                Row(children: [Icon(Icons.shield_outlined, size: 13, color: col.text), const SizedBox(width: 3), Text('Guardia', style: TextStyle(fontSize: 12, color: col.text))]),
-            ]),
+            decoration: BoxDecoration(
+              border: Border(left: BorderSide(color: col.border, width: 4)),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${hhmm(o.start)} a ${hhmm(o.end)}',
+                  style: TextStyle(fontSize: big ? 15 : 13, fontWeight: FontWeight.w600, color: col.text, decoration: o.fullyAbsent ? TextDecoration.lineThrough : null),
+                ),
+                if (o.kind == 'GUARD')
+                  Row(
+                    children: [
+                      Icon(Icons.shield_outlined, size: 13, color: col.text),
+                      const SizedBox(width: 3),
+                      Text('Guardia', style: TextStyle(fontSize: 12, color: col.text)),
+                    ],
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -667,7 +846,15 @@ List<({String day, int startMin, int endMin})> _rangePieces(LocalRange r) {
 }
 
 class _Agenda extends StatelessWidget {
-  const _Agenda({required this.days, required this.occurrences, required this.absences, required this.gaps, required this.today, required this.onOpen, required this.onOpenAbsence});
+  const _Agenda({
+    required this.days,
+    required this.occurrences,
+    required this.absences,
+    required this.gaps,
+    required this.today,
+    required this.onOpen,
+    required this.onOpenAbsence,
+  });
   final List<String> days;
   final List<ShiftOccurrence> occurrences;
   final List<CalendarAbsence> absences;
@@ -680,79 +867,119 @@ class _Agenda extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.c;
     return Column(
-      children: spaced(days.map((d) {
-        final items = occurrences.where((o) => o.date == d).toList()..sort((a, b) => a.start.compareTo(b.start));
-        final dayAbsences = absences.where((a) => a.start.substring(0, 10).compareTo(d) <= 0 && a.end.substring(0, 10).compareTo(d) >= 0).toList();
-        final dayGaps = gaps.expand(_rangePieces).where((g) => g.day == d).toList();
-        return AppCard(
-          padding: EdgeInsets.zero,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Container(
-              color: d == today ? Brand.gold.withValues(alpha: 0.1) : null,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              child: Text('${formatDayLabel(d)}${d == today ? ' · hoy' : ''}', style: TextStyle(fontWeight: FontWeight.w600, color: d == today ? c.goldText : c.fg)),
+      children: spaced(
+        days.map((d) {
+          final items = occurrences.where((o) => o.date == d).toList()..sort((a, b) => a.start.compareTo(b.start));
+          final dayAbsences = absences.where((a) => a.start.substring(0, 10).compareTo(d) <= 0 && a.end.substring(0, 10).compareTo(d) >= 0).toList();
+          final dayGaps = gaps.expand(_rangePieces).where((g) => g.day == d).toList();
+          return AppCard(
+            padding: EdgeInsets.zero,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  color: d == today ? Brand.gold.withValues(alpha: 0.1) : null,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  child: Text(
+                    '${formatDayLabel(d)}${d == today ? ' · hoy' : ''}',
+                    style: TextStyle(fontWeight: FontWeight.w600, color: d == today ? c.goldText : c.fg),
+                  ),
+                ),
+                for (final o in items) ...[
+                  Divider(height: 1, color: c.border),
+                  InkWell(
+                    onTap: () => onOpen(o),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 5,
+                            height: 38,
+                            decoration: BoxDecoration(color: advisorColor(o.advisorId).border, borderRadius: BorderRadius.circular(3)),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  o.advisorName,
+                                  style: TextStyle(fontWeight: FontWeight.w600, color: c.fg),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                MutedText('${hhmm(o.start)}–${hhmm(o.end)}${o.end.substring(0, 10) != o.date ? ' (termina al día siguiente)' : ''}', size: 12.5),
+                              ],
+                            ),
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              AppBadge(
+                                label(shiftKindLabels, o.kind),
+                                tone: o.kind == 'GUARD' ? Tone.info : Tone.neutral,
+                                icon: o.kind == 'GUARD' ? Icons.shield_outlined : Icons.person_outline,
+                              ),
+                              if (o.fullyAbsent)
+                                const Padding(
+                                  padding: EdgeInsets.only(top: 4),
+                                  child: AppBadge('Ausente', tone: Tone.manual),
+                                ),
+                              if (!o.fullyAbsent && !o.assignable) const Padding(padding: EdgeInsets.only(top: 4), child: AppBadge('Sin ronda')),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+                for (final a in dayAbsences) ...[
+                  Divider(height: 1, color: c.border),
+                  InkWell(
+                    onTap: () => onOpenAbsence(a),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      child: Row(
+                        children: [
+                          Icon(Icons.flight_outlined, size: 16, color: c.manualText),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('${a.advisorName}: ${label(absenceKindLabels, a.kind)}', style: TextStyle(color: c.fg, fontSize: 13.5)),
+                                MutedText('${formatLocal(a.start)} – ${formatLocal(a.end)}', size: 12),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+                for (final g in dayGaps) ...[
+                  Divider(height: 1, color: c.border),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    child: Row(
+                      children: [
+                        Icon(Icons.warning_amber_rounded, size: 15, color: c.dangerText),
+                        const SizedBox(width: 6),
+                        Text('Sin cobertura de ${_mm(g.startMin)} a ${_mm(g.endMin)}', style: TextStyle(fontSize: 12.5, color: c.dangerText)),
+                      ],
+                    ),
+                  ),
+                ],
+                if (items.isEmpty && dayAbsences.isEmpty && dayGaps.isEmpty) ...[
+                  Divider(height: 1, color: c.border),
+                  const Padding(padding: EdgeInsets.all(14), child: MutedText('Sin turnos.')),
+                ],
+              ],
             ),
-            for (final o in items) ...[
-              Divider(height: 1, color: c.border),
-              InkWell(
-                onTap: () => onOpen(o),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  child: Row(children: [
-                    Container(width: 5, height: 38, decoration: BoxDecoration(color: advisorColor(o.advisorId).border, borderRadius: BorderRadius.circular(3))),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(o.advisorName, style: TextStyle(fontWeight: FontWeight.w600, color: c.fg), overflow: TextOverflow.ellipsis),
-                        MutedText('${hhmm(o.start)}–${hhmm(o.end)}${o.end.substring(0, 10) != o.date ? ' (termina al día siguiente)' : ''}', size: 12.5),
-                      ]),
-                    ),
-                    Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                      AppBadge(label(shiftKindLabels, o.kind), tone: o.kind == 'GUARD' ? Tone.info : Tone.neutral, icon: o.kind == 'GUARD' ? Icons.shield_outlined : Icons.person_outline),
-                      if (o.fullyAbsent) const Padding(padding: EdgeInsets.only(top: 4), child: AppBadge('Ausente', tone: Tone.manual)),
-                      if (!o.fullyAbsent && !o.assignable) const Padding(padding: EdgeInsets.only(top: 4), child: AppBadge('Sin ronda')),
-                    ]),
-                  ]),
-                ),
-              ),
-            ],
-            for (final a in dayAbsences) ...[
-              Divider(height: 1, color: c.border),
-              InkWell(
-                onTap: () => onOpenAbsence(a),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  child: Row(children: [
-                    Icon(Icons.flight_outlined, size: 16, color: c.manualText),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('${a.advisorName}: ${label(absenceKindLabels, a.kind)}', style: TextStyle(color: c.fg, fontSize: 13.5)),
-                        MutedText('${formatLocal(a.start)} – ${formatLocal(a.end)}', size: 12),
-                      ]),
-                    ),
-                  ]),
-                ),
-              ),
-            ],
-            for (final g in dayGaps) ...[
-              Divider(height: 1, color: c.border),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                child: Row(children: [
-                  Icon(Icons.warning_amber_rounded, size: 15, color: c.dangerText),
-                  const SizedBox(width: 6),
-                  Text('Sin cobertura de ${_mm(g.startMin)} a ${_mm(g.endMin)}', style: TextStyle(fontSize: 12.5, color: c.dangerText)),
-                ]),
-              ),
-            ],
-            if (items.isEmpty && dayAbsences.isEmpty && dayGaps.isEmpty) ...[
-              Divider(height: 1, color: c.border),
-              const Padding(padding: EdgeInsets.all(14), child: MutedText('Sin turnos.')),
-            ],
-          ]),
-        );
-      }), 10),
+          );
+        }),
+        10,
+      ),
     );
   }
 }
@@ -822,129 +1049,192 @@ class _TimeGrid extends StatelessWidget {
         laneOf[p.key] = lane;
       }
       final laneCount = math.max(1, lanes.length);
-      return LayoutBuilder(builder: (context, box) {
-        final w = box.maxWidth;
-        return SizedBox(
-          height: height,
-          child: Stack(children: [
-            for (final h in hours)
-              Positioned(
-                top: y(h * 60),
-                left: 0,
-                right: 0,
-                height: hourPx,
-                child: InkWell(
-                  onTap: onCreate == null ? null : () => onCreate!(d, h),
-                  child: Container(decoration: BoxDecoration(border: Border(top: BorderSide(color: c.border.withValues(alpha: 0.6))))),
-                ),
-              ),
-            for (final g in gapPieces.where((g) => g.day == d))
-              Positioned(
-                top: y(math.max(g.startMin, minHour * 60)),
-                left: 0,
-                right: 0,
-                height: math.max(2, y(math.min(g.endMin, maxHour * 60)) - y(math.max(g.startMin, minHour * 60))),
-                child: IgnorePointer(
-                  child: Container(
-                    color: c.dangerBg.withValues(alpha: 0.7),
-                    alignment: Alignment.topLeft,
-                    padding: const EdgeInsets.all(2),
-                    child: g.endMin - g.startMin >= 60 ? Text('Sin cobertura', style: TextStyle(fontSize: 9.5, color: c.dangerText, fontWeight: FontWeight.w500)) : null,
-                  ),
-                ),
-              ),
-            for (final p in dayPieces)
-              Builder(builder: (context) {
-                final col = advisorColor(p.o.advisorId);
-                final lane = laneOf[p.key] ?? 0;
-                final top = y(math.max(p.startMin, minHour * 60));
-                final h = math.max(22.0, y(math.min(p.endMin, maxHour * 60)) - top);
-                return Positioned(
-                  top: top,
-                  height: h,
-                  left: lane * w / laneCount + 2,
-                  width: w / laneCount - 4,
-                  child: Opacity(
-                    opacity: p.o.fullyAbsent ? 0.5 : 1,
-                    child: Material(
-                      color: col.bg,
-                      borderRadius: BorderRadius.circular(8),
-                      elevation: 1,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(8),
-                        onTap: () => onOpen(p.o),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
-                          decoration: BoxDecoration(border: Border(left: BorderSide(color: col.border, width: 4)), borderRadius: BorderRadius.circular(8)),
-                          child: ClipRect(
-                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text(p.o.advisorName, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: col.text)),
-                              Text('${p.continued ? '↳ ' : ''}${hhmm(p.o.start)}–${hhmm(p.o.end)}', maxLines: 1, style: TextStyle(fontSize: 10.5, color: col.text)),
-                              Text(
-                                '${p.o.kind == 'GUARD' ? 'Guardia' : 'Jornada'}${!p.o.assignable ? ' · sin ronda' : ''}${p.o.fullyAbsent ? ' · ausente' : (p.o.absentParts.isNotEmpty ? ' · ausencia parcial' : '')}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(fontSize: 10, color: col.text),
-                              ),
-                            ]),
-                          ),
+      return LayoutBuilder(
+        builder: (context, box) {
+          final w = box.maxWidth;
+          return SizedBox(
+            height: height,
+            child: Stack(
+              children: [
+                for (final h in hours)
+                  Positioned(
+                    top: y(h * 60),
+                    left: 0,
+                    right: 0,
+                    height: hourPx,
+                    child: InkWell(
+                      onTap: onCreate == null ? null : () => onCreate!(d, h),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          border: Border(top: BorderSide(color: c.border.withValues(alpha: 0.6))),
                         ),
                       ),
                     ),
                   ),
-                );
-              }),
-            if (d == today)
-              Positioned(
-                top: y(minutesOf(now)),
-                left: 0,
-                right: 0,
-                child: IgnorePointer(child: Container(height: 2, color: c.dangerText)),
-              ),
-          ]),
-        );
-      });
+                for (final g in gapPieces.where((g) => g.day == d))
+                  Positioned(
+                    top: y(math.max(g.startMin, minHour * 60)),
+                    left: 0,
+                    right: 0,
+                    height: math.max(2, y(math.min(g.endMin, maxHour * 60)) - y(math.max(g.startMin, minHour * 60))),
+                    child: IgnorePointer(
+                      child: Container(
+                        color: c.dangerBg.withValues(alpha: 0.7),
+                        alignment: Alignment.topLeft,
+                        padding: const EdgeInsets.all(2),
+                        child: g.endMin - g.startMin >= 60
+                            ? Text(
+                                'Sin cobertura',
+                                style: TextStyle(fontSize: 9.5, color: c.dangerText, fontWeight: FontWeight.w500),
+                              )
+                            : null,
+                      ),
+                    ),
+                  ),
+                for (final p in dayPieces)
+                  Builder(
+                    builder: (context) {
+                      final col = advisorColor(p.o.advisorId);
+                      final lane = laneOf[p.key] ?? 0;
+                      final top = y(math.max(p.startMin, minHour * 60));
+                      final h = math.max(22.0, y(math.min(p.endMin, maxHour * 60)) - top);
+                      return Positioned(
+                        top: top,
+                        height: h,
+                        left: lane * w / laneCount + 2,
+                        width: w / laneCount - 4,
+                        child: Opacity(
+                          opacity: p.o.fullyAbsent ? 0.5 : 1,
+                          child: Material(
+                            color: col.bg,
+                            borderRadius: BorderRadius.circular(8),
+                            elevation: 1,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(8),
+                              onTap: () => onOpen(p.o),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+                                decoration: BoxDecoration(
+                                  border: Border(left: BorderSide(color: col.border, width: 4)),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: ClipRect(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        p.o.advisorName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: col.text),
+                                      ),
+                                      Text('${p.continued ? '↳ ' : ''}${hhmm(p.o.start)}–${hhmm(p.o.end)}', maxLines: 1, style: TextStyle(fontSize: 10.5, color: col.text)),
+                                      Text(
+                                        '${p.o.kind == 'GUARD' ? 'Guardia' : 'Jornada'}${!p.o.assignable ? ' · sin ronda' : ''}${p.o.fullyAbsent ? ' · ausente' : (p.o.absentParts.isNotEmpty ? ' · ausencia parcial' : '')}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(fontSize: 10, color: col.text),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                if (d == today)
+                  Positioned(
+                    top: y(minutesOf(now)),
+                    left: 0,
+                    right: 0,
+                    child: IgnorePointer(child: Container(height: 2, color: c.dangerText)),
+                  ),
+              ],
+            ),
+          );
+        },
+      );
     }
 
-    final header = Row(children: [
-      const SizedBox(width: 48),
-      for (final d in days)
-        _cell(
-          colWidth,
-          InkWell(
-            onTap: () => onSelectDay(d),
-            child: Container(
-              color: d == today ? Brand.gold.withValues(alpha: 0.1) : c.appBg,
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(formatDayLabel(d), style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: d == today ? c.goldText : c.fg)),
-                Builder(builder: (_) {
-                  final n = absences.where((a) => a.start.substring(0, 10).compareTo(d) <= 0 && a.end.substring(0, 10).compareTo(d) >= 0).length;
-                  return Text(n > 0 ? '$n ausencia${n == 1 ? '' : 's'}' : ' ', style: TextStyle(fontSize: 10.5, color: c.manualText));
-                }),
-              ]),
+    final header = Row(
+      children: [
+        const SizedBox(width: 48),
+        for (final d in days)
+          _cell(
+            colWidth,
+            InkWell(
+              onTap: () => onSelectDay(d),
+              child: Container(
+                color: d == today ? Brand.gold.withValues(alpha: 0.1) : c.appBg,
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      formatDayLabel(d),
+                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: d == today ? c.goldText : c.fg),
+                    ),
+                    Builder(
+                      builder: (_) {
+                        final n = absences.where((a) => a.start.substring(0, 10).compareTo(d) <= 0 && a.end.substring(0, 10).compareTo(d) >= 0).length;
+                        return Text(n > 0 ? '$n ausencia${n == 1 ? '' : 's'}' : ' ', style: TextStyle(fontSize: 10.5, color: c.manualText));
+                      },
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
-        ),
-    ]);
+      ],
+    );
 
-    final grid = Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      SizedBox(
-        width: 48,
-        height: height,
-        child: Stack(children: [
-          for (final h in hours.skip(1))
-            Positioned(top: y(h * 60) - 7, right: 6, child: Text('${h.toString().padLeft(2, '0')}:00', style: TextStyle(fontSize: 10, color: c.muted))),
-        ]),
-      ),
-      for (final d in days) _cell(colWidth, Container(decoration: BoxDecoration(border: Border(left: BorderSide(color: c.border))), child: dayColumn(d))),
-    ]);
+    final grid = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 48,
+          height: height,
+          child: Stack(
+            children: [
+              for (final h in hours.skip(1))
+                Positioned(
+                  top: y(h * 60) - 7,
+                  right: 6,
+                  child: Text('${h.toString().padLeft(2, '0')}:00', style: TextStyle(fontSize: 10, color: c.muted)),
+                ),
+            ],
+          ),
+        ),
+        for (final d in days)
+          _cell(
+            colWidth,
+            Container(
+              decoration: BoxDecoration(
+                border: Border(left: BorderSide(color: c.border)),
+              ),
+              child: dayColumn(d),
+            ),
+          ),
+      ],
+    );
 
     final content = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [header, grid]);
     return Container(
-      decoration: BoxDecoration(color: c.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: c.border)),
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: c.border),
+      ),
       clipBehavior: Clip.antiAlias,
-      child: colWidth == null ? content : SingleChildScrollView(scrollDirection: Axis.horizontal, child: SizedBox(width: 48 + colWidth * days.length, child: content)),
+      child: colWidth == null
+          ? content
+          : SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(width: 48 + colWidth * days.length, child: content),
+            ),
     );
   }
 
@@ -960,22 +1250,33 @@ class _AbsenceList extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.c;
     return AppCard(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const SectionTitle('Ausencias en estas fechas'),
-        for (final a in absences)
-          InkWell(
-            onTap: () => onOpen(a),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
-                AdvisorDot(a.advisorId),
-                Text(a.advisorName, style: TextStyle(fontWeight: FontWeight.w500, color: c.fg)),
-                AppBadge(label(absenceKindLabels, a.kind), tone: Tone.manual),
-                MutedText('${formatLocal(a.start)} – ${formatLocal(a.end)}${a.notes != null ? ' · ${a.notes}' : ''}', size: 12),
-              ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SectionTitle('Ausencias en estas fechas'),
+          for (final a in absences)
+            InkWell(
+              onTap: () => onOpen(a),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    AdvisorDot(a.advisorId),
+                    Text(
+                      a.advisorName,
+                      style: TextStyle(fontWeight: FontWeight.w500, color: c.fg),
+                    ),
+                    AppBadge(label(absenceKindLabels, a.kind), tone: Tone.manual),
+                    MutedText('${formatLocal(a.start)} – ${formatLocal(a.end)}${a.notes != null ? ' · ${a.notes}' : ''}', size: 12),
+                  ],
+                ),
+              ),
             ),
-          ),
-      ]),
+        ],
+      ),
     );
   }
 }
@@ -997,53 +1298,69 @@ class _AuditPanelState extends State<_AuditPanel> {
     final c = context.c;
     return AppCard(
       padding: EdgeInsets.zero,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        InkWell(
-          onTap: () {
-            setState(() => open = !open);
-            if (items == null) {
-              api.getCalendarAudit().then((r) => mounted ? setState(() => items = r) : null).catchError((Object err) {
-                if (mounted) setState(() => error = crmErrorText(err));
-                return null;
-              });
-            }
-          },
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(children: [
-              Icon(Icons.history, size: 18, color: c.muted),
-              const SizedBox(width: 8),
-              Expanded(child: Text('Historial de cambios del calendario', style: TextStyle(fontWeight: FontWeight.w500, color: c.fg))),
-              Icon(open ? Icons.expand_less : Icons.expand_more, color: c.muted),
-            ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: () {
+              setState(() => open = !open);
+              if (items == null) {
+                api.getCalendarAudit().then((r) => mounted ? setState(() => items = r) : null).catchError((Object err) {
+                  if (mounted) setState(() => error = crmErrorText(err));
+                  return null;
+                });
+              }
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  Icon(Icons.history, size: 18, color: c.muted),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Historial de cambios del calendario',
+                      style: TextStyle(fontWeight: FontWeight.w500, color: c.fg),
+                    ),
+                  ),
+                  Icon(open ? Icons.expand_less : Icons.expand_more, color: c.muted),
+                ],
+              ),
+            ),
           ),
-        ),
-        if (open) ...[
-          Divider(height: 1, color: c.border),
-          Padding(
-            padding: const EdgeInsets.all(14),
-            child: error != null
-                ? Text(error!, style: TextStyle(color: c.dangerText))
-                : items == null
-                    ? const MutedText('Cargando…')
-                    : items!.isEmpty
-                        ? const MutedText('Sin cambios registrados.')
-                        : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            for (final a in items!)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 10),
-                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  Text(a.detail, style: TextStyle(color: c.fg, fontSize: 13.5)),
-                                  MutedText(
-                                    '${a.action == 'CREATED' ? 'Creado' : (a.action == 'UPDATED' ? 'Modificado' : 'Eliminado')} por ${a.actorName ?? 'el sistema'} · ${formatInstantMx(a.createdAt)}',
-                                    size: 12,
-                                  ),
-                                ]),
-                              ),
-                          ]),
-          ),
+          if (open) ...[
+            Divider(height: 1, color: c.border),
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: error != null
+                  ? Text(error!, style: TextStyle(color: c.dangerText))
+                  : items == null
+                  ? const MutedText('Cargando…')
+                  : items!.isEmpty
+                  ? const MutedText('Sin cambios registrados.')
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final a in items!)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(a.detail, style: TextStyle(color: c.fg, fontSize: 13.5)),
+                                MutedText(
+                                  '${a.action == 'CREATED' ? 'Creado' : (a.action == 'UPDATED' ? 'Modificado' : 'Eliminado')} por ${a.actorName ?? 'el sistema'} · ${formatInstantMx(a.createdAt)}',
+                                  size: 12,
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+            ),
+          ],
         ],
-      ]),
+      ),
     );
   }
 }

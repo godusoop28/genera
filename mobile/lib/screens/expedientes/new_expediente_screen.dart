@@ -29,7 +29,8 @@ List<({String type, String label, String? detail, String? note, String kind})> p
 }) {
   final items = <({String type, String label, String? detail, String? note, String kind})>[];
   final moral = personType == 'MORAL';
-  void doc(String type, [String? detail, String? note, String kind = 'required']) => items.add((type: type, label: documentTypeLabel(type), detail: detail, note: note, kind: kind));
+  void doc(String type, [String? detail, String? note, String kind = 'required']) =>
+      items.add((type: type, label: documentTypeLabel(type), detail: detail, note: note, kind: kind));
   for (var i = 0; i < participants.length; i++) {
     final p = participants[i];
     final name = p.fullName.trim().isEmpty ? 'Participante ${i + 1}' : p.fullName.trim();
@@ -199,9 +200,9 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
   bool get duplicatesAuthorized => duplicates.isNotEmpty && authorizedFolios == _foliosKey(duplicates);
 
   void goTo(int next) => changed(() {
-        error = null;
-        step = next;
-      });
+    error = null;
+    step = next;
+  });
 
   /// true si se puede seguir: no hay expedientes en curso del cliente, o ya se autorizó abrir otro.
   Future<bool> checkDuplicates() async {
@@ -211,7 +212,10 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
       final matches = await api.checkClientDuplicates(holders);
       setState(() => duplicates = matches);
       if (matches.isEmpty || authorizedFolios == _foliosKey(matches)) return true;
-      setState(() => error = matches.length == 1 ? 'Este cliente ya tiene el expediente ${matches.first.folio} en curso.' : 'Este cliente ya tiene ${matches.length} expedientes en curso.');
+      setState(
+        () =>
+            error = matches.length == 1 ? 'Este cliente ya tiene el expediente ${matches.first.folio} en curso.' : 'Este cliente ya tiene ${matches.length} expedientes en curso.',
+      );
       return false;
     } catch (_) {
       // Si la verificación falla por red, el backend vuelve a revisarlo al crear.
@@ -267,7 +271,9 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
         'propertyCaseType': propertyCaseType,
         'propertyReference': propertyReference.trim(),
         // Solo el nombre: lo demás se pide al cliente en su liga o se lee de sus documentos.
-        'participants': [for (final p in participants) {'role': p.role, 'fullName': p.fullName.trim()}],
+        'participants': [
+          for (final p in participants) {'role': p.role, 'fullName': p.fullName.trim()},
+        ],
         'duplicateAuthorizationReason': duplicatesAuthorized ? duplicateReason.trim() : null,
       });
       created = true;
@@ -297,7 +303,9 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
       return const AppScaffold(
         title: 'Nuevo expediente',
         route: '/expedientes/nuevo',
-        body: PageBody(children: [StateMessage(kind: StateKind.loading, title: 'Recuperando lo que ya habías capturado…')]),
+        body: PageBody(
+          children: [StateMessage(kind: StateKind.loading, title: 'Recuperando lo que ya habías capturado…')],
+        ),
       );
     }
     final c = context.c;
@@ -314,7 +322,8 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
       route: '/expedientes/nuevo',
       bottomBar: _bottomBar(c),
       body: PageBody(
-        subtitle: 'Solo lo necesario para saber qué documentos pedir. El domicilio, la situación jurídica y los demás datos se leen de los documentos o los captura el cliente en su liga.',
+        subtitle:
+            'Solo lo necesario para saber qué documentos pedir. El domicilio, la situación jurídica y los demás datos se leen de los documentos o los captura el cliente en su liga.',
         children: [
           _Stepper(current: step, onSelect: (s) => s < step ? goTo(s) : null),
           if (resumed) ...[
@@ -322,13 +331,22 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
             Notice(
               tone: Tone.gold,
               text: 'Recuperamos tu borrador en el paso ${_steps[step - 1]}.',
-              action: Wrap(spacing: 8, runSpacing: 8, children: [
-                Btn('Revisar desde el inicio', small: true, variant: BtnVariant.secondary, onPressed: () {
-                  setState(() => resumed = false);
-                  goTo(1);
-                }),
-                Btn('Continuar donde me quedé', small: true, variant: BtnVariant.dark, onPressed: () => setState(() => resumed = false)),
-              ]),
+              action: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  Btn(
+                    'Revisar desde el inicio',
+                    small: true,
+                    variant: BtnVariant.secondary,
+                    onPressed: () {
+                      setState(() => resumed = false);
+                      goTo(1);
+                    },
+                  ),
+                  Btn('Continuar donde me quedé', small: true, variant: BtnVariant.dark, onPressed: () => setState(() => resumed = false)),
+                ],
+              ),
             ),
           ],
           const SizedBox(height: 16),
@@ -343,45 +361,60 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
   }
 
   Widget _bottomBar(AppColors c) => Container(
-        decoration: BoxDecoration(color: c.card, border: Border(top: BorderSide(color: c.border))),
-        padding: EdgeInsets.fromLTRB(16, 10, 16, 10 + MediaQuery.of(context).padding.bottom),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (error != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    decoration: BoxDecoration(
+      color: c.card,
+      border: Border(top: BorderSide(color: c.border)),
+    ),
+    padding: EdgeInsets.fromLTRB(16, 10, 16, 10 + MediaQuery.of(context).padding.bottom),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (error != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Icon(Icons.warning_amber_rounded, size: 18, color: c.dangerText),
                 const SizedBox(width: 6),
-                Expanded(child: Text(error!, style: TextStyle(color: c.dangerText, fontWeight: FontWeight.w500, fontSize: 13))),
-              ]),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: MutedText(
-                switch (draftStatus) {
-                  'saving' => 'Guardando borrador…',
-                  'saved' => 'Borrador guardado.',
-                  'error' => 'No se pudo guardar el borrador; se reintentará con el siguiente cambio.',
-                  _ => 'Lo que captures se guarda automáticamente como borrador.',
-                },
-                size: 12,
-              ),
+                Expanded(
+                  child: Text(
+                    error!,
+                    style: TextStyle(color: c.dangerText, fontWeight: FontWeight.w500, fontSize: 13),
+                  ),
+                ),
+              ],
             ),
-          Row(children: [
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: MutedText(switch (draftStatus) {
+              'saving' => 'Guardando borrador…',
+              'saved' => 'Borrador guardado.',
+              'error' => 'No se pudo guardar el borrador; se reintentará con el siguiente cambio.',
+              _ => 'Lo que captures se guarda automáticamente como borrador.',
+            }, size: 12),
+          ),
+        Row(
+          children: [
             if (step > 1) ...[
-              Expanded(child: Btn('Anterior', icon: Icons.arrow_back, variant: BtnVariant.secondary, onPressed: submitting || created ? null : () => goTo(step - 1))),
+              Expanded(
+                child: Btn('Anterior', icon: Icons.arrow_back, variant: BtnVariant.secondary, onPressed: submitting || created ? null : () => goTo(step - 1)),
+              ),
               const SizedBox(width: 10),
             ],
             Expanded(
               child: step < 3
                   ? Btn('Continuar', variant: BtnVariant.dark, loading: checkingDuplicates, onPressed: next)
-                  : Btn(created ? 'Abriendo expediente…' : (submitting ? 'Creando…' : 'Crear expediente'),
-                      icon: Icons.check, loading: submitting || created, onPressed: create),
+                  : Btn(created ? 'Abriendo expediente…' : (submitting ? 'Creando…' : 'Crear expediente'), icon: Icons.check, loading: submitting || created, onPressed: create),
             ),
-          ]),
-        ]),
-      );
+          ],
+        ),
+      ],
+    ),
+  );
 
   List<Widget> _stepClient(AppColors c) {
     String? nameError(String value, String message) => showErrors && value.trim().isEmpty ? message : null;
@@ -389,101 +422,119 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
         Container(
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: c.border)),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Row(children: [
-              Expanded(child: Text(title, style: TextStyle(fontWeight: FontWeight.w600, color: c.fg))),
-              if (onRemove != null) Btn('Quitar', icon: Icons.delete_outline, small: true, variant: BtnVariant.ghost, onPressed: onRemove),
-            ]),
-            const SizedBox(height: 10),
-            AppTextField(
-              label: company ? 'Razón social' : 'Nombre completo (como aparece en su identificación)',
-              hint: company ? 'Ej. Inmobiliaria del Sol, S.A. de C.V.' : 'Ej. Juan Pérez López',
-              value: value,
-              error: errorText,
-              onChanged: (v) => changed(() => onChanged(v)),
-            ),
-          ]),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: c.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: TextStyle(fontWeight: FontWeight.w600, color: c.fg),
+                    ),
+                  ),
+                  if (onRemove != null) Btn('Quitar', icon: Icons.delete_outline, small: true, variant: BtnVariant.ghost, onPressed: onRemove),
+                ],
+              ),
+              const SizedBox(height: 10),
+              AppTextField(
+                label: company ? 'Razón social' : 'Nombre completo (como aparece en su identificación)',
+                hint: company ? 'Ej. Inmobiliaria del Sol, S.A. de C.V.' : 'Ej. Juan Pérez López',
+                value: value,
+                error: errorText,
+                onChanged: (v) => changed(() => onChanged(v)),
+              ),
+            ],
+          ),
         );
 
     return [
       AppCard(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const CardHeader(title: '¿Quién es el cliente?', description: 'Define qué documentos y qué datos pide el contrato.'),
-          ChoiceTile(
-            selected: personType == 'FISICA',
-            onTap: () => changed(() => personType = 'FISICA'),
-            icon: Icons.person_outline,
-            title: 'Persona física',
-            subtitle: 'Uno o varios propietarios personas. Pueden firmar ellos mismos o un apoderado.',
-          ),
-          const SizedBox(height: 8),
-          ChoiceTile(
-            selected: personType == 'MORAL',
-            onTap: () => changed(() => personType = 'MORAL'),
-            icon: Icons.apartment_outlined,
-            title: 'Persona moral (empresa)',
-            subtitle: 'Una empresa es la propietaria; firma su representante legal. No aplica estado civil.',
-          ),
-          if (!isMoral) ...[
-            const SizedBox(height: 12),
-            Divider(color: c.border),
-            ToggleRow(
-              label: 'Firma mediante apoderado',
-              description: 'Se pedirá su identificación y el poder notarial.',
-              value: signedByAttorney,
-              onChanged: (v) => changed(() => signedByAttorney = v),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const CardHeader(title: '¿Quién es el cliente?', description: 'Define qué documentos y qué datos pide el contrato.'),
+            ChoiceTile(
+              selected: personType == 'FISICA',
+              onTap: () => changed(() => personType = 'FISICA'),
+              icon: Icons.person_outline,
+              title: 'Persona física',
+              subtitle: 'Uno o varios propietarios personas. Pueden firmar ellos mismos o un apoderado.',
             ),
+            const SizedBox(height: 8),
+            ChoiceTile(
+              selected: personType == 'MORAL',
+              onTap: () => changed(() => personType = 'MORAL'),
+              icon: Icons.apartment_outlined,
+              title: 'Persona moral (empresa)',
+              subtitle: 'Una empresa es la propietaria; firma su representante legal. No aplica estado civil.',
+            ),
+            if (!isMoral) ...[
+              const SizedBox(height: 12),
+              Divider(color: c.border),
+              ToggleRow(
+                label: 'Firma mediante apoderado',
+                description: 'Se pedirá su identificación y el poder notarial.',
+                value: signedByAttorney,
+                onChanged: (v) => changed(() => signedByAttorney = v),
+              ),
+            ],
           ],
-        ]),
+        ),
       ),
       const SizedBox(height: 16),
       AppCard(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          CardHeader(
-            title: isMoral ? 'Empresa y representante legal' : 'Propietarios',
-            description: isMoral
-                ? 'La empresa titular del inmueble y quién la representa. Solo el nombre: lo demás se lee de sus documentos.'
-                : 'Registra a todos los titulares del inmueble; no hay límite. Cada uno tendrá sus propios documentos y firma. Solo el nombre: estado civil y contacto los captura el cliente.',
-          ),
-          for (var i = 0; i < (isMoral ? 1 : owners.length); i++)
-            personBox(
-              title: isMoral ? 'Empresa titular' : (i == 0 ? 'Propietario principal' : 'Copropietario ${i + 1}'),
-              value: owners[i],
-              company: isMoral,
-              onChanged: (v) => owners[i] = v,
-              errorText: nameError(owners[i], isMoral ? 'Captura la razón social de la empresa.' : (i == 0 ? 'Captura el nombre del propietario principal.' : 'Captura el nombre del copropietario.')),
-              onRemove: !isMoral && i > 0
-                  ? () => changed(() => owners.removeAt(i))
-                  : null,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            CardHeader(
+              title: isMoral ? 'Empresa y representante legal' : 'Propietarios',
+              description: isMoral
+                  ? 'La empresa titular del inmueble y quién la representa. Solo el nombre: lo demás se lee de sus documentos.'
+                  : 'Registra a todos los titulares del inmueble; no hay límite. Cada uno tendrá sus propios documentos y firma. Solo el nombre: estado civil y contacto los captura el cliente.',
             ),
-          if (!isMoral)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: LinkText('Agregar copropietario', icon: Icons.add, onTap: () => changed(() => owners.add(''))),
-            ),
-          if (isMoral) ...[
-            for (var i = 0; i < representatives.length; i++)
+            for (var i = 0; i < (isMoral ? 1 : owners.length); i++)
               personBox(
-                title: 'Representante legal ${representatives.length > 1 ? i + 1 : ''}',
-                value: representatives[i],
-                onChanged: (v) => representatives[i] = v,
-                errorText: nameError(representatives[i], 'Captura el nombre del representante legal.'),
-                onRemove: i > 0
-                    ? () => changed(() => representatives.removeAt(i))
-                    : null,
+                title: isMoral ? 'Empresa titular' : (i == 0 ? 'Propietario principal' : 'Copropietario ${i + 1}'),
+                value: owners[i],
+                company: isMoral,
+                onChanged: (v) => owners[i] = v,
+                errorText: nameError(
+                  owners[i],
+                  isMoral ? 'Captura la razón social de la empresa.' : (i == 0 ? 'Captura el nombre del propietario principal.' : 'Captura el nombre del copropietario.'),
+                ),
+                onRemove: !isMoral && i > 0 ? () => changed(() => owners.removeAt(i)) : null,
               ),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: LinkText('Agregar otro representante', icon: Icons.add, onTap: () => changed(() => representatives.add(''))),
-            ),
+            if (!isMoral)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: LinkText('Agregar copropietario', icon: Icons.add, onTap: () => changed(() => owners.add(''))),
+              ),
+            if (isMoral) ...[
+              for (var i = 0; i < representatives.length; i++)
+                personBox(
+                  title: 'Representante legal ${representatives.length > 1 ? i + 1 : ''}',
+                  value: representatives[i],
+                  onChanged: (v) => representatives[i] = v,
+                  errorText: nameError(representatives[i], 'Captura el nombre del representante legal.'),
+                  onRemove: i > 0 ? () => changed(() => representatives.removeAt(i)) : null,
+                ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: LinkText('Agregar otro representante', icon: Icons.add, onTap: () => changed(() => representatives.add(''))),
+              ),
+            ],
+            if (duplicates.isNotEmpty && !duplicatesAuthorized) ...[const SizedBox(height: 12), _duplicateWarning(c)],
+            if (!isMoral && signedByAttorney) ...[
+              const SizedBox(height: 12),
+              personBox(title: 'Apoderado', value: attorney, onChanged: (v) => attorney = v, errorText: nameError(attorney, 'Captura el nombre del apoderado.')),
+            ],
           ],
-          if (duplicates.isNotEmpty && !duplicatesAuthorized) ...[const SizedBox(height: 12), _duplicateWarning(c)],
-          if (!isMoral && signedByAttorney) ...[
-            const SizedBox(height: 12),
-            personBox(title: 'Apoderado', value: attorney, onChanged: (v) => attorney = v, errorText: nameError(attorney, 'Captura el nombre del apoderado.')),
-          ],
-        ]),
+        ),
       ),
     ];
   }
@@ -495,154 +546,192 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
       icon: Icons.warning_amber_rounded,
       title: duplicates.length == 1 ? 'Este cliente ya está dado de alta' : 'Este cliente ya está dado de alta en ${duplicates.length} expedientes',
       text: 'Revisa que no estés duplicando el expediente. Si es la misma propiedad, continúa en el que ya existe.',
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const SizedBox(height: 10),
-        for (final m in duplicates)
-          Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: c.card, borderRadius: BorderRadius.circular(10), border: Border.all(color: c.border)),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Expanded(child: Text(m.folio, style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.w600, color: c.fg))),
-                LinkText('Abrir existente', onTap: () => context.push('/expedientes/${m.id}')),
-              ]),
-              Text(m.matchedName, style: TextStyle(color: c.fg)),
-              MutedText(
-                '${label(backendStatusLabels, m.status)}${m.property != null ? ' · ${m.property}' : ''}${m.advisorName != null ? ' · Asesor: ${m.advisorName}' : ''} · Alta ${formatDate(m.createdAt)}',
-                size: 12,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 10),
+          for (final m in duplicates)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: c.card,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: c.border),
               ),
-            ]),
-          ),
-        if (canAuthorize) ...[
-          const SizedBox(height: 6),
-          AppTextField(
-            label: '¿Es otra propiedad? Autoriza abrir otro expediente',
-            hint: 'Ej. Segunda propiedad del cliente: departamento en Providencia',
-            maxLines: 2,
-            value: duplicateReason,
-            onChanged: (v) => setState(() => duplicateReason = v),
-            helper: 'Mínimo $_minDuplicateReason caracteres. La autorización queda en la bitácora con tu nombre.',
-          ),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Btn('Autorizar y continuar', small: true, variant: BtnVariant.dark, onPressed: duplicateReason.trim().length < _minDuplicateReason
-                ? null
-                : () {
-                    setState(() => authorizedFolios = _foliosKey(duplicates));
-                    goTo(2);
-                  }),
-          ),
-        ] else
-          const Text('Si es otra propiedad del mismo cliente, se necesita una autorización especial: pide a un administrador o director que dé de alta este expediente.'),
-      ]),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          m.folio,
+                          style: TextStyle(fontFamily: 'GeistMono', fontWeight: FontWeight.w600, color: c.fg),
+                        ),
+                      ),
+                      LinkText('Abrir existente', onTap: () => context.push('/expedientes/${m.id}')),
+                    ],
+                  ),
+                  Text(m.matchedName, style: TextStyle(color: c.fg)),
+                  MutedText(
+                    '${label(backendStatusLabels, m.status)}${m.property != null ? ' · ${m.property}' : ''}${m.advisorName != null ? ' · Asesor: ${m.advisorName}' : ''} · Alta ${formatDate(m.createdAt)}',
+                    size: 12,
+                  ),
+                ],
+              ),
+            ),
+          if (canAuthorize) ...[
+            const SizedBox(height: 6),
+            AppTextField(
+              label: '¿Es otra propiedad? Autoriza abrir otro expediente',
+              hint: 'Ej. Segunda propiedad del cliente: departamento en Providencia',
+              maxLines: 2,
+              value: duplicateReason,
+              onChanged: (v) => setState(() => duplicateReason = v),
+              helper: 'Mínimo $_minDuplicateReason caracteres. La autorización queda en la bitácora con tu nombre.',
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Btn(
+                'Autorizar y continuar',
+                small: true,
+                variant: BtnVariant.dark,
+                onPressed: duplicateReason.trim().length < _minDuplicateReason
+                    ? null
+                    : () {
+                        setState(() => authorizedFolios = _foliosKey(duplicates));
+                        goTo(2);
+                      },
+              ),
+            ),
+          ] else
+            const Text('Si es otra propiedad del mismo cliente, se necesita una autorización especial: pide a un administrador o director que dé de alta este expediente.'),
+        ],
+      ),
     );
   }
 
   Widget _stepProperty(AppColors c) => AppCard(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const CardHeader(title: 'Inmueble', description: 'Con esto se define qué documentos del inmueble se piden.'),
-          AppTextField(
-            label: 'Referencia para que el cliente reconozca el inmueble',
-            value: propertyReference,
-            maxLength: 120,
-            hint: 'Ej. Casa en Coto Austriaco, Zapopan',
-            helper: 'El cliente la ve al abrir su liga, antes de entregar datos. Sin número exterior ni datos completos: el domicilio legal se toma de los documentos.',
-            error: showErrors && propertyReference.trim().isEmpty ? 'Captura una referencia del inmueble.' : null,
-            onChanged: (v) => changed(() => propertyReference = v),
-          ),
-          const SizedBox(height: 14),
-          AppSelect<String>(label: 'Tipo de inmueble', value: propertyCaseType, options: optionsOf(propertyTypeLabels), onChanged: (v) => changed(() => propertyCaseType = v)),
-          const SizedBox(height: 14),
-          AppSelect<String>(
-            label: '¿Con qué documento se acredita la propiedad?',
-            value: accreditationType,
-            options: optionsOf(accreditationLabels),
-            onChanged: (v) => changed(() => accreditationType = v),
-          ),
-          const SizedBox(height: 10),
-          Divider(color: c.border),
-          ToggleRow(
-            label: 'Está en régimen de condominio',
-            description: 'Se pedirá la escritura del régimen de condominio.',
-            value: condominiumRegime,
-            onChanged: (v) => changed(() => condominiumRegime = v),
-          ),
-          if (propertyCaseType == 'COMMERCIAL') ...[
-            const SizedBox(height: 12),
-            const Notice(
-              tone: Tone.warning,
-              icon: Icons.warning_amber_rounded,
-              text:
-                  'El contrato registrado ante PROFECO solo ampara inmuebles destinados a casa habitación. Puedes integrar el expediente, pero el sistema no generará el contrato para un inmueble comercial.',
-            ),
-          ],
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const CardHeader(title: 'Inmueble', description: 'Con esto se define qué documentos del inmueble se piden.'),
+        AppTextField(
+          label: 'Referencia para que el cliente reconozca el inmueble',
+          value: propertyReference,
+          maxLength: 120,
+          hint: 'Ej. Casa en Coto Austriaco, Zapopan',
+          helper: 'El cliente la ve al abrir su liga, antes de entregar datos. Sin número exterior ni datos completos: el domicilio legal se toma de los documentos.',
+          error: showErrors && propertyReference.trim().isEmpty ? 'Captura una referencia del inmueble.' : null,
+          onChanged: (v) => changed(() => propertyReference = v),
+        ),
+        const SizedBox(height: 14),
+        AppSelect<String>(label: 'Tipo de inmueble', value: propertyCaseType, options: optionsOf(propertyTypeLabels), onChanged: (v) => changed(() => propertyCaseType = v)),
+        const SizedBox(height: 14),
+        AppSelect<String>(
+          label: '¿Con qué documento se acredita la propiedad?',
+          value: accreditationType,
+          options: optionsOf(accreditationLabels),
+          onChanged: (v) => changed(() => accreditationType = v),
+        ),
+        const SizedBox(height: 10),
+        Divider(color: c.border),
+        ToggleRow(
+          label: 'Está en régimen de condominio',
+          description: 'Se pedirá la escritura del régimen de condominio.',
+          value: condominiumRegime,
+          onChanged: (v) => changed(() => condominiumRegime = v),
+        ),
+        if (propertyCaseType == 'COMMERCIAL') ...[
           const SizedBox(height: 12),
           const Notice(
-            tone: Tone.info,
-            icon: Icons.info_outline,
-            text: 'No necesitas capturar el domicilio ni la situación jurídica: se toman de la escritura, el predial y el certificado de libertad de gravamen cuando se leen.',
+            tone: Tone.warning,
+            icon: Icons.warning_amber_rounded,
+            text:
+                'El contrato registrado ante PROFECO solo ampara inmuebles destinados a casa habitación. Puedes integrar el expediente, pero el sistema no generará el contrato para un inmueble comercial.',
           ),
-        ]),
-      );
+        ],
+        const SizedBox(height: 12),
+        const Notice(
+          tone: Tone.info,
+          icon: Icons.info_outline,
+          text: 'No necesitas capturar el domicilio ni la situación jurídica: se toman de la escritura, el predial y el certificado de libertad de gravamen cuando se leen.',
+        ),
+      ],
+    ),
+  );
 
   Widget _stepReview(AppColors c, List<({String type, String label, String? detail, String? note, String kind})> preview) {
     Widget section(String title, int target, List<Widget> rows) => Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Row(children: [
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
               Expanded(child: SectionTitle(title)),
               Btn('Editar', icon: Icons.edit_outlined, small: true, variant: BtnVariant.ghost, onPressed: () => goTo(target)),
-            ]),
-            FieldGrid(children: rows),
-          ]),
-        );
+            ],
+          ),
+          FieldGrid(children: rows),
+        ],
+      ),
+    );
     String roleTitle(String role) => switch (role) {
-          'OWNER' => isMoral ? 'Empresa titular' : 'Propietario principal',
-          'CO_OWNER' => 'Copropietario',
-          'ATTORNEY' => 'Apoderado',
-          _ => 'Representante legal',
-        };
+      'OWNER' => isMoral ? 'Empresa titular' : 'Propietario principal',
+      'CO_OWNER' => 'Copropietario',
+      'ATTORNEY' => 'Apoderado',
+      _ => 'Representante legal',
+    };
     final required = preview.where((i) => i.kind == 'required').length;
     final conditional = preview.where((i) => i.kind == 'conditional').length;
     final optional = preview.where((i) => i.kind == 'optional').length;
     return AppCard(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const CardHeader(title: 'Revisa antes de crear', description: 'Puedes volver a cualquier paso; lo capturado se conserva.'),
-        section('Cliente', 1, [
-          FieldView('Tipo de cliente', isMoral ? 'Persona moral (empresa)' : 'Persona física'),
-          if (!isMoral) FieldView('Firma', signedByAttorney ? 'Mediante apoderado' : 'Los propietarios'),
-          for (final p in participants) FieldView(roleTitle(p.role), p.fullName.trim().isEmpty ? '—' : p.fullName.trim()),
-        ]),
-        if (duplicatesAuthorized)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Notice(
-              tone: Tone.warning,
-              icon: Icons.warning_amber_rounded,
-              text: 'Autorización especial: este cliente ya tiene ${duplicates.map((d) => d.folio).join(', ')}. Motivo: ${duplicateReason.trim()}. Quedará en la bitácora.',
-            ),
-          ),
-        Divider(color: c.border),
-        const SizedBox(height: 8),
-        section('Inmueble', 2, [
-          FieldView('Referencia para el cliente', propertyReference.trim().isEmpty ? '—' : propertyReference.trim()),
-          FieldView('Tipo de inmueble', label(propertyTypeLabels, propertyCaseType)),
-          FieldView('Acreditación', label(accreditationLabels, accreditationType)),
-          FieldView('Régimen de condominio', condominiumRegime ? 'Sí' : 'No'),
-        ]),
-        Text.rich(
-          TextSpan(children: [
-            const TextSpan(text: 'Al crear el expediente se registran '),
-            TextSpan(text: '$required documentos obligatorios', style: TextStyle(fontWeight: FontWeight.w600, color: c.fg)),
-            if (conditional > 0) TextSpan(text: ', $conditional que dependen de lo que declare el cliente'),
-            if (optional > 0) TextSpan(text: ' y $optional opcionales'),
-            const TextSpan(text: '. Después podrás generar la liga para que el cliente los cargue.'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const CardHeader(title: 'Revisa antes de crear', description: 'Puedes volver a cualquier paso; lo capturado se conserva.'),
+          section('Cliente', 1, [
+            FieldView('Tipo de cliente', isMoral ? 'Persona moral (empresa)' : 'Persona física'),
+            if (!isMoral) FieldView('Firma', signedByAttorney ? 'Mediante apoderado' : 'Los propietarios'),
+            for (final p in participants) FieldView(roleTitle(p.role), p.fullName.trim().isEmpty ? '—' : p.fullName.trim()),
           ]),
-          style: TextStyle(fontSize: 13.5, color: c.muted, height: 1.4),
-        ),
-      ]),
+          if (duplicatesAuthorized)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Notice(
+                tone: Tone.warning,
+                icon: Icons.warning_amber_rounded,
+                text: 'Autorización especial: este cliente ya tiene ${duplicates.map((d) => d.folio).join(', ')}. Motivo: ${duplicateReason.trim()}. Quedará en la bitácora.',
+              ),
+            ),
+          Divider(color: c.border),
+          const SizedBox(height: 8),
+          section('Inmueble', 2, [
+            FieldView('Referencia para el cliente', propertyReference.trim().isEmpty ? '—' : propertyReference.trim()),
+            FieldView('Tipo de inmueble', label(propertyTypeLabels, propertyCaseType)),
+            FieldView('Acreditación', label(accreditationLabels, accreditationType)),
+            FieldView('Régimen de condominio', condominiumRegime ? 'Sí' : 'No'),
+          ]),
+          Text.rich(
+            TextSpan(
+              children: [
+                const TextSpan(text: 'Al crear el expediente se registran '),
+                TextSpan(
+                  text: '$required documentos obligatorios',
+                  style: TextStyle(fontWeight: FontWeight.w600, color: c.fg),
+                ),
+                if (conditional > 0) TextSpan(text: ', $conditional que dependen de lo que declare el cliente'),
+                if (optional > 0) TextSpan(text: ' y $optional opcionales'),
+                const TextSpan(text: '. Después podrás generar la liga para que el cliente los cargue.'),
+              ],
+            ),
+            style: TextStyle(fontSize: 13.5, color: c.muted, height: 1.4),
+          ),
+        ],
+      ),
     );
   }
 
@@ -653,41 +742,60 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
       ('Opcionales', preview.where((i) => i.kind == 'optional').toList()),
     ];
     return AppCard(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const CardHeader(title: 'Documentos previstos', description: 'Se ajustan con lo que capturas, según las reglas del sistema.'),
-        for (final (title, items) in groups)
-          if (items.isNotEmpty) ...[
-            SectionTitle('$title (${items.length})'),
-            for (final item in items)
-              Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: c.border)),
-                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(color: c.appBg, borderRadius: BorderRadius.circular(8)),
-                    child: Icon(_previewIcons[item.type] ?? Icons.description_outlined, size: 18, color: c.muted),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const CardHeader(title: 'Documentos previstos', description: 'Se ajustan con lo que capturas, según las reglas del sistema.'),
+          for (final (title, items) in groups)
+            if (items.isNotEmpty) ...[
+              SectionTitle('$title (${items.length})'),
+              for (final item in items)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: c.border),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(item.label, style: TextStyle(fontWeight: FontWeight.w500, color: c.fg, fontSize: 13.5)),
-                      if (item.detail != null) MutedText(item.detail!, size: 12),
-                      if (item.note != null) Text(item.note!, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: c.warningText)),
-                    ]),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(color: c.appBg, borderRadius: BorderRadius.circular(8)),
+                        child: Icon(_previewIcons[item.type] ?? Icons.description_outlined, size: 18, color: c.muted),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.label,
+                              style: TextStyle(fontWeight: FontWeight.w500, color: c.fg, fontSize: 13.5),
+                            ),
+                            if (item.detail != null) MutedText(item.detail!, size: 12),
+                            if (item.note != null)
+                              Text(
+                                item.note!,
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: c.warningText),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                ]),
-              ),
-            const SizedBox(height: 6),
-          ],
-        const Notice(
-          tone: Tone.warning,
-          icon: Icons.info_outline,
-          text: 'Lo que no aplique a este caso se puede marcar como “No aplica”, con justificación, durante la revisión.',
-        ),
-      ]),
+                ),
+              const SizedBox(height: 6),
+            ],
+          const Notice(
+            tone: Tone.warning,
+            icon: Icons.info_outline,
+            text: 'Lo que no aplique a este caso se puede marcar como “No aplica”, con justificación, durante la revisión.',
+          ),
+        ],
+      ),
     );
   }
 }
@@ -700,34 +808,49 @@ class _Stepper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.c;
-    return Row(children: [
-      for (var i = 0; i < _steps.length; i++) ...[
-        if (i > 0) Expanded(child: Container(height: 2, color: i + 1 <= current ? Brand.gold : c.border)),
-        InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: i + 1 < current ? () => onSelect(i + 1) : null,
-          child: Padding(
-            padding: const EdgeInsets.all(4),
-            child: Column(children: [
-              Container(
-                width: 32,
-                height: 32,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: i + 1 == current ? Brand.darkGold : (i + 1 < current ? Brand.gold : c.card),
-                  border: Border.all(color: i + 1 == current ? Brand.darkGold : (i + 1 < current ? Brand.gold : c.border), width: 2),
+    return Row(
+      children: [
+        for (var i = 0; i < _steps.length; i++) ...[
+          if (i > 0) Expanded(flex: 2, child: Container(height: 2, color: i + 1 <= current ? Brand.gold : c.border)),
+          Flexible(
+            flex: 3,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: i + 1 < current ? () => onSelect(i + 1) : null,
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: i + 1 == current ? Brand.darkGold : (i + 1 < current ? Brand.gold : c.card),
+                        border: Border.all(color: i + 1 == current ? Brand.darkGold : (i + 1 < current ? Brand.gold : c.border), width: 2),
+                      ),
+                      child: i + 1 < current
+                          ? const Icon(Icons.check, size: 16, color: Brand.ink)
+                          : Text(
+                              '${i + 1}',
+                              style: TextStyle(fontWeight: FontWeight.w600, color: i + 1 == current ? Colors.white : c.muted),
+                            ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _steps[i],
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 13, color: i + 1 <= current ? c.fg : c.muted, fontWeight: i + 1 == current ? FontWeight.w600 : null),
+                    ),
+                  ],
                 ),
-                child: i + 1 < current
-                    ? const Icon(Icons.check, size: 16, color: Brand.ink)
-                    : Text('${i + 1}', style: TextStyle(fontWeight: FontWeight.w600, color: i + 1 == current ? Colors.white : c.muted)),
               ),
-              const SizedBox(height: 4),
-              Text(_steps[i], style: TextStyle(fontSize: 13, color: i + 1 <= current ? c.fg : c.muted, fontWeight: i + 1 == current ? FontWeight.w600 : null)),
-            ]),
+            ),
           ),
-        ),
+        ],
       ],
-    ]);
+    );
   }
 }

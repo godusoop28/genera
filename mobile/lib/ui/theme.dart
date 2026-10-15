@@ -169,12 +169,13 @@ ThemeData buildTheme(ThemeId id) {
   final border = OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: c.border));
   return ThemeData(
     useMaterial3: true,
+    fontFamily: 'Geist',
     colorScheme: scheme,
     scaffoldBackgroundColor: c.appBg,
     extensions: [c],
     dividerColor: c.border,
     dividerTheme: DividerThemeData(color: c.border, space: 1, thickness: 1),
-    textTheme: Typography.material2021().black.apply(bodyColor: c.fg, displayColor: c.fg),
+    textTheme: Typography.material2021().black.apply(bodyColor: c.fg, displayColor: c.fg, fontFamily: 'Geist'),
     appBarTheme: AppBarTheme(
       backgroundColor: c.card,
       foregroundColor: c.fg,
@@ -182,7 +183,7 @@ ThemeData buildTheme(ThemeId id) {
       elevation: 0,
       scrolledUnderElevation: 0.5,
       shape: Border(bottom: BorderSide(color: c.border)),
-      titleTextStyle: TextStyle(color: c.fg, fontSize: 17, fontWeight: FontWeight.w600),
+      titleTextStyle: TextStyle(fontFamily: 'Geist', color: c.fg, fontSize: 17, fontWeight: FontWeight.w600),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
@@ -224,7 +225,7 @@ ThemeData buildTheme(ThemeId id) {
       unselectedLabelColor: c.muted,
       indicatorColor: Brand.gold,
       dividerColor: c.border,
-      labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+      labelStyle: const TextStyle(fontFamily: 'Geist', fontWeight: FontWeight.w600, fontSize: 14),
       tabAlignment: TabAlignment.start,
     ),
   );

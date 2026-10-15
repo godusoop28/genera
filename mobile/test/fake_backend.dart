@@ -171,10 +171,31 @@ List<Map<String, dynamic>> _occurrences(String from, String to) {
   return out;
 }
 
+/// Peticiones que no son GET (para verificar que la app manda lo correcto).
+final List<({String method, String path, Object? body})> sentRequests = [];
+
 /// Devuelve (status, cuerpo JSON) para cada petición.
-(int, Object?) fakeBackend(String method, Uri url) {
+(int, Object?) fakeBackend(String method, Uri url, [Object? body]) {
   final p = url.path.replaceFirst('/api/v1', '');
   final q = url.queryParameters;
+  if (method != 'GET') {
+    sentRequests.add((method: method, path: p, body: body));
+    if (p == '/auth/login') {
+      final ok = body is Map && body['password'] == 'correcta';
+      return ok
+          ? (200, {'accessToken': 'nuevo', 'accessTokenExpiresAt': _now, 'refreshToken': 'r'})
+          : (401, {'title': 'Unauthorized', 'status': 401, 'detail': 'Credenciales inválidas.', 'code': 'BAD_CREDENTIALS'});
+    }
+    if (p.startsWith('/internal/documents/') && p.endsWith('/accept')) return (200, {..._documents.first, 'status': 'ACCEPTED'});
+    if (p == '/internal/leads') return fakeBackend('GET', Uri.parse('/api/v1/internal/leads/lead-1'));
+    if (p == '/internal/crm/calendar/shifts') return (201, {'id': 's-nuevo'});
+    if (p == '/internal/expedientes') return (201, _expediente);
+    if (p == '/internal/conversations/conv-1/reply') return fakeBackend('GET', Uri.parse('/api/v1/internal/conversations/conv-1'));
+    if (p.startsWith('/internal/drafts/')) return (200, {'formKey': 'x', 'payload': '{}', 'updatedAt': _now});
+    if (p == '/internal/expedientes/duplicate-check') return (200, []);
+    if (p.startsWith('/internal/leads/lead-1/')) return fakeBackend('GET', Uri.parse('/api/v1/internal/leads/lead-1'));
+    return (200, {});
+  }
   if (p == '/internal/me') return (200, {'id': 'u-1', 'name': 'Administrador Demo', 'email': 'admin@demo.local', 'role': 'ADMINISTRATOR', 'permissions': ['*']});
   if (p.startsWith('/internal/drafts/')) return (204, null);
   if (p == '/internal/expedientes/overview') {

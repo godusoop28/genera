@@ -180,7 +180,7 @@ class _ExpedienteDetailScreenState extends State<ExpedienteDetailScreen> with Ti
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(color: c.card, borderRadius: BorderRadius.circular(8), border: Border.all(color: c.border)),
-                    child: Text(e.folio, style: TextStyle(fontFamily: 'monospace', fontSize: 12, color: c.fg.withValues(alpha: 0.75))),
+                    child: Text(e.folio, style: TextStyle(fontFamily: 'GeistMono', fontSize: 12, color: c.fg.withValues(alpha: 0.75))),
                   ),
                   AppBadge(label(backendStatusLabels, e.status), tone: backendStatusTone[e.status] ?? Tone.neutral),
                   if (!e.correctable) const AppBadge('Datos bloqueados (contrato firmado o expediente decidido)'),

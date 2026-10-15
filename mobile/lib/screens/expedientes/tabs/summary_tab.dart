@@ -146,7 +146,7 @@ class _SummaryTabState extends State<SummaryTab> {
                         child: SelectableText(
                           newLink,
                           maxLines: 2,
-                          style: TextStyle(fontFamily: 'monospace', fontSize: 12, color: c.fg),
+                          style: TextStyle(fontFamily: 'GeistMono', fontSize: 12, color: c.fg),
                         ),
                       ),
                       IconButton(tooltip: 'Copiar liga', icon: const Icon(Icons.copy, size: 18), onPressed: () => copyText(context, newLink, 'Liga copiada.')),
@@ -181,8 +181,9 @@ class _SummaryTabState extends State<SummaryTab> {
                                   message: 'El cliente ya no podrá entrar con ella.',
                                   confirmLabel: 'Revocar',
                                   danger: true,
-                                ))
+                                )) {
                                   return;
+                                }
                                 await run(() => api.revokePublicLink(e.id), 'Liga revocada: el cliente ya no puede entrar con ella.');
                                 widget.ctx.setFreshPublicLink(null);
                                 loadLink();
@@ -376,10 +377,11 @@ class _DocumentTimingCardState extends State<_DocumentTimingCard> {
   Widget build(BuildContext context) {
     final c = context.c;
     final docs = documents;
-    if (docs == null)
+    if (docs == null) {
       return const AppCard(
         child: CardHeader(title: '¿Qué documentos pides primero?', description: 'Cargando requisitos…'),
       );
+    }
     final open = docs.where((d) => d.required && d.status != 'ACCEPTED' && d.status != 'NOT_APPLICABLE').toList();
     if (open.isEmpty) return const SizedBox.shrink();
     final ctx = widget.ctx;

@@ -146,7 +146,19 @@ class AppScaffold extends StatelessWidget {
       appBar: AppBar(
         title: Text(title, overflow: TextOverflow.ellipsis),
         leading: route == null ? BackButton(onPressed: () => context.canPop() ? context.pop() : context.go('/expedientes')) : null,
-        actions: actions,
+        actions: [
+          ...?actions,
+          // Como en el encabezado de la web: iniciales del usuario con acceso a Configuración.
+          if (route != null && route != '/configuracion' && context.watch<AuthState>().user != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 8, left: 4),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: () => context.go('/configuracion'),
+                child: Tooltip(message: 'Configuración de la cuenta', child: Avatar(context.watch<AuthState>().user!.name, size: 34)),
+              ),
+            ),
+        ],
         bottom: bottom,
       ),
       drawer: route != null ? AppDrawer(current: route!) : null,

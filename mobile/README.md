@@ -16,6 +16,10 @@ personal interno:
 - **Usuarios y permisos** y **Configuración** (tema claro/oscuro/dorado/alto
   contraste y tamaño de letra).
 
+Marca: misma tipografía que la web (Geist / Geist Mono), paleta oficial, logo
+autorizado (versión dorada en el tema oscuro), menú con el logo horizontal y
+ícono de la app con el símbolo C21 blanco sobre dorado, igual que el de la web.
+
 El portal del cliente (`/carga`) y la página de firma (`/firma`) siguen siendo
 web: la app genera las ligas y permite copiarlas o compartirlas.
 
@@ -26,7 +30,9 @@ cd mobile
 flutter pub get
 flutter run                      # en un emulador o celular conectado
 flutter build apk --release      # APK para Android
-flutter test                     # recorre todas las pantallas con datos simulados
+flutter test                     # 60 pruebas: todas las pantallas, los 4 temas, letra extra grande y flujos (login, crear expediente, aceptar documento, registrar lead, agregar horario, responder conversación…)
+flutter test --dart-define=SCREENSHOTS=true --update-goldens   # además guarda capturas en test/goldens/
+flutter build apk --release --split-per-abi                    # APKs más ligeros por tipo de procesador
 ```
 
 Por defecto apunta al backend de Render y a la web de Vercel. Para otro backend:

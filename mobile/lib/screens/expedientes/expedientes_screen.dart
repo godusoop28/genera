@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../api/api.dart' as api;
 import '../../api/client.dart';
@@ -15,12 +16,7 @@ import '../../ui/widgets.dart';
 
 // Criterio de agrupación (definido en el backend): cada estatus pertenece a un
 // solo grupo, así que pendientes + en revisión + completos = total.
-const _groups = [
-  (id: '', label: 'Todos'),
-  (id: 'PENDING', label: 'Pendientes'),
-  (id: 'IN_REVIEW', label: 'En revisión'),
-  (id: 'COMPLETE', label: 'Completos'),
-];
+const _groups = [(id: '', label: 'Todos'), (id: 'PENDING', label: 'Pendientes'), (id: 'IN_REVIEW', label: 'En revisión'), (id: 'COMPLETE', label: 'Completos')];
 
 const _pageSize = 18;
 
@@ -44,10 +40,24 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
   Timer? _debounce;
   int _request = 0;
 
+  /// Vista de tarjetas o de lista (se recuerda en el dispositivo, como en la web).
+  bool listView = false;
+  static const _viewKey = 'genera.expedientes.view';
+
   @override
   void initState() {
     super.initState();
     load();
+    SharedPreferences.getInstance()
+        .then((p) {
+          if (mounted && p.getString(_viewKey) == 'list') setState(() => listView = true);
+        })
+        .catchError((_) {});
+  }
+
+  void toggleView() {
+    setState(() => listView = !listView);
+    SharedPreferences.getInstance().then((p) => p.setString(_viewKey, listView ? 'list' : 'grid')).catchError((_) => false);
   }
 
   @override
@@ -111,7 +121,12 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
   int? countFor(String id) {
     final l = last;
     if (l == null) return null;
-    return switch (id) { '' => l.total, 'PENDING' => l.pending, 'IN_REVIEW' => l.inReview, _ => l.complete };
+    return switch (id) {
+      '' => l.total,
+      'PENDING' => l.pending,
+      'IN_REVIEW' => l.inReview,
+      _ => l.complete,
+    };
   }
 
   bool get filtering => query.trim().isNotEmpty || group.isNotEmpty;
@@ -124,6 +139,9 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
     return AppScaffold(
       title: 'Expedientes',
       route: '/expedientes',
+      actions: [
+        IconButton(tooltip: listView ? 'Ver como tarjetas' : 'Ver como lista', icon: Icon(listView ? Icons.grid_view_outlined : Icons.view_list_outlined), onPressed: toggleView),
+      ],
       fab: canCreate
           ? FloatingActionButton.extended(
               backgroundColor: Brand.gold,
@@ -134,18 +152,22 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
             )
           : null,
       body: error?.forbidden == true
-          ? PageBody(children: [StateMessage(kind: StateKind.restricted, title: 'Acceso restringido', description: error!.message)])
+          ? PageBody(
+              children: [StateMessage(kind: StateKind.restricted, title: 'Acceso restringido', description: error!.message)],
+            )
           : PageBody(
               onRefresh: load,
               bottomPadding: 96,
               subtitle: 'Da seguimiento a cada operación, desde los documentos del cliente hasta la firma del contrato.',
               children: [
-                StatGrid(children: [
-                  StatCard(icon: Icons.folder_open_outlined, value: v(''), label: 'Total', hint: 'Expedientes que puedes ver'),
-                  StatCard(icon: Icons.schedule, tone: Tone.warning, value: v('PENDING'), label: 'Pendientes', hint: 'Esperan algo del cliente'),
-                  StatCard(icon: Icons.refresh, tone: Tone.info, value: v('IN_REVIEW'), label: 'En revisión', hint: 'Documentos por revisar'),
-                  StatCard(icon: Icons.check_circle_outline, tone: Tone.success, value: v('COMPLETE'), label: 'Completos', hint: 'Documentación aprobada'),
-                ]),
+                StatGrid(
+                  children: [
+                    StatCard(icon: Icons.folder_open_outlined, value: v(''), label: 'Total', hint: 'Expedientes que puedes ver'),
+                    StatCard(icon: Icons.schedule, tone: Tone.warning, value: v('PENDING'), label: 'Pendientes', hint: 'Esperan algo del cliente'),
+                    StatCard(icon: Icons.refresh, tone: Tone.info, value: v('IN_REVIEW'), label: 'En revisión', hint: 'Documentos por revisar'),
+                    StatCard(icon: Icons.check_circle_outline, tone: Tone.success, value: v('COMPLETE'), label: 'Completos', hint: 'Documentación aprobada'),
+                  ],
+                ),
                 const SizedBox(height: 16),
                 AppTextField(
                   hint: 'Buscar por cliente, folio o domicilio',
@@ -172,7 +194,11 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
                   const StateMessage(kind: StateKind.loading, title: 'Cargando expedientes…')
                 else ...[
                   if (error != null) ...[
-                    Notice(tone: Tone.danger, text: error!.message, action: Btn('Reintentar', small: true, variant: BtnVariant.secondary, onPressed: load)),
+                    Notice(
+                      tone: Tone.danger,
+                      text: error!.message,
+                      action: Btn('Reintentar', small: true, variant: BtnVariant.secondary, onPressed: load),
+                    ),
                     const SizedBox(height: 12),
                   ],
                   AnimatedOpacity(
@@ -180,24 +206,37 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
                     duration: const Duration(milliseconds: 150),
                     child: items!.isEmpty
                         ? (filtering
-                            ? StateMessage(
-                                kind: StateKind.noResults,
-                                title: 'Sin resultados',
-                                description: query.trim().isNotEmpty ? 'Ningún expediente coincide con “${query.trim()}” en este filtro.' : 'No hay expedientes en este filtro.',
-                                action: Btn('Quitar filtros', variant: BtnVariant.secondary, onPressed: () {
-                                  setState(() {
-                                    query = '';
-                                    group = '';
-                                  });
-                                  load();
-                                }),
-                              )
-                            : StateMessage(
-                                kind: StateKind.empty,
-                                title: 'Aún no hay expedientes',
-                                description: 'Cuando crees un expediente aparecerá aquí con su avance documental.',
-                                action: canCreate ? Btn('Nuevo expediente', icon: Icons.add, onPressed: () => context.push('/expedientes/nuevo')) : null,
-                              ))
+                              ? StateMessage(
+                                  kind: StateKind.noResults,
+                                  title: 'Sin resultados',
+                                  description: query.trim().isNotEmpty ? 'Ningún expediente coincide con “${query.trim()}” en este filtro.' : 'No hay expedientes en este filtro.',
+                                  action: Btn(
+                                    'Quitar filtros',
+                                    variant: BtnVariant.secondary,
+                                    onPressed: () {
+                                      setState(() {
+                                        query = '';
+                                        group = '';
+                                      });
+                                      load();
+                                    },
+                                  ),
+                                )
+                              : StateMessage(
+                                  kind: StateKind.empty,
+                                  title: 'Aún no hay expedientes',
+                                  description: 'Cuando crees un expediente aparecerá aquí con su avance documental.',
+                                  action: canCreate ? Btn('Nuevo expediente', icon: Icons.add, onPressed: () => context.push('/expedientes/nuevo')) : null,
+                                ))
+                        : listView
+                        ? AppCard(
+                            padding: EdgeInsets.zero,
+                            child: Column(
+                              children: [
+                                for (var i = 0; i < items!.length; i++) ...[if (i > 0) Divider(height: 1, color: context.c.border), ExpedienteRow(item: items![i])],
+                              ],
+                            ),
+                          )
                         : Column(children: spaced(items!.map((i) => ExpedienteCard(item: i)), 12)),
                   ),
                   if (items!.isNotEmpty) ...[
@@ -207,11 +246,21 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
                       size: 12,
                       center: true,
                     ),
-                    if (moreError != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(moreError!, textAlign: TextAlign.center, style: TextStyle(color: context.c.dangerText))),
+                    if (moreError != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          moreError!,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: context.c.dangerText),
+                        ),
+                      ),
                     if (page + 1 < last!.page.totalPages)
                       Padding(
                         padding: const EdgeInsets.only(top: 12),
-                        child: Center(child: Btn(loadingMore ? 'Cargando…' : 'Cargar más expedientes', variant: BtnVariant.secondary, loading: loadingMore, onPressed: loadMore)),
+                        child: Center(
+                          child: Btn(loadingMore ? 'Cargando…' : 'Cargar más expedientes', variant: BtnVariant.secondary, loading: loadingMore, onPressed: loadMore),
+                        ),
                       ),
                   ],
                 ],
@@ -231,22 +280,35 @@ class DocumentsProgressView extends StatelessWidget {
     final p = progress;
     if (p.required == 0) return const MutedText('Sin documentos obligatorios registrados', size: 12);
     final pct = (p.accepted * 100 / p.required).round();
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        Expanded(
-          child: Text.rich(TextSpan(children: [
-            const TextSpan(text: 'Aprobados: '),
-            TextSpan(text: '${p.accepted}', style: const TextStyle(fontWeight: FontWeight.w600)),
-            TextSpan(text: ' de ${p.required}'),
-          ]), style: TextStyle(fontSize: 13.5, color: c.fg)),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    const TextSpan(text: 'Aprobados: '),
+                    TextSpan(
+                      text: '${p.accepted}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    TextSpan(text: ' de ${p.required}'),
+                  ],
+                ),
+                style: TextStyle(fontSize: 13.5, color: c.fg),
+              ),
+            ),
+            MutedText('$pct%', size: 12),
+          ],
         ),
-        MutedText('$pct%', size: 12),
-      ]),
-      const SizedBox(height: 6),
-      ProgressLine(pct / 100, color: pct == 100 ? c.successText : Brand.gold),
-      const SizedBox(height: 4),
-      MutedText('Recibidos: ${p.received} de ${p.required} obligatorios', size: 12),
-    ]);
+        const SizedBox(height: 6),
+        ProgressLine(pct / 100, color: pct == 100 ? c.successText : Brand.gold),
+        const SizedBox(height: 4),
+        MutedText('Recibidos: ${p.received} de ${p.required} obligatorios', size: 12),
+      ],
+    );
   }
 }
 
@@ -260,69 +322,179 @@ class ExpedienteCard extends StatelessWidget {
     final e = item.expediente;
     return AppCard(
       onTap: () => context.push('/expedientes/${e.id}'),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Expanded(child: Text(e.folio, style: TextStyle(fontFamily: 'monospace', fontSize: 12, color: c.muted, fontWeight: FontWeight.w500))),
-          Flexible(child: AppBadge(label(backendStatusLabels, e.status), tone: backendStatusTone[e.status] ?? Tone.neutral)),
-        ]),
-        const SizedBox(height: 12),
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(
-            width: 42,
-            height: 42,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(color: c.appBg, shape: BoxShape.circle),
-            child: Text(initials(e.ownerDisplayName), style: TextStyle(fontWeight: FontWeight.w600, color: c.fg)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  e.folio,
+                  style: TextStyle(fontFamily: 'GeistMono', fontSize: 12, color: c.muted, fontWeight: FontWeight.w500),
+                ),
+              ),
+              Flexible(child: AppBadge(label(backendStatusLabels, e.status), tone: backendStatusTone[e.status] ?? Tone.neutral)),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(e.ownerDisplayName.isEmpty ? 'Sin nombre' : e.ownerDisplayName,
-                  style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600, color: c.fg), maxLines: 2, overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 2),
-              Row(children: [
-                Icon(Icons.home_outlined, size: 14, color: c.muted),
-                const SizedBox(width: 4),
-                Expanded(child: MutedText('Intermediación exclusiva · ${label(propertyTypeLabels, e.propertyCaseType)}', size: 12.5)),
-              ]),
-            ]),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: c.appBg, shape: BoxShape.circle),
+                child: Text(
+                  initials(e.ownerDisplayName),
+                  style: TextStyle(fontWeight: FontWeight.w600, color: c.fg),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      e.ownerDisplayName.isEmpty ? 'Sin nombre' : e.ownerDisplayName,
+                      style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600, color: c.fg),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Icon(Icons.home_outlined, size: 14, color: c.muted),
+                        const SizedBox(width: 4),
+                        Expanded(child: MutedText('Intermediación exclusiva · ${label(propertyTypeLabels, e.propertyCaseType)}', size: 12.5)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ]),
-        const SizedBox(height: 12),
-        Divider(color: c.border),
-        const SizedBox(height: 8),
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(Icons.place_outlined, size: 16, color: c.muted),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              (e.propertyAddress?.isNotEmpty ?? false) ? e.propertyAddress! : ((e.propertyReference?.isNotEmpty ?? false) ? e.propertyReference! : 'Domicilio pendiente (se toma de los documentos)'),
-              style: TextStyle(fontSize: 13, color: c.muted),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
+          const SizedBox(height: 12),
+          Divider(color: c.border),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.place_outlined, size: 16, color: c.muted),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  (e.propertyAddress?.isNotEmpty ?? false)
+                      ? e.propertyAddress!
+                      : ((e.propertyReference?.isNotEmpty ?? false) ? e.propertyReference! : 'Domicilio pendiente (se toma de los documentos)'),
+                  style: TextStyle(fontSize: 13, color: c.muted),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
-        ]),
-        const SizedBox(height: 10),
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Icon(Icons.description_outlined, size: 16, color: c.muted),
-          const SizedBox(width: 6),
-          Expanded(child: DocumentsProgressView(progress: item.documents)),
-        ]),
-        const SizedBox(height: 12),
-        Row(children: [
-          Icon(Icons.calendar_today_outlined, size: 13, color: c.muted),
-          const SizedBox(width: 5),
-          Expanded(child: MutedText('Actualizado: ${_date(e.updatedAt)}', size: 12)),
-          Text('Ver expediente', style: TextStyle(color: c.goldText, fontWeight: FontWeight.w600, fontSize: 13.5)),
-          Icon(Icons.arrow_forward, size: 16, color: c.goldText),
-        ]),
-      ]),
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.description_outlined, size: 16, color: c.muted),
+              const SizedBox(width: 6),
+              Expanded(child: DocumentsProgressView(progress: item.documents)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Icon(Icons.calendar_today_outlined, size: 13, color: c.muted),
+              const SizedBox(width: 5),
+              Expanded(child: MutedText('Actualizado: ${_date(e.updatedAt)}', size: 12)),
+              Text(
+                'Ver expediente',
+                style: TextStyle(color: c.goldText, fontWeight: FontWeight.w600, fontSize: 13.5),
+              ),
+              Icon(Icons.arrow_forward, size: 16, color: c.goldText),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
   static String _date(String iso) {
     final d = DateTime.tryParse(iso)?.toLocal();
     return d == null ? iso : DateFormat('d MMM y', 'es_MX').format(d);
+  }
+}
+
+/// Fila compacta de la vista de lista.
+class ExpedienteRow extends StatelessWidget {
+  const ExpedienteRow({super.key, required this.item});
+  final ExpedienteOverviewItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final e = item.expediente;
+    final p = item.documents;
+    final pct = p.required == 0 ? null : (p.accepted * 100 / p.required).round();
+    return InkWell(
+      onTap: () => context.push('/expedientes/${e.id}'),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: c.appBg, shape: BoxShape.circle),
+              child: Text(
+                initials(e.ownerDisplayName),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.fg),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    e.ownerDisplayName.isEmpty ? 'Sin nombre' : e.ownerDisplayName,
+                    style: TextStyle(fontWeight: FontWeight.w600, color: c.fg),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    e.folio,
+                    style: TextStyle(fontFamily: 'GeistMono', fontSize: 12, color: c.muted),
+                  ),
+                  Text(
+                    (e.propertyAddress?.isNotEmpty ?? false)
+                        ? e.propertyAddress!
+                        : ((e.propertyReference?.isNotEmpty ?? false) ? e.propertyReference! : 'Intermediación exclusiva · ${label(propertyTypeLabels, e.propertyCaseType)}'),
+                    style: TextStyle(fontSize: 12, color: c.muted),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      AppBadge(label(backendStatusLabels, e.status), tone: backendStatusTone[e.status] ?? Tone.neutral),
+                      MutedText(pct == null ? 'Sin documentos obligatorios' : 'Aprobados ${p.accepted} de ${p.required} ($pct%)', size: 12),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: c.muted),
+          ],
+        ),
+      ),
+    );
   }
 }

@@ -170,7 +170,7 @@ class _ContractTabState extends State<ContractTab> {
                     Text.rich(TextSpan(children: [TextSpan(text: l.signerName), TextSpan(text: ' · ${l.signerCapacity}', style: TextStyle(color: c.muted))]),
                         style: TextStyle(color: c.fg, fontSize: 13.5)),
                     Row(children: [
-                      Expanded(child: SelectableText(l.url, maxLines: 2, style: TextStyle(fontFamily: 'monospace', fontSize: 11.5, color: c.fg))),
+                      Expanded(child: SelectableText(l.url, maxLines: 2, style: TextStyle(fontFamily: 'GeistMono', fontSize: 11.5, color: c.fg))),
                       IconButton(tooltip: 'Copiar liga', icon: const Icon(Icons.copy, size: 18), onPressed: () => copyText(context, l.url, 'Liga copiada.')),
                       IconButton(
                         tooltip: 'Compartir liga',
@@ -321,7 +321,7 @@ class _ContractCardState extends State<_ContractCard> {
           const SizedBox(width: 8),
           Flexible(child: AppBadge(label(contractStatusLabels, ct.status), tone: contractStatusTone[ct.status] ?? Tone.neutral)),
         ]),
-        if (ct.documentSha256 != null) Padding(padding: const EdgeInsets.only(top: 4), child: SelectableText('Huella SHA-256: ${ct.documentSha256}', style: TextStyle(fontFamily: 'monospace', fontSize: 10.5, color: c.muted))),
+        if (ct.documentSha256 != null) Padding(padding: const EdgeInsets.only(top: 4), child: SelectableText('Huella SHA-256: ${ct.documentSha256}', style: TextStyle(fontFamily: 'GeistMono', fontSize: 10.5, color: c.muted))),
         if (ct.status == 'DRAFT_INCOMPLETE' && ct.missingItems.isNotEmpty) ...[
           const SizedBox(height: 10),
           Notice(tone: Tone.warning, icon: Icons.error_outline, title: 'Borrador incompleto: no se puede firmar', text: 'Pendientes: ${ct.missingItems.join('; ')}'),

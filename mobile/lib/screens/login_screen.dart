@@ -56,7 +56,7 @@ class _LoginScreenState extends State<LoginScreen> {
               constraints: const BoxConstraints(maxWidth: 440),
               child: AutofillGroup(
                 child: Column(children: [
-                  Image.asset('assets/brand/century21-genera-autorizado.png', height: 64),
+                  const BrandLogo(),
                   const SizedBox(height: 28),
                   AppCard(
                     padding: const EdgeInsets.all(24),

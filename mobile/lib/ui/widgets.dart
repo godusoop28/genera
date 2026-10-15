@@ -192,6 +192,20 @@ class Notice extends StatelessWidget {
   }
 }
 
+/// Logo autorizado de CENTURY 21 Genera. En fondos oscuros se usa la versión
+/// dorada ("Principal – fondo oscuro" del manual); en los demás, la gris de la web.
+class BrandLogo extends StatelessWidget {
+  const BrandLogo({super.key, this.height = 64});
+  final double height;
+
+  @override
+  Widget build(BuildContext context) => Image.asset(
+        context.c == AppColors.dark ? 'assets/brand/century21-genera-dorado.png' : 'assets/brand/century21-genera-autorizado.png',
+        height: height,
+        semanticLabel: 'CENTURY 21 Genera',
+      );
+}
+
 class Avatar extends StatelessWidget {
   const Avatar(this.name, {super.key, this.size = 36});
   final String name;
@@ -354,7 +368,7 @@ class StatCard extends StatelessWidget {
               children: [
                 Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: c.fg, height: 1.1, fontFeatures: const [FontFeature.tabularFigures()])),
                 const SizedBox(height: 2),
-                Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: c.fg), maxLines: 1, overflow: TextOverflow.ellipsis),
+                Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: c.fg, height: 1.2), maxLines: 2, overflow: TextOverflow.ellipsis),
                 if (hint != null) Text(hint!, style: TextStyle(fontSize: 11, color: c.muted), maxLines: 2, overflow: TextOverflow.ellipsis),
               ],
             ),
@@ -638,7 +652,7 @@ class AppSelect<T> extends StatelessWidget {
           isExpanded: true,
           hint: hint == null ? null : Text(hint!),
           dropdownColor: c.card,
-          style: TextStyle(fontSize: 15, color: c.fg),
+          style: Theme.of(context).textTheme.bodyLarge!.copyWith(fontSize: 15, color: c.fg),
           items: [for (final o in options) DropdownMenuItem(value: o.value, child: Text(o.label, overflow: TextOverflow.ellipsis))],
           onChanged: enabled && onChanged != null ? (v) => onChanged!(v as T) : null,
         ),
