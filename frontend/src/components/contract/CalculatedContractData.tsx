@@ -9,7 +9,7 @@ export function CalculatedContractData({ calculations }: { calculations: Contrac
     ["Comisión (5%)", formatCurrency(calculations.commission)],
     ["IVA de comisión", formatCurrency(calculations.vat)],
     ["Total comisión + IVA", formatCurrency(calculations.totalCommissionVat)],
-    ["Pena convencional (100% de comisión)", formatCurrency(calculations.penalty)],
+    ["Pena convencional (100% de comisión + IVA)", formatCurrency(calculations.penalty)],
     ["Vigencia de exclusividad", `${calculations.exclusivityDays} días naturales`],
     ["Fecha de terminación", calculations.exclusivityEndDate],
   ];

@@ -254,7 +254,7 @@ final List<({String method, String path, Object? body})> sentRequests = [];
     return (200, {'ready': false, 'blockers': ['Faltan 4 documentos obligatorios por aceptar'], 'missingData': ['Número de escritura'], 'reviewItems': ['Instrucciones para visitas'], 'inconsistencies': [], 'variant': 'Persona física · copropietarios · escritura'});
   }
   if (p == '/internal/expedientes/exp-1/contract/data') {
-    return (200, {'price': '4500000', 'priceWritten': '', 'commission': '225000', 'vat': '36000', 'totalCommissionWithVat': '261000', 'penalty': '261000', 'exclusivityDays': 180, 'exclusivityEndDate': '2027-04-12'});
+    return (200, {'price': '4500000', 'priceWritten': '', 'commission': '225000', 'vat': '36000', 'totalCommissionWithVat': '261000', 'penaltyBase': '225000', 'penaltyVat': '36000', 'penalty': '261000', 'exclusivityDays': 180, 'exclusivityEndDate': '2027-04-12'});
   }
   if (p == '/internal/expedientes/exp-1/contracts') {
     return (

@@ -521,6 +521,9 @@ export interface ContractCalculationsResponse {
   commission: string;
   vat: string;
   totalCommissionWithVat: string;
+  penaltyBase: string;
+  penaltyVat: string;
+  /** Pena convencional total, con IVA incluido. */
   penalty: string;
   exclusivityDays: number;
   exclusivityEndDate: string;

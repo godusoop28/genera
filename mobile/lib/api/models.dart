@@ -481,10 +481,12 @@ class ContractCalculations {
       : price = _sr(j['price'], '0'),
         commission = _sr(j['commission']),
         totalCommissionWithVat = _sr(j['totalCommissionWithVat']),
+        penaltyBase = _sr(j['penaltyBase']),
+        penaltyVat = _sr(j['penaltyVat']),
         penalty = _sr(j['penalty']),
         exclusivityDays = _i(j['exclusivityDays']),
         exclusivityEndDate = _sr(j['exclusivityEndDate']);
-  final String price, commission, totalCommissionWithVat, penalty, exclusivityEndDate;
+  final String price, commission, totalCommissionWithVat, penaltyBase, penaltyVat, penalty, exclusivityEndDate;
   final int exclusivityDays;
 }
 

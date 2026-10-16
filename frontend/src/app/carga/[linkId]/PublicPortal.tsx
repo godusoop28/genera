@@ -40,7 +40,7 @@ import { DraftSync, type DraftSaveState } from "@/lib/draft-sync";
 import { ACCEPTED_FILE_TYPES, UploadValidationError } from "@/lib/upload-limits";
 import { publicDraftTransport, sessionDraftStore } from "@/lib/use-server-draft";
 import { civilStatusLabels, label, maritalRegimeLabels, participantRoleLabels, returnReasonLabels } from "@/lib/labels";
-import { AlertTriangle, CheckCircle2, HelpCircle, Loader2, MapPin, Pencil, Plus, ShieldCheck, Trash2, Upload } from "lucide-react";
+import { AlertTriangle, Bot, CheckCircle2, FileText, HelpCircle, Loader2, MapPin, Pencil, Plus, ScanLine, ShieldCheck, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const steps = ["Confirmar", "Aviso de privacidad", "Tus datos", "Documentos", "Listo"];
@@ -747,6 +747,9 @@ function DocumentsStep({
   const [participants, setParticipants] = useState<PublicParticipantResponse[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Control de Cambios #3: antes de la primera carga se explica cómo preparar los documentos.
+  const preparedKey = `portal:${token}:prepared`;
+  const [prepared, setPrepared] = useState(() => readDraft<boolean>(preparedKey) === true);
 
   const load = useCallback(() => {
     listPublicDocuments(token)
@@ -771,6 +774,7 @@ function DocumentsStep({
   const toFix = (documents ?? []).filter((d) => d.status === "RETURNED" || d.status === "REJECTED" || d.qualityIssue);
   const allRequiredUploaded = documents !== null && required.every((d) => d.status !== "PENDING");
   const canSubmit = status === "WAITING_DOCUMENTS";
+  const anyUploaded = (documents ?? []).some((d) => d.currentVersionNumber > 0);
 
   const handleSubmit = async () => {
     setSubmitting(true);
@@ -784,6 +788,17 @@ function DocumentsStep({
       setSubmitting(false);
     }
   };
+
+  if (documents !== null && !prepared && !anyUploaded) {
+    return (
+      <PrepareDocuments
+        onContinue={() => {
+          writeDraft(preparedKey, true);
+          setPrepared(true);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -879,6 +894,40 @@ function DocumentsStep({
         </p>
       )}
     </div>
+  );
+}
+
+/** Pantalla previa a la carga (Control de Cambios #3): qué formato y qué calidad se necesitan. */
+function PrepareDocuments({ onContinue }: { onContinue: () => void }) {
+  const [read, setRead] = useState(false);
+  const tips = [
+    { icon: FileText, text: <>Puedes subir tus archivos en <strong>PDF o fotografía</strong> (JPG o PNG). Las fotos del iPhone también funcionan.</> },
+    { icon: ScanLine, text: <>Los documentos deben estar <strong>bien escaneados o fotografiados</strong>: completos, sin cortes, sombras ni partes borrosas.</> },
+    { icon: CheckCircle2, text: <>Asegúrate de que el texto se <strong>lea con claridad</strong>.</> },
+    { icon: Bot, text: <>Nuestra <strong>inteligencia artificial revisará automáticamente</strong> cada documento.</> },
+    { icon: AlertTriangle, text: <>Si un documento no cumple, <strong>te avisaremos aquí</strong> para que lo vuelvas a subir.</>, warn: true },
+  ];
+  return (
+    <Card>
+      <CardHeader title="Antes de continuar, prepara tus documentos" description="Tenerlos a la mano te ahorra tiempo. Puedes subirlos poco a poco: lo que subas se guarda." />
+      <ul className="flex flex-col gap-3">
+        {tips.map(({ icon: Icon, text, warn }, i) => (
+          <li key={i} className="flex items-start gap-3 rounded-xl bg-app-bg p-3 text-sm text-obsessed">
+            <Icon className={`mt-0.5 h-5 w-5 shrink-0 ${warn ? "text-warning-text" : "text-dark-gold"}`} aria-hidden />
+            <span>{text}</span>
+          </li>
+        ))}
+      </ul>
+      <label className="mt-5 flex items-start gap-2 text-sm text-obsessed">
+        <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-[var(--color-c21-dark-gold)]" checked={read} onChange={(e) => setRead(e.target.checked)} />
+        Leí las recomendaciones.
+      </label>
+      <div className="mt-4 flex justify-end">
+        <Button size="lg" disabled={!read} onClick={onContinue}>
+          Ya tengo mis documentos listos — Continuar
+        </Button>
+      </div>
+    </Card>
   );
 }
 

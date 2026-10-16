@@ -5,8 +5,8 @@ import 'package:image_picker/image_picker.dart';
 import '../api/client.dart';
 import 'widgets.dart';
 
-/// Mismo límite que el backend (GET /public/upload-limits, 40 MB por archivo).
-const maxUploadBytes = 40 * 1024 * 1024;
+/// Mismo límite que el backend (GET /public/upload-limits, 100 MB por archivo).
+const maxUploadBytes = 100 * 1024 * 1024;
 
 String _contentType(String name) {
   final ext = name.toLowerCase().split('.').last;
@@ -59,7 +59,7 @@ Future<List<UploadFile>?> pickUploadFiles(BuildContext context, {bool multiple =
   if (out.isEmpty) return null;
   final tooBig = out.where((f) => f.bytes.length > maxUploadBytes).toList();
   if (tooBig.isNotEmpty) {
-    if (context.mounted) showToast(context, '"${tooBig.first.name}" pesa más de 40 MB. Redúcelo o envíalo en partes.');
+    if (context.mounted) showToast(context, '"${tooBig.first.name}" pesa más de 100 MB, el máximo por archivo.');
     return null;
   }
   return out;

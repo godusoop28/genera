@@ -32,8 +32,8 @@ spring:
       # archivo lo aplica FileValidator (app.upload.max-file-size-bytes); este
       # es solo el tope del servidor web, un poco mayor para que el mensaje
       # de error sea el de la aplicación. Los archivos se reciben en disco.
-      max-file-size: ${UPLOAD_MAX_FILE_SIZE_MB:40}MB
-      max-request-size: ${UPLOAD_MAX_REQUEST_SIZE_MB:150}MB
+      max-file-size: ${UPLOAD_MAX_FILE_SIZE_MB:101}MB
+      max-request-size: ${UPLOAD_MAX_REQUEST_SIZE_MB:250}MB
       file-size-threshold: 1MB
   jpa:
     open-in-view: false
@@ -134,10 +134,11 @@ app:
     api-key: ${CLOUDINARY_API_KEY:}
     api-secret: ${CLOUDINARY_API_SECRET:}
   upload:
-    # 40 MB por archivo: cubre escrituras y actas escaneadas de muchas páginas.
+    # 100 MB por archivo (Control de Cambios #4): escrituras y testimonios notariales
+    # escaneados de muchas páginas, sin pedirle al cliente que baje la calidad.
     # Con Cloudinary (máx. 10 MB por objeto en el plan gratuito) los archivos
     # grandes se guardan en partes de forma transparente (CloudinaryFileStorage).
-    max-file-size-bytes: ${UPLOAD_MAX_FILE_SIZE_BYTES:41943040}
+    max-file-size-bytes: ${UPLOAD_MAX_FILE_SIZE_BYTES:104857600}
     max-files-per-request: 30
     # HEIC/HEIF (iPhone) se convierte a JPEG en el navegador antes de subirse.
     allowed-public-mime-types: image/jpeg,image/png,image/webp,application/pdf

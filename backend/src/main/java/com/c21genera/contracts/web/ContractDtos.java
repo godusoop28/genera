@@ -125,6 +125,8 @@ public final class ContractDtos {
       String commission,
       String vat,
       String totalCommissionWithVat,
+      String penaltyBase,
+      String penaltyVat,
       String penalty,
       int exclusivityDays,
       String exclusivityEndDate) {
@@ -136,6 +138,8 @@ public final class ContractDtos {
           r.commission().toPlainString(),
           r.vat().toPlainString(),
           r.totalCommissionWithVat().toPlainString(),
+          r.penaltyBase().toPlainString(),
+          r.penaltyVat().toPlainString(),
           r.penalty().toPlainString(),
           r.exclusivityDays(),
           r.exclusivityEndDate().toString());

@@ -107,7 +107,7 @@ class _ContractTabState extends State<ContractTab> {
                   FieldView('Precio', formatMoney(calc!.price)),
                   FieldView('Comisión (5%)', formatMoney(calc!.commission)),
                   FieldView('Comisión + IVA', formatMoney(calc!.totalCommissionWithVat)),
-                  FieldView('Pena convencional', formatMoney(calc!.penalty)),
+                  FieldView('Pena convencional (con IVA)', '${formatMoney(calc!.penaltyBase)} + IVA ${formatMoney(calc!.penaltyVat)} = ${formatMoney(calc!.penalty)}'),
                   FieldView('Exclusividad', '${calc!.exclusivityDays} días (hasta ${formatDate(calc!.exclusivityEndDate)})'),
                 ]),
               )

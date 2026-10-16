@@ -617,8 +617,12 @@ public final class ContractTemplate {
         Paragraph.of(
             b("Novena. Penas Convencionales.-"),
             t(" Las partes acuerdan que, para el caso de incumplimiento de cualquiera de las obligaciones contraídas en el presente contrato, se aplicará una pena convencional equivalente al 100% (cien por ciento) de la comisión pactada en la cláusula segunda, lo cual resulta la cantidad de "),
-            money(c == null ? null : c.penalty(), "pena convencional (100% de la comisión)"),
-            t(".")));
+            money(c == null ? null : c.penaltyBase(), "pena convencional (100% de la comisión)"),
+            t(", más el Impuesto al Valor Agregado (16%) por "),
+            money(c == null ? null : c.penaltyVat(), "IVA de la pena convencional"),
+            t(", dando un total de "),
+            money(c == null ? null : c.penalty(), "pena convencional con IVA"),
+            t(" con IVA incluido.")));
     ContractReferenceData.FIXED_CLAUSES_BEFORE_NOTICES.forEach(this::clause);
 
     blocks.add(

@@ -19,9 +19,10 @@ class ContractCalculatorTest {
   }
 
   @Test
-  void penaltyEqualsCommission() {
+  void penaltyIsCommissionPlusVat() {
     BigDecimal commission = new BigDecimal("300000.00");
-    assertThat(ContractCalculator.penalty(commission)).isEqualByComparingTo(commission);
+    assertThat(ContractCalculator.penaltyBase(commission)).isEqualByComparingTo(commission);
+    assertThat(ContractCalculator.penalty(commission)).isEqualByComparingTo("348000.00");
   }
 
   @Test
@@ -37,7 +38,9 @@ class ContractCalculatorTest {
     assertThat(result.commission()).isEqualByComparingTo("300000.00");
     assertThat(result.vat()).isEqualByComparingTo("48000.00");
     assertThat(result.totalCommissionWithVat()).isEqualByComparingTo("348000.00");
-    assertThat(result.penalty()).isEqualByComparingTo("300000.00");
+    assertThat(result.penaltyBase()).isEqualByComparingTo("300000.00");
+    assertThat(result.penaltyVat()).isEqualByComparingTo("48000.00");
+    assertThat(result.penalty()).isEqualByComparingTo("348000.00");
     assertThat(result.exclusivityDays()).isEqualTo(180);
     assertThat(result.exclusivityEndDate()).isEqualTo(LocalDate.of(2027, 3, 13));
     assertThat(result.priceWritten()).isEqualTo("SEIS MILLONES DE PESOS 00/100 M.N.");

@@ -26,7 +26,21 @@ public final class DocumentFieldSchemas {
   private static final Map<DocumentTypeCode, List<String>> SCHEMAS = new EnumMap<>(DocumentTypeCode.class);
 
   static {
-    SCHEMAS.put(DocumentTypeCode.INE, List.of("fullName", "curp", "electorKey", "birthDate", "address", "expirationYear"));
+    // identificationType/issuingCountry/nationality: en este espacio también se sube otra identificación
+    // oficial (pasaporte, tarjeta de residente); la nacionalidad sale de ahí (Control de Cambios #9).
+    SCHEMAS.put(
+        DocumentTypeCode.INE,
+        List.of(
+            "fullName",
+            "curp",
+            "electorKey",
+            "birthDate",
+            "address",
+            "expirationYear",
+            "identificationType",
+            "documentNumber",
+            "issuingCountry",
+            "nationality"));
     SCHEMAS.put(DocumentTypeCode.PASSPORT, List.of("fullName", "passportNumber", "nationality", "birthDate", "curp", "expirationDate"));
     SCHEMAS.put(DocumentTypeCode.CURP, List.of("fullName", "curp", "birthDate"));
     SCHEMAS.put(DocumentTypeCode.TAX_STATUS_CERTIFICATE, List.of("fullName", "rfc", "curp", "taxRegime", "address"));
@@ -136,7 +150,12 @@ public final class DocumentFieldSchemas {
           Map.entry("expirationYear", "año de vigencia (el último año que es válida)"),
           Map.entry("expirationDate", "fecha de vencimiento"),
           Map.entry("passportNumber", "número de pasaporte"),
-          Map.entry("nationality", "nacionalidad"),
+          Map.entry("nationality", "nacionalidad del titular tal como aparece impresa (vacío si el documento no la indica)"),
+          Map.entry(
+              "identificationType",
+              "tipo de identificación: INE (también IFE), PASAPORTE, TARJETA_RESIDENTE, CEDULA_PROFESIONAL u OTRA"),
+          Map.entry("documentNumber", "número del documento cuando no es credencial del INE (pasaporte, tarjeta de residente, cédula)"),
+          Map.entry("issuingCountry", "país que emite la identificación (México para INE/IFE)"),
           Map.entry("rfc", "RFC con homoclave"),
           Map.entry("taxRegime", "régimen fiscal"),
           Map.entry("ownerFullName", "nombre del propietario o adquirente del inmueble (si son varios, todos separados por coma)"),
@@ -219,7 +238,7 @@ public final class DocumentFieldSchemas {
           AÑO DE REGISTRO y VIGENCIA (p. ej. "2019 - 2029": expirationYear es 2029; en IFE antigua puede \
           ser un solo año). En el reverso, la zona MRZ (renglones que empiezan con "IDMEX") permite leer \
           nombre y fecha de nacimiento si el frente no se ve. Lee cada dato por su etiqueta, no por su \
-          posición. Si solo se ve un lado, extrae lo de ese lado y avísalo en warnings.""",
+          posición. Si solo se ve un lado, extrae lo de ese lado y avísalo en warnings. Si en lugar de una           credencial del INE/IFE es otra identificación (pasaporte mexicano o extranjero, tarjeta de           residente, cédula de otro país), indícalo en identificationType y lee issuingCountry y nationality           del documento; nunca supongas una nacionalidad que no esté impresa.""",
           DocumentTypeCode.DEED,
           """
           Testimonio notarial; puede ser largo y viejo. El número de escritura, volumen, fecha y notario \
@@ -247,6 +266,19 @@ public final class DocumentFieldSchemas {
 
   public static List<String> fieldsFor(DocumentTypeCode type) {
     return SCHEMAS.getOrDefault(type, SCHEMAS.get(DocumentTypeCode.OTHER));
+  }
+
+  /**
+   * Campos que solo aparecen en algunas variantes del documento: se piden a la IA pero no
+   * cuentan para decidir si la extracción quedó completa (una credencial del INE no trae
+   * número de pasaporte ni nacionalidad impresa).
+   */
+  private static final Set<String> VARIANT_ONLY_FIELDS = Set.of("identificationType", "documentNumber", "issuingCountry", "nationality");
+
+  /** Campos de {@link #fieldsFor} con los que se mide si la extracción quedó completa. */
+  public static List<String> expectedFieldsFor(DocumentTypeCode type) {
+    List<String> fields = fieldsFor(type);
+    return type == DocumentTypeCode.INE ? fields.stream().filter(f -> !VARIANT_ONLY_FIELDS.contains(f)).toList() : fields;
   }
 
   public static boolean isLongDocument(DocumentTypeCode type) {

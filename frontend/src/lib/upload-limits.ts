@@ -7,7 +7,7 @@ import { shrinkImages } from "@/lib/image-shrink";
 // servidor no responde se usan los mismos valores por defecto del backend.
 
 export const DEFAULT_UPLOAD_LIMITS: UploadLimitsResponse = {
-  maxFileSizeBytes: 40 * 1024 * 1024,
+  maxFileSizeBytes: 100 * 1024 * 1024,
   maxFilesPerRequest: 30,
   allowedMimeTypes: ["image/jpeg", "image/png", "image/webp", "application/pdf"],
 };
@@ -73,7 +73,7 @@ export async function prepareUploads(files: File[]): Promise<File[]> {
     if (file.size > limits.maxFileSizeBytes) {
       throw new UploadValidationError(
         `"${file.name}" pesa ${formatMegabytes(file.size)}; el máximo es ${formatMegabytes(limits.maxFileSizeBytes)} por archivo. ` +
-          "Si es un PDF, guárdalo en menor calidad o súbelo en partes.",
+          "Si no puedes subirlo, llévalo a la oficina o pídele ayuda a tu asesor.",
       );
     }
     if (file.type && !limits.allowedMimeTypes.includes(file.type)) {

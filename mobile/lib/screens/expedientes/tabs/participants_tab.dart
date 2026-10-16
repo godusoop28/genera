@@ -21,6 +21,12 @@ List<String> _missingFields(Participant p, bool isCompany) => [
       if ((p.role == 'OWNER' || p.role == 'CO_OWNER') && p.address == null) 'domicilio',
     ];
 
+/// La identificación (guardada o detectada) es de otro tipo que la credencial del INE.
+bool _isForeignId(Participant p, String? detectedType) {
+  final type = p.idDocumentType ?? detectedType;
+  return type != null && type != 'INE';
+}
+
 const _participantFieldLabels = {
   'idDocumentType': 'Identificación',
   'idDocumentNumber': 'Número de identificación',
@@ -152,6 +158,12 @@ class _ParticipantsTabState extends State<ParticipantsTab> {
                       FieldView('Teléfono', p.phone ?? '—'),
                     ]),
                     if (missing.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text('Falta: ${missing.join(', ')}.', style: TextStyle(fontSize: 12, color: c.warningText))),
+                    // Control de Cambios #9: con INE la nacionalidad es mexicana; con otra identificación hay que capturarla.
+                    if (!isCompany && p.nationality == null && detected?.participants[p.id]?['nationality'] == null && _isForeignId(p, detected?.participants[p.id]?['idDocumentType']?.value))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text('Su identificación no es una credencial del INE: captura su nacionalidad.', style: TextStyle(fontSize: 12, color: c.warningText)),
+                      ),
                     if (editable)
                       Padding(
                         padding: const EdgeInsets.only(top: 8),

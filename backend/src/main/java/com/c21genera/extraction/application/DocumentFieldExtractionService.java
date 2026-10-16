@@ -148,7 +148,7 @@ public class DocumentFieldExtractionService implements ExtractionApi {
               field.page()));
     }
 
-    List<String> schema = DocumentFieldSchemas.fieldsFor(payload.type());
+    List<String> schema = DocumentFieldSchemas.expectedFieldsFor(payload.type());
     Set<String> found = result.fields().stream().map(FieldResult::fieldName).collect(Collectors.toSet());
     found.addAll(confirmed);
     int fieldsFound = (int) schema.stream().filter(found::contains).count();

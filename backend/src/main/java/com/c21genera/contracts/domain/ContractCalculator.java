@@ -31,8 +31,18 @@ public final class ContractCalculator {
     return commission.add(vat).setScale(2, RoundingMode.HALF_UP);
   }
 
-  public static BigDecimal penalty(BigDecimal commission) {
+  /** Base de la pena convencional: 100% de la comisión pactada, antes de IVA. */
+  public static BigDecimal penaltyBase(BigDecimal commission) {
     return commission.multiply(PENALTY_RATE).setScale(2, RoundingMode.HALF_UP);
+  }
+
+  /**
+   * Pena convencional total: base más IVA 16% (Control de Cambios #11, el cliente pidió que la pena
+   * se presente con IVA en todas las operaciones).
+   */
+  public static BigDecimal penalty(BigDecimal commission) {
+    BigDecimal base = penaltyBase(commission);
+    return base.add(vat(base)).setScale(2, RoundingMode.HALF_UP);
   }
 
   public static LocalDate exclusivityEndDate(LocalDate signatureDate) {
@@ -45,6 +55,9 @@ public final class ContractCalculator {
       BigDecimal commission,
       BigDecimal vat,
       BigDecimal totalCommissionWithVat,
+      BigDecimal penaltyBase,
+      BigDecimal penaltyVat,
+      /** Pena convencional total, con IVA incluido. */
       BigDecimal penalty,
       int exclusivityDays,
       LocalDate exclusivityEndDate) {}
@@ -53,6 +66,8 @@ public final class ContractCalculator {
     BigDecimal safePrice = price != null ? price : BigDecimal.ZERO;
     BigDecimal commission = commission(safePrice);
     BigDecimal vat = vat(commission);
+    BigDecimal penaltyBase = penaltyBase(commission);
+    BigDecimal penaltyVat = vat(penaltyBase);
     LocalDate effectiveSignatureDate = signatureDate != null ? signatureDate : LocalDate.now();
     return new Result(
         safePrice,
@@ -60,7 +75,9 @@ public final class ContractCalculator {
         commission,
         vat,
         totalCommissionWithVat(commission, vat),
-        penalty(commission),
+        penaltyBase,
+        penaltyVat,
+        penaltyBase.add(penaltyVat),
         EXCLUSIVITY_DAYS,
         exclusivityEndDate(effectiveSignatureDate));
   }

@@ -115,8 +115,11 @@ final Map<String, Map<String, _Target>> _mapping = {
   },
   'PROPERTY_TAX': {'landArea': _area('landAreaM2'), 'builtArea': _area('builtAreaM2')},
   'CADASTRAL_PLAN': {'landArea': _area('landAreaM2'), 'builtArea': _area('builtAreaM2')},
+  // El espacio "INE" es el de la identificación oficial: puede traer un pasaporte o una tarjeta de residente.
   'INE': {
     'electorKey': _participant('idDocumentNumber'),
+    'documentNumber': _participant('idDocumentNumber'),
+    'nationality': _participant('nationality'),
     'curp': _participant('curp'),
     'birthDate': _participant('birthDate', true),
     'address': _participant('address'),
@@ -132,8 +135,18 @@ final Map<String, Map<String, _Target>> _mapping = {
   'PROOF_OF_ADDRESS': {'address': _participant('address')},
 };
 
+/// La boleta del RPP es la fuente del folio real (Control de Cambios #8). Escritura y contrato
+/// privado nunca coexisten, así que alimenta a los dos: el contrato solo usa el que aplica.
+final Map<String, Map<String, List<_Target>>> _alsoFeeds = {
+  'RPP_REGISTRATION_SLIP': {
+    'publicRegistryFolio': [_legal('deed.registryData'), _legal('privateContract.realFolio')],
+    'registryDate': [_legal('privateContract.registryDate', true)],
+  },
+};
+
 /// Si dos documentos traen el mismo dato, gana el de mayor rango.
 const _priority = [
+  'RPP_REGISTRATION_SLIP',
   'DEED',
   'PRIVATE_CONTRACT',
   'CONDOMINIUM_REGIME',
@@ -153,9 +166,35 @@ const _idDocument = {
   'PASSPORT': (type: 'PASAPORTE', issuer: 'Secretaría de Relaciones Exteriores'),
 };
 
+String _plain(String s) => s.toUpperCase().replaceAll('Á', 'A').replaceAll('É', 'E').replaceAll('Í', 'I').replaceAll('Ó', 'O').replaceAll('Ú', 'U');
+
+/// Qué identificación se subió en el espacio de la INE, según lo que leyó la IA (Control de Cambios #9).
+String? identificationKind(String? raw) {
+  final text = _plain(raw ?? '');
+  if (text.trim().isEmpty) return null;
+  if (RegExp(r'(^|[^A-Z])(INE|IFE)([^A-Z]|$)|CREDENCIAL PARA VOTAR|ELECTORAL').hasMatch(text)) return 'INE';
+  if (text.contains('PASAPORTE') || text.contains('PASSPORT')) return 'PASAPORTE';
+  if (text.contains('RESIDENTE') || text.contains('FM2') || text.contains('FM3')) return 'FM2_RESIDENTE';
+  if (text.contains('CEDULA PROFESIONAL')) return 'CEDULA_PROFESIONAL';
+  return 'OTRA';
+}
+
+bool _isMexico(String country) => RegExp(r'^(MEXICO|ESTADOS UNIDOS MEXICANOS|MEX)$').hasMatch(_plain(country).trim());
+
 DetectedData buildDetectedData(List<ExpedienteObservation> observations, String? ownerParticipantId) {
   final result = DetectedData();
   final ineHolders = <String, Detected>{};
+  // Tipo y país de la identificación que se subió en el espacio de la INE, por participante.
+  final idKinds = <String, String?>{};
+  final idCountries = <String, Detected>{};
+  for (final o in observations) {
+    final participantId = o.participantId ?? ownerParticipantId;
+    if (o.documentType != 'INE' || participantId == null || o.value.trim().isEmpty) continue;
+    if (o.fieldName == 'identificationType') idKinds[participantId] = identificationKind(o.value);
+    if (o.fieldName == 'issuingCountry') {
+      idCountries[participantId] = Detected(value: o.value.trim(), source: documentTypeLabel(o.documentType), confirmed: o.confirmed);
+    }
+  }
   int rank(String t) => _priority.contains(t) ? _priority.indexOf(t) : _priority.length;
   final sorted = [...observations]..sort((a, b) {
       final byConfirmed = (b.confirmed ? 1 : 0) - (a.confirmed ? 1 : 0);
@@ -163,38 +202,9 @@ DetectedData buildDetectedData(List<ExpedienteObservation> observations, String?
     });
 
   for (final o in sorted) {
-    final target = _mapping[o.documentType]?[o.fieldName];
-    if (target == null || o.value.trim().isEmpty) continue;
-    var value = o.value.trim();
-    if (target.date) {
-      final date = normalizeDate(value);
-      if (date == null) continue;
-      value = date;
-    }
-    if (target.kind == 'area') {
-      final area = normalizeArea(value);
-      if (area == null) continue;
-      value = area;
-    }
-    final detected = Detected(value: value, source: documentTypeLabel(o.documentType), confirmed: o.confirmed);
-    if (target.kind == 'legal') {
-      result.legal.putIfAbsent(target.key, () => detected);
-    } else if (target.kind == 'area') {
-      if (target.key == 'landAreaM2') result.landAreaM2 ??= detected;
-      if (target.key == 'builtAreaM2') result.builtAreaM2 ??= detected;
-    } else {
-      // Documentos sin titular propio (p. ej. la constancia fiscal de la empresa) son del propietario.
-      final participantId = o.participantId ?? ownerParticipantId;
-      if (participantId == null) continue;
-      final bucket = result.participants.putIfAbsent(participantId, () => {});
-      if (bucket.containsKey(target.key)) continue;
-      bucket[target.key] = detected;
-      final id = _idDocument[o.documentType];
-      if (target.key == 'idDocumentNumber' && id != null) {
-        bucket.putIfAbsent('idDocumentType', () => Detected(value: id.type, source: detected.source, confirmed: detected.confirmed));
-        bucket.putIfAbsent('idDocumentIssuer', () => Detected(value: id.issuer, source: detected.source, confirmed: detected.confirmed));
-        if (o.documentType == 'INE') ineHolders[participantId] = detected;
-      }
+    if (o.value.trim().isEmpty) continue;
+    for (final target in [?_mapping[o.documentType]?[o.fieldName], ...?_alsoFeeds[o.documentType]?[o.fieldName]]) {
+      _apply(result, ineHolders, idKinds, idCountries, ownerParticipantId, o, target);
     }
   }
   // La credencial del INE solo se expide a ciudadanos mexicanos: si ningún documento dice la
@@ -202,7 +212,62 @@ DetectedData buildDetectedData(List<ExpedienteObservation> observations, String?
   ineHolders.forEach((participantId, ine) {
     result.participants.putIfAbsent(participantId, () => {}).putIfAbsent('nationality', () => Detected(value: 'Mexicana', source: ine.source, confirmed: ine.confirmed));
   });
+  // Una identificación de otro tipo emitida por México (p. ej. pasaporte mexicano) también la indica.
+  idCountries.forEach((participantId, country) {
+    if (!_isMexico(country.value)) return;
+    result.participants.putIfAbsent(participantId, () => {}).putIfAbsent('nationality', () => Detected(value: 'Mexicana', source: country.source, confirmed: country.confirmed));
+  });
   return result;
+}
+
+void _apply(
+  DetectedData result,
+  Map<String, Detected> ineHolders,
+  Map<String, String?> idKinds,
+  Map<String, Detected> idCountries,
+  String? ownerParticipantId,
+  ExpedienteObservation o,
+  _Target target,
+) {
+  var value = o.value.trim();
+  if (target.date) {
+    final date = normalizeDate(value);
+    if (date == null) return;
+    value = date;
+  }
+  if (target.kind == 'area') {
+    final area = normalizeArea(value);
+    if (area == null) return;
+    value = area;
+  }
+  final detected = Detected(value: value, source: documentTypeLabel(o.documentType), confirmed: o.confirmed);
+  if (target.kind == 'legal') {
+    result.legal.putIfAbsent(target.key, () => detected);
+  } else if (target.kind == 'area') {
+    if (target.key == 'landAreaM2') result.landAreaM2 ??= detected;
+    if (target.key == 'builtAreaM2') result.builtAreaM2 ??= detected;
+  } else {
+    // Documentos sin titular propio (p. ej. la constancia fiscal de la empresa) son del propietario.
+    final participantId = o.participantId ?? ownerParticipantId;
+    if (participantId == null) return;
+    final bucket = result.participants.putIfAbsent(participantId, () => {});
+    if (bucket.containsKey(target.key)) return;
+    bucket[target.key] = detected;
+    final kind = o.documentType == 'INE' ? (idKinds[participantId] ?? 'INE') : null;
+    final id = kind != null && kind != 'INE' ? null : _idDocument[o.documentType];
+    if (target.key == 'idDocumentNumber' && id != null) {
+      bucket.putIfAbsent('idDocumentType', () => Detected(value: id.type, source: detected.source, confirmed: detected.confirmed));
+      bucket.putIfAbsent('idDocumentIssuer', () => Detected(value: id.issuer, source: detected.source, confirmed: detected.confirmed));
+      if (o.documentType == 'INE') ineHolders[participantId] = detected;
+    } else if (target.key == 'idDocumentNumber' && kind != null && kind != 'OTRA') {
+      // Otra identificación oficial en el espacio de la INE: no implica nacionalidad mexicana.
+      bucket.putIfAbsent('idDocumentType', () => Detected(value: kind, source: detected.source, confirmed: detected.confirmed));
+      final country = idCountries[participantId];
+      if (country != null) {
+        bucket.putIfAbsent('idDocumentIssuer', () => Detected(value: 'Gobierno de ${country.value}', source: country.source, confirmed: country.confirmed));
+      }
+    }
+  }
 }
 
 String legalValue(Json legal, String key) {

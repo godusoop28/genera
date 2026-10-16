@@ -101,7 +101,7 @@ export const CONTRACT_CLAUSES = [
   {
     id: "novena",
     title: "Novena. Penas convencionales",
-    text: "Pena convencional equivalente al 100% de la comisión pactada en la cláusula segunda, para el caso de incumplimiento de cualquiera de las obligaciones contraídas.",
+    text: "Pena convencional equivalente al 100% de la comisión pactada en la cláusula segunda, más IVA (16%), para el caso de incumplimiento de cualquiera de las obligaciones contraídas.",
   },
   {
     id: "decima",

@@ -103,7 +103,7 @@ export function ContractTab({ expediente, reload, freshSigningLinks: links, setF
             <Info k="Precio" v={formatMoney(calc.price)} />
             <Info k="Comisión (5%)" v={formatMoney(calc.commission)} />
             <Info k="Comisión + IVA" v={formatMoney(calc.totalCommissionWithVat)} />
-            <Info k="Pena convencional" v={formatMoney(calc.penalty)} />
+            <Info k="Pena convencional (con IVA)" v={`${formatMoney(calc.penaltyBase)} + IVA ${formatMoney(calc.penaltyVat)} = ${formatMoney(calc.penalty)}`} />
             <Info k="Exclusividad" v={`${calc.exclusivityDays} días (hasta ${formatDate(calc.exclusivityEndDate)})`} />
           </dl>
         ) : (

@@ -12,15 +12,15 @@ function fileOfSize(name: string, type: string, bytes: number): File {
 }
 
 describe("prepareUploads (límites sincronizados con el backend)", () => {
-  it("acepta un PDF de más de 10 MB dentro del nuevo límite de 40 MB", async () => {
-    const deed = fileOfSize("escritura.pdf", "application/pdf", 15 * 1024 * 1024);
+  it("acepta una escritura de 51 MB dentro del límite de 100 MB", async () => {
+    const deed = fileOfSize("ESCRITURA TLAHUICA (1).pdf", "application/pdf", 51 * 1024 * 1024);
     await expect(prepareUploads([deed])).resolves.toHaveLength(1);
   });
 
   it("rechaza ANTES de subir un archivo mayor al límite, con un mensaje claro", async () => {
     const huge = fileOfSize("escaneo.pdf", "application/pdf", DEFAULT_UPLOAD_LIMITS.maxFileSizeBytes + 1);
     await expect(prepareUploads([huge])).rejects.toBeInstanceOf(UploadValidationError);
-    await expect(prepareUploads([huge])).rejects.toThrow(/máximo es 40 MB/);
+    await expect(prepareUploads([huge])).rejects.toThrow(/máximo es 100 MB/);
   });
 
   it("acepta WEBP y rechaza formatos que el servidor no admite", async () => {

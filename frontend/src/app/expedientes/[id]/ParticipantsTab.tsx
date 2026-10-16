@@ -43,6 +43,12 @@ function missingFields(p: ParticipantResponse, isCompany: boolean): string[] {
   return missing;
 }
 
+/** La identificación (guardada o detectada) es de otro tipo que la credencial del INE. */
+function isForeignId(p: ParticipantResponse, detectedType: string | undefined): boolean {
+  const type = p.idDocumentType ?? detectedType;
+  return Boolean(type) && type !== "INE";
+}
+
 export function ParticipantsTab({ expediente, participants, reload }: ExpedienteContext) {
   const { showToast } = useToast();
   const can = useCan();
@@ -127,6 +133,10 @@ export function ParticipantsTab({ expediente, participants, reload }: Expediente
                   <Item k="Teléfono" v={p.phone ?? "—"} />
                 </dl>
                 {missing.length > 0 ? <p className="mt-2 text-xs text-warning-text">Falta: {missing.join(", ")}.</p> : null}
+                {/* Control de Cambios #9: con INE la nacionalidad es mexicana; con otra identificación hay que capturarla. */}
+                {!isCompany && !p.nationality && !detected?.participants[p.id]?.nationality && isForeignId(p, detected?.participants[p.id]?.idDocumentType?.value) ? (
+                  <p className="mt-1 text-xs text-warning-text">Su identificación no es una credencial del INE: captura su nacionalidad.</p>
+                ) : null}
               </li>
             );
           })}

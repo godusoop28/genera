@@ -25,7 +25,8 @@ class DocumentFieldSchemasTest {
   @Test
   void ineHasAllExpectedFieldsAndReadingHintsForEveryDesign() {
     assertThat(DocumentFieldSchemas.fieldsFor(DocumentTypeCode.INE))
-        .containsExactly("fullName", "curp", "electorKey", "birthDate", "address", "expirationYear");
+        .containsExactly(
+            "fullName", "curp", "electorKey", "birthDate", "address", "expirationYear", "identificationType", "documentNumber", "issuingCountry", "nationality");
     assertThat(DocumentFieldSchemas.readingHints(DocumentTypeCode.INE)).contains("IFE").contains("reverso").contains("horizontal");
   }
 }

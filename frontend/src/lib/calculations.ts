@@ -103,8 +103,10 @@ export function calculateVat(commission: number): number {
   return commission * 0.16;
 }
 
+/** Pena convencional con IVA incluido: 100% de la comisión + 16% (Control de Cambios #11). */
 export function calculatePenalty(commission: number): number {
-  return commission * CONTRACT_PENALTY_RATE;
+  const base = commission * CONTRACT_PENALTY_RATE;
+  return base + calculateVat(base);
 }
 
 export function calculateExclusivityEndDate(signatureDate: string | Date): Date {
