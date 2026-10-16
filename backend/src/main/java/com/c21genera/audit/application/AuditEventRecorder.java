@@ -19,6 +19,7 @@ import com.c21genera.shared.events.DocumentEvents.DocumentApplicabilityChanged;
 import com.c21genera.shared.events.DocumentEvents.DocumentDeferralChanged;
 import com.c21genera.shared.events.DocumentEvents.DocumentContentAssessed;
 import com.c21genera.shared.events.DocumentEvents.DocumentFileMoved;
+import com.c21genera.shared.events.DocumentEvents.DocumentFollowUpChanged;
 import com.c21genera.shared.events.DocumentEvents.DocumentReprocessRequested;
 import com.c21genera.shared.events.DocumentEvents.DocumentQualityFailed;
 import com.c21genera.shared.events.DocumentEvents.DocumentReviewed;
@@ -157,6 +158,22 @@ class AuditEventRecorder {
             ? "Cargó " + label + " en nombre del cliente (" + event.pages().size() + " archivo(s))"
             : "Cargó " + label + " desde su liga (" + event.pages().size() + " archivo(s))";
     activity(event.expedienteId(), ActivityCategory.DOCUMENT, "DOCUMENT_UPLOADED", event.actor(), event.documentId(), label, message);
+  }
+
+  @ApplicationModuleListener
+  void on(DocumentFollowUpChanged event) {
+    String label = event.name();
+    String note = event.note() != null ? ": " + event.note() : "";
+    String message =
+        switch (event.change()) {
+          case CUSTOM_ADDED -> "Agregó el documento " + label + " (no está en el listado)";
+          case EXCEPTION_APPROVED -> "Aprobó por excepción seguir sin " + label + "; se entregará después" + note;
+          case EXCEPTION_REVOKED -> "Retiró la excepción de " + label + ": vuelve a ser necesario";
+          case UPDATE_REQUESTED -> "Pidió al cliente una versión actualizada de " + label + note;
+          case UPDATE_CANCELLED -> "Canceló la solicitud de actualización de " + label;
+        };
+    record("DocumentFollowUpChanged", "Document", event.documentId(), event.actor(), event.change() + ": " + label);
+    activity(event.expedienteId(), ActivityCategory.DOCUMENT, "DOCUMENT_" + event.change().name(), event.actor(), event.documentId(), label, message);
   }
 
   @ApplicationModuleListener

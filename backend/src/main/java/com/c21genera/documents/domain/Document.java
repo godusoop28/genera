@@ -73,6 +73,24 @@ public class Document extends AuditableEntity {
   private String lastReviewComment;
   private Instant lastReviewedAt;
 
+  /** Documento agregado a mano porque no está en el listado (Control de Cambios #1): su nombre. */
+  @Column(length = 120)
+  private String customName;
+
+  /**
+   * Excepción aprobada por el asesor (Control de Cambios #5): falta el documento pero no
+   * bloquea la aprobación ni el contrato; el cliente puede entregarlo después.
+   */
+  private String exceptionNote;
+
+  private UUID exceptionByUserId;
+  private Instant exceptionAt;
+
+  /** Se pidió una versión actualizada (Control de Cambios #10); la anterior se conserva. */
+  private String updateRequestNote;
+
+  private Instant updateRequestedAt;
+
   protected Document() {}
 
   public Document(UUID expedienteId, String requirementCode, DocumentTypeCode type, UUID participantId, boolean required) {
@@ -96,6 +114,13 @@ public class Document extends AuditableEntity {
     this.required = required;
   }
 
+  /** Documento agregado a mano con su propio nombre (Control de Cambios #1). */
+  public static Document custom(UUID expedienteId, String name, UUID participantId) {
+    Document document = new Document(expedienteId, "extra-" + UUID.randomUUID(), DocumentTypeCode.OTHER, participantId, true);
+    document.customName = name;
+    return document;
+  }
+
   public int startNewVersion() {
     if (status == DocumentStatus.NOT_APPLICABLE) {
       throw new ConflictException(
@@ -103,7 +128,49 @@ public class Document extends AuditableEntity {
     }
     this.currentVersionNumber += 1;
     this.status = DocumentStatus.UPLOADED;
+    // La versión nueva es la actualización que se pidió; la anterior queda en el historial.
+    this.updateRequestNote = null;
+    this.updateRequestedAt = null;
     return this.currentVersionNumber;
+  }
+
+  /** Aprueba que falte por ahora (con nota): no bloquea el flujo y se puede entregar después. */
+  public void approveException(String note, UUID byUserId, Instant when) {
+    if (status == DocumentStatus.ACCEPTED || status == DocumentStatus.NOT_APPLICABLE) {
+      throw new ConflictException(
+          "DOCUMENT_ALREADY_RESOLVED", "Este documento ya está aceptado o marcado como \"No aplica\"; no necesita una excepción.");
+    }
+    this.exceptionNote = note;
+    this.exceptionByUserId = byUserId;
+    this.exceptionAt = when;
+  }
+
+  public void revokeException() {
+    this.exceptionNote = null;
+    this.exceptionByUserId = null;
+    this.exceptionAt = null;
+  }
+
+  public boolean hasException() {
+    return exceptionAt != null;
+  }
+
+  /** Pide una versión actualizada de un documento ya entregado (p. ej. una constancia vencida). */
+  public void requestUpdate(String note, Instant when) {
+    if (currentVersionNumber == 0 || status == DocumentStatus.NOT_APPLICABLE) {
+      throw new ConflictException("DOCUMENT_WITHOUT_FILE", "Este documento todavía no tiene un archivo que actualizar.");
+    }
+    this.updateRequestNote = note;
+    this.updateRequestedAt = when;
+  }
+
+  public void cancelUpdateRequest() {
+    this.updateRequestNote = null;
+    this.updateRequestedAt = null;
+  }
+
+  public boolean isUpdateRequested() {
+    return updateRequestedAt != null;
   }
 
   public void markReadyForReview() {
@@ -160,7 +227,7 @@ public class Document extends AuditableEntity {
 
   /** Cuenta como "cargado" para poder enviar el expediente (un "No aplica" también cuenta; uno para después no se espera). */
   public boolean isSatisfiedForSubmission() {
-    return deferred || status != DocumentStatus.PENDING;
+    return deferred || hasException() || status != DocumentStatus.PENDING;
   }
 
   /** Pedirlo desde la primera entrega o dejar que el cliente lo suba después. */
@@ -181,9 +248,42 @@ public class Document extends AuditableEntity {
     return deferralReason;
   }
 
-  /** Cuenta como resuelto para aprobar la documentación: aceptado, o "No aplica" justificado. */
+  /** Cuenta como resuelto para aprobar la documentación: aceptado, "No aplica" justificado o excepción aprobada. */
   public boolean isSatisfiedForApproval() {
-    return status == DocumentStatus.ACCEPTED || status == DocumentStatus.NOT_APPLICABLE;
+    return status == DocumentStatus.ACCEPTED || status == DocumentStatus.NOT_APPLICABLE || hasException();
+  }
+
+  public boolean isCustom() {
+    return customName != null;
+  }
+
+  public String getCustomName() {
+    return customName;
+  }
+
+  /** Nombre con el que se muestra: el capturado si se agregó a mano, si no el del tipo. */
+  public String displayName() {
+    return customName != null ? customName : com.c21genera.shared.domain.DocumentTypeLabels.of(type);
+  }
+
+  public String getExceptionNote() {
+    return exceptionNote;
+  }
+
+  public UUID getExceptionByUserId() {
+    return exceptionByUserId;
+  }
+
+  public Instant getExceptionAt() {
+    return exceptionAt;
+  }
+
+  public String getUpdateRequestNote() {
+    return updateRequestNote;
+  }
+
+  public Instant getUpdateRequestedAt() {
+    return updateRequestedAt;
   }
 
   public UUID getId() {

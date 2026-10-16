@@ -106,7 +106,7 @@ export function DocumentTimingCard({ expediente, participants }: Pick<Expediente
                         onChange={(e) => (e.target.checked ? change([doc], false) : setDeferring(doc))}
                       />
                       <span className="min-w-0 flex-1 break-words text-sm text-obsessed">
-                        {documentTypeLabel(doc.type)}
+                        {doc.customName ?? documentTypeLabel(doc.type)}
                         {doc.deferred && doc.deferralReason ? <span className="block text-xs text-muted">Razón: {doc.deferralReason}</span> : null}
                       </span>
                       <span className={cn("shrink-0 text-xs font-medium", now ? "text-dark-gold" : "text-muted")}>{now ? "Ahora" : "Después"}</span>
@@ -120,7 +120,7 @@ export function DocumentTimingCard({ expediente, participants }: Pick<Expediente
       </div>
       <ReasonModal
         open={deferring !== null}
-        title={deferring ? `¿Por qué no pides "${documentTypeLabel(deferring.type)}" ahora?` : ""}
+        title={deferring ? `¿Por qué no pides "${deferring.customName ?? documentTypeLabel(deferring.type)}" ahora?` : ""}
         description="El cliente podrá subirlo después desde su misma liga. Escribe la razón de esta excepción: queda en el expediente y en la bitácora para que el equipo entienda por qué no se pidió."
         label="Razón"
         placeholder="Ej. El cliente está tramitando el certificado de libertad de gravamen y lo tendrá la próxima semana."

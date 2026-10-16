@@ -459,7 +459,7 @@ class _DocumentTimingCardState extends State<_DocumentTimingCard> {
                             } else {
                               final reason = await askReason(
                                 context,
-                                title: '¿Por qué no pides "${documentTypeLabel(d.type)}" ahora?',
+                                title: '¿Por qué no pides "${d.customName ?? documentTypeLabel(d.type)}" ahora?',
                                 description:
                                     'El cliente podrá subirlo después desde su misma liga. Escribe la razón de esta excepción: queda en el expediente y en la bitácora para que el equipo entienda por qué no se pidió.',
                                 label: 'Razón',
@@ -470,7 +470,7 @@ class _DocumentTimingCardState extends State<_DocumentTimingCard> {
                               if (reason != null) change([d], true, reason);
                             }
                           },
-                    title: Text(documentTypeLabel(d.type), style: TextStyle(fontSize: 13.5, color: c.fg)),
+                    title: Text(d.customName ?? documentTypeLabel(d.type), style: TextStyle(fontSize: 13.5, color: c.fg)),
                     subtitle: d.deferred && d.deferralReason != null ? Text('Razón: ${d.deferralReason}', style: TextStyle(fontSize: 12, color: c.muted)) : null,
                     secondary: Text(
                       !d.deferred ? 'Ahora' : 'Después',

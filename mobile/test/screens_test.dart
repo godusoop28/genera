@@ -88,6 +88,11 @@ void main() {
     sentRequests.clear();
     FlutterSecureStorage.setMockInitialValues({'c21genera-access-token': 'token', 'c21genera-refresh-token': 'refresh'});
     ApiClient.instance.httpClient = MockClient((req) async {
+      // Las páginas del visor son imágenes: un PNG de 1×1.
+      if (req.url.path.contains('/view/pages/')) {
+        sentRequests.add((method: req.method, path: req.url.path.replaceFirst('/api/v1', ''), body: null));
+        return http.Response.bytes(base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='), 200, headers: {'content-type': 'image/png'});
+      }
       final sent = req is http.Request && req.body.isNotEmpty ? jsonDecode(req.body) : null;
       final (status, body) = fakeBackend(req.method, req.url, sent);
       return http.Response.bytes(utf8.encode(body == null ? '' : jsonEncode(body)), status, headers: {'content-type': 'application/json'});
@@ -256,6 +261,40 @@ void main() {
     await tester.tap(find.text('Aceptar').first);
     await settle(tester);
     expect(sentRequests.any((r) => r.method == 'POST' && r.path == '/internal/documents/d-1/accept'), isTrue);
+    await _close(tester);
+  });
+
+  testWidgets('flujo: ver un documento en el visor sin descarga', (tester) async {
+    await _open(tester, '/expedientes/exp-1');
+    await tester.tap(find.text('Documentos'));
+    await settle(tester);
+    await Scrollable.ensureVisible(tester.element(find.text('Ver archivo').first), alignment: 0.5);
+    await settle(tester, 1);
+    await tester.tap(find.text('Ver archivo').first);
+    await settle(tester);
+    expect(find.textContaining('Solo consulta'), findsOneWidget);
+    expect(find.text('Página 1 de 2'), findsOneWidget);
+    expect(find.byTooltip('Descargar original'), findsNothing);
+    expect(sentRequests.any((r) => r.path.endsWith('/view/pages/1')), isTrue);
+    expect(sentRequests.any((r) => r.path.endsWith('/download')), isFalse);
+    await _close(tester);
+  });
+
+  testWidgets('flujo: agregar un documento que no está en el listado', (tester) async {
+    await _open(tester, '/expedientes/exp-1');
+    await tester.tap(find.text('Documentos'));
+    await settle(tester);
+    await Scrollable.ensureVisible(tester.element(find.text('Agregar otro documento')), alignment: 0.5);
+    await settle(tester, 1);
+    await tester.tap(find.text('Agregar otro documento'));
+    await settle(tester);
+    await tester.enterText(find.byType(TextField).first, 'Constancia de no adeudo');
+    await settle(tester, 1);
+    await tester.tap(find.text('Agregar'));
+    await settle(tester);
+    final sent = sentRequests.where((r) => r.method == 'POST' && r.path == '/internal/expedientes/exp-1/documents').toList();
+    expect(sent, hasLength(1));
+    expect((sent.first.body as Map)['name'], 'Constancia de no adeudo');
     await _close(tester);
   });
 

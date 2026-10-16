@@ -90,7 +90,7 @@ class NotificationServiceTest {
     when(fileStorage.generateTemporaryDownloadUrl(eq("processed/doc1.pdf"), any()))
         .thenReturn(URI.create("https://example.com/signed-download"));
 
-    NotificationService.EmailPreview preview = service.preview(expedienteId);
+    NotificationService.EmailPreview preview = service.preview(expedienteId, true);
 
     assertThat(preview.attachments()).hasSize(1);
     assertThat(preview.attachments().getFirst().fileName()).isEqualTo("escritura.pdf");
@@ -100,11 +100,24 @@ class NotificationServiceTest {
   }
 
   @Test
+  void withoutDownloadPermissionThePreviewHasNoDownloadLinks() {
+    UUID expedienteId = UUID.randomUUID();
+    when(documentsApi.acceptedDocumentsOf(expedienteId))
+        .thenReturn(List.of(new AcceptedDocumentView(UUID.randomUUID(), "OTHER", null, "processed/x.pdf", "Constancia de no adeudo")));
+
+    NotificationService.EmailPreview preview = service.preview(expedienteId, false);
+
+    assertThat(preview.attachments().getFirst().fileName()).isEqualTo("constancia-de-no-adeudo.pdf");
+    assertThat(preview.attachments().getFirst().downloadUrl()).isNull();
+    verify(fileStorage, never()).generateTemporaryDownloadUrl(any(), any());
+  }
+
+  @Test
   void previewThrowsWhenNoDocumentsAreAcceptedYet() {
     UUID expedienteId = UUID.randomUUID();
     when(documentsApi.acceptedDocumentsOf(expedienteId)).thenReturn(List.of());
 
-    assertThatThrownBy(() -> service.preview(expedienteId)).isInstanceOf(UnreadyExpedienteEmailException.class);
+    assertThatThrownBy(() -> service.preview(expedienteId, true)).isInstanceOf(UnreadyExpedienteEmailException.class);
   }
 
   @Test

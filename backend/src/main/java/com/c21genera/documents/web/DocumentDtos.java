@@ -86,7 +86,13 @@ public final class DocumentDtos {
       Instant lastReviewedAt,
       LatestVersionSummary latestVersion,
       /* UPLOADED, PROCESSING, EXTRACTION_COMPLETE, EXTRACTION_PARTIAL, REQUIRES_REVIEW, ACCEPTED o ERROR. */
-      String pipelineStatus) {
+      String pipelineStatus,
+      /* Nombre capturado si se agregó a mano (no está en el listado); si no, null. */
+      String customName,
+      String exceptionNote,
+      Instant exceptionAt,
+      String updateRequestNote,
+      Instant updateRequestedAt) {
 
     public static DocumentResponse from(Document d, DocumentVersion latest) {
       return new DocumentResponse(
@@ -107,7 +113,12 @@ public final class DocumentDtos {
           d.getLastReviewComment(),
           d.getLastReviewedAt(),
           LatestVersionSummary.from(latest),
-          pipelineStatusOf(d, latest));
+          pipelineStatusOf(d, latest),
+          d.getCustomName(),
+          d.getExceptionNote(),
+          d.getExceptionAt(),
+          d.getUpdateRequestNote(),
+          d.getUpdateRequestedAt());
     }
   }
 
@@ -167,7 +178,12 @@ public final class DocumentDtos {
       String correctionComment,
       String qualityIssue,
       boolean looksLikeWrongDocument,
-      boolean processing) {
+      boolean processing,
+      String customName,
+      /* El asesor aprobó entregarlo después: no impide enviar ni avanzar. */
+      boolean exception,
+      /* Se pidió una versión actualizada: qué hay que actualizar. */
+      String updateRequestNote) {
 
     public static PublicDocumentResponse from(Document d, DocumentVersion latest) {
       boolean needsCorrection = d.getStatus() == DocumentStatus.RETURNED || d.getStatus() == DocumentStatus.REJECTED;
@@ -198,7 +214,10 @@ public final class DocumentDtos {
           needsCorrection ? d.getLastReviewComment() : null,
           qualityIssue,
           wrongDocument,
-          processing);
+          processing,
+          d.getCustomName(),
+          d.hasException(),
+          d.getUpdateRequestNote());
     }
   }
 

@@ -10,9 +10,13 @@ import '../../../labels.dart';
 import '../../../state/auth.dart';
 import '../../../ui/file_pick.dart';
 import '../../../ui/widgets.dart';
+import '../document_viewer_screen.dart';
 import '../expediente_detail_screen.dart';
 
 const _inProgress = ['UPLOADED', 'PROCESSING'];
+
+/// Nombre con el que se muestra: el capturado si se agregó a mano (Control de Cambios #1), si no el del tipo.
+String _documentName(DocumentResponse d) => d.customName ?? documentTypeLabel(d.type);
 
 final _statusFilters = <String, ({String label, bool Function(DocumentResponse) matches})>{
   'ALL': (label: 'Todos', matches: (_) => true),
@@ -183,6 +187,14 @@ class _DocumentsTabState extends State<DocumentsTab> {
                   ),
               ],
             ],
+            if (auth.can('EXPEDIENT_EDIT') || auth.can('DOCUMENT_UPLOAD'))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Btn('Agregar otro documento', icon: Icons.add, small: true, variant: BtnVariant.secondary, onPressed: () => _addDocument(context)),
+                ),
+              ),
             LinkText(showOptional ? 'Ocultar documentos que no aplican' : 'Mostrar también documentos que no aplican a este expediente',
                 onTap: () => setState(() => showOptional = !showOptional)),
           ]),
@@ -205,6 +217,47 @@ class _DocumentsTabState extends State<DocumentsTab> {
     );
   }
 
+  /// Control de Cambios #1: documento que no está en el listado, con el nombre que se le dé.
+  Future<void> _addDocument(BuildContext context) async {
+    var name = '';
+    String owner = '';
+    var busy = false;
+    final ordered = [...ctx.participants]..sort((a, b) => a.ordinal.compareTo(b.ordinal));
+    await showAppSheet(
+      context,
+      title: 'Agregar otro documento',
+      builder: (ctx0, setSheet) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const MutedText('Para un documento que no está en la lista. Se guarda en el expediente igual que los demás y se le pide al cliente en su liga.', size: 12),
+        const SizedBox(height: 12),
+        AppTextField(label: 'Nombre del documento', hint: 'Ej. Constancia de no adeudo de mantenimiento', onChanged: (v) => setSheet(() => name = v)),
+        const SizedBox(height: 12),
+        AppSelect<String>(
+          label: '¿De quién es?',
+          value: owner,
+          options: [(value: '', label: 'Del inmueble / del expediente'), for (final p in ordered) (value: p.id!, label: p.fullName)],
+          onChanged: (v) => setSheet(() => owner = v),
+        ),
+      ]),
+      footer: (ctx0, setSheet) => [
+        Btn('Cancelar', variant: BtnVariant.ghost, onPressed: () => Navigator.pop(ctx0)),
+        Btn(busy ? 'Agregando…' : 'Agregar', loading: busy, onPressed: name.trim().length < 3
+            ? null
+            : () async {
+                setSheet(() => busy = true);
+                try {
+                  await api.addCustomDocument(ctx.expediente.id, name.trim(), owner.isEmpty ? null : owner);
+                  if (ctx0.mounted) Navigator.pop(ctx0);
+                  if (context.mounted) showToast(context, 'Se agregó "${name.trim()}" a los documentos del expediente.');
+                  await onChanged();
+                } catch (err) {
+                  setSheet(() => busy = false);
+                  if (context.mounted) showToast(context, errorText(err));
+                }
+              }),
+      ],
+    );
+  }
+
   void _showEmailPreview(BuildContext context, EmailPreview p) => showAppSheet(
         context,
         title: 'Vista previa de envío a notaría',
@@ -222,7 +275,10 @@ class _DocumentsTabState extends State<DocumentsTab> {
               decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: ctx.c.border)),
               child: Row(children: [
                 Expanded(child: Text(a.fileName, style: const TextStyle(fontSize: 13))),
-                TextButton(onPressed: () => openUrl(ctx, a.downloadUrl), child: Text('Descargar', style: TextStyle(color: ctx.c.goldText))),
+                if (a.downloadUrl != null)
+                  TextButton(onPressed: () => openUrl(ctx, a.downloadUrl!), child: Text('Descargar', style: TextStyle(color: ctx.c.goldText)))
+                else
+                  const Padding(padding: EdgeInsets.only(right: 8), child: MutedText('Solo el administrador lo descarga', size: 11)),
               ]),
             ),
           if (p.documentTypesWithoutFile.isNotEmpty)
@@ -262,6 +318,7 @@ class _DocumentRowState extends State<_DocumentRow> {
   List<ExtractedField>? fields;
   String? fieldsFor;
   List<ReviewHistory>? history;
+  List<DocumentVersionItem>? versions;
   bool reprocessing = false;
 
   DocumentResponse get doc => widget.document;
@@ -303,7 +360,7 @@ class _DocumentRowState extends State<_DocumentRow> {
   Future<void> accept() async {
     final issues = v?.blockingIssues ?? const [];
     final auth = context.read<AuthState>();
-    final label0 = documentTypeLabel(doc.type);
+    final label0 = _documentName(doc);
     if (issues.isNotEmpty) {
       if (!auth.can('DOCUMENT_QUALITY_OVERRIDE')) {
         showToast(context, 'Este archivo no se puede leer: devuélvelo al cliente o pide a un director o administrador que autorice la excepción.');
@@ -364,12 +421,19 @@ class _DocumentRowState extends State<_DocumentRow> {
     }
   }
 
-  Future<void> download() async {
-    final version = v;
-    if (version == null) return;
+  /// "Ver archivo" abre el visor protegido (Control de Cambios #6), nunca descarga el archivo.
+  void view(String versionId, int versionNumber) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => DocumentViewerScreen(versionId: versionId, title: '${_documentName(doc)} · versión $versionNumber'),
+    ));
+  }
+
+  Future<void> toggleVersions() async {
+    if (versions != null) return setState(() => versions = null);
     try {
-      final url = await api.getDownloadUrl(version.id);
-      if (mounted) await openUrl(context, url);
+      final list = await api.listVersions(doc.id);
+      list.sort((a, b) => b.versionNumber.compareTo(a.versionNumber));
+      if (mounted) setState(() => versions = list);
     } catch (err) {
       if (mounted) showToast(context, errorText(err));
     }
@@ -379,7 +443,7 @@ class _DocumentRowState extends State<_DocumentRow> {
     var reasonCode = 'ILLEGIBLE_INFORMATION';
     var comment = '';
     var busy = false;
-    final docLabel = documentTypeLabel(doc.type);
+    final docLabel = _documentName(doc);
     await showAppSheet(
       context,
       title: mode == 'return' ? 'Devolver "$docLabel" al cliente' : 'Rechazar "$docLabel"',
@@ -417,7 +481,7 @@ class _DocumentRowState extends State<_DocumentRow> {
   Future<void> move(List<DocumentResponse> targets) async {
     var target = targets.first.id;
     var busy = false;
-    final docLabel = documentTypeLabel(doc.type);
+    final docLabel = _documentName(doc);
     await showAppSheet(
       context,
       title: 'Cambiar tipo de documento',
@@ -433,7 +497,7 @@ class _DocumentRowState extends State<_DocumentRow> {
               (
                 value: d.id,
                 label:
-                    '${documentTypeLabel(d.type)}${d.participantId != null && widget.names[d.participantId] != null ? ' — ${widget.names[d.participantId]}' : ''}${d.currentVersionNumber > 0 ? ' (ya tiene archivo: versión nueva)' : ''}'
+                    '${_documentName(d)}${d.participantId != null && widget.names[d.participantId] != null ? ' — ${widget.names[d.participantId]}' : ''}${d.currentVersionNumber > 0 ? ' (ya tiene archivo: versión nueva)' : ''}'
               ),
           ],
           onChanged: (v) => setSheet(() => target = v),
@@ -444,7 +508,7 @@ class _DocumentRowState extends State<_DocumentRow> {
         Btn(busy ? 'Moviendo…' : 'Mover archivo', loading: busy, onPressed: () async {
           setSheet(() => busy = true);
           final t = widget.allDocuments.where((d) => d.id == target).firstOrNull;
-          await act(() => api.moveDocumentFile(doc.id, target), 'El archivo se movió a ${t != null ? documentTypeLabel(t.type) : 'otro documento'} y se está leyendo con su tipo correcto.');
+          await act(() => api.moveDocumentFile(doc.id, target), 'El archivo se movió a ${t != null ? _documentName(t) : 'otro documento'} y se está leyendo con su tipo correcto.');
           if (ctx.mounted) Navigator.pop(ctx);
         }),
       ],
@@ -461,7 +525,8 @@ class _DocumentRowState extends State<_DocumentRow> {
     final inProgress = doc.pipelineStatus != null && _inProgress.contains(doc.pipelineStatus);
     final reviewable = ['READY_FOR_REVIEW', 'UPLOADED', 'RETURNED'].contains(doc.status) && version != null && !['QUEUED', 'PROCESSING'].contains(version.processingStatus);
     final mismatch = version?.aiTypeMatches == false;
-    final docLabel = documentTypeLabel(doc.type);
+    final docLabel = _documentName(doc);
+    final resolved = doc.status == 'ACCEPTED' || doc.status == 'NOT_APPLICABLE';
     final moveTargets = widget.allDocuments.where((d) => d.id != doc.id && d.status != 'ACCEPTED').toList();
     final canUpload = auth.can('DOCUMENT_UPLOAD');
 
@@ -483,7 +548,9 @@ class _DocumentRowState extends State<_DocumentRow> {
         Wrap(spacing: 6, runSpacing: 4, children: [
           if (doc.pipelineStatus != null && doc.pipelineStatus != 'ACCEPTED')
             AppBadge(label(pipelineStatusLabels, doc.pipelineStatus), tone: pipelineStatusTone[doc.pipelineStatus] ?? Tone.neutral, icon: inProgress ? Icons.hourglass_top : null),
-          if (doc.required && doc.deferred && doc.status == 'PENDING') const AppBadge('Para después'),
+          if (doc.required && doc.deferred && doc.status == 'PENDING' && doc.exceptionAt == null) const AppBadge('Para después'),
+          if (doc.exceptionAt != null && doc.status != 'ACCEPTED') const AppBadge('Excepción aprobada', tone: Tone.info),
+          if (doc.updateRequestedAt != null) const AppBadge('Requiere actualización', tone: Tone.warning),
           AppBadge(label(documentStatusLabels, doc.status), tone: documentStatusTone[doc.status] ?? Tone.neutral),
         ]),
         if (issues.isNotEmpty && doc.status != 'ACCEPTED') ...[
@@ -523,6 +590,21 @@ class _DocumentRowState extends State<_DocumentRow> {
             ])),
           ),
         ],
+        if (doc.exceptionAt != null && doc.status != 'ACCEPTED') ...[
+          const SizedBox(height: 10),
+          Notice(
+            tone: Tone.neutral,
+            text:
+                'Excepción aprobada el ${formatDateTime(doc.exceptionAt)}: ${doc.exceptionNote ?? ''}. No bloquea la aprobación ni el contrato; el cliente puede entregarlo después desde su liga.',
+          ),
+        ],
+        if (doc.updateRequestedAt != null) ...[
+          const SizedBox(height: 10),
+          Notice(
+            tone: Tone.warning,
+            text: 'Se pidió una versión actualizada el ${formatDateTime(doc.updateRequestedAt)}: ${doc.updateRequestNote ?? ''}. La versión actual se conserva en el historial.',
+          ),
+        ],
         if (doc.status == 'NOT_APPLICABLE') ...[
           const SizedBox(height: 10),
           Notice(tone: Tone.neutral, text: 'Marcado como "No aplica" el ${formatDateTime(doc.notApplicableAt)}: ${doc.notApplicableJustification ?? ''}'),
@@ -535,7 +617,7 @@ class _DocumentRowState extends State<_DocumentRow> {
               setState(() => showData = !showData);
               if (showData) loadFields();
             }),
-          if (version != null) Btn('Ver archivo', icon: Icons.download_outlined, small: true, variant: BtnVariant.secondary, onPressed: download),
+          if (version != null) Btn('Ver archivo', icon: Icons.visibility_outlined, small: true, variant: BtnVariant.secondary, onPressed: () => view(version.id, version.versionNumber)),
           if (version != null && widget.canReprocess)
             Btn('Reprocesar con IA', icon: Icons.refresh, small: true, variant: BtnVariant.ghost, loading: reprocessing, onPressed: inProgress
                 ? null
@@ -573,6 +655,37 @@ class _DocumentRowState extends State<_DocumentRow> {
             }),
           if (auth.can('DOCUMENT_MARK_NOT_APPLICABLE') && doc.status == 'NOT_APPLICABLE')
             Btn('Volver a solicitar', small: true, variant: BtnVariant.ghost, onPressed: () => act(() => api.requestAgain(doc.id), 'El documento se volvió a solicitar.')),
+          if (auth.can('DOCUMENT_EXCEPTION') && doc.required && doc.exceptionAt == null && !resolved)
+            Btn('Aprobar excepción…', small: true, variant: BtnVariant.ghost, onPressed: () async {
+              final note = await askReason(
+                context,
+                title: 'Aprobar excepción: $docLabel',
+                description: 'El documento sigue faltando, pero no bloqueará la aprobación de la documentación ni el contrato. El cliente podrá entregarlo después desde su liga.',
+                label: 'Nota justificatoria',
+                placeholder: 'Ej. La boleta está en trámite en el Registro Público.',
+                minLength: 10,
+                confirmLabel: 'Aprobar excepción',
+              );
+              if (note != null) await act(() => api.approveException(doc.id, note), 'Excepción aprobada (queda en el historial).');
+            }),
+          if (auth.can('DOCUMENT_EXCEPTION') && doc.exceptionAt != null && doc.status != 'ACCEPTED')
+            Btn('Retirar excepción', small: true, variant: BtnVariant.ghost, onPressed: () => act(() => api.revokeException(doc.id), 'Se retiró la excepción: el documento vuelve a ser necesario.')),
+          if (auth.can('DOCUMENT_UPDATE_REQUEST') && doc.currentVersionNumber > 0 && doc.updateRequestedAt == null && doc.status != 'NOT_APPLICABLE')
+            Btn('Requiere actualización…', small: true, variant: BtnVariant.ghost, onPressed: () async {
+              final note = await askReason(
+                context,
+                title: 'Pedir versión actualizada: $docLabel',
+                description: 'El cliente verá esta nota en su liga y podrá subir la nueva versión. La versión actual se conserva como historial.',
+                label: '¿Qué debe actualizar?',
+                placeholder: 'Ej. La constancia tiene más de 3 meses; súbela con fecha reciente.',
+                minLength: 10,
+                confirmLabel: 'Pedir actualización',
+              );
+              if (note != null) await act(() => api.requestDocumentUpdate(doc.id, note), 'Se pidió la versión actualizada al cliente.');
+            }),
+          if (auth.can('DOCUMENT_UPDATE_REQUEST') && doc.updateRequestedAt != null)
+            Btn('Cancelar actualización', small: true, variant: BtnVariant.ghost, onPressed: () => act(() => api.cancelDocumentUpdate(doc.id), 'Se canceló la solicitud de actualización.')),
+          if (doc.currentVersionNumber > 0) Btn('Versiones (${doc.currentVersionNumber})', icon: Icons.layers_outlined, small: true, variant: BtnVariant.ghost, onPressed: toggleVersions),
           if (version != null)
             Btn('Historial', icon: Icons.history, small: true, variant: BtnVariant.ghost, onPressed: () async {
               if (history != null) return setState(() => history = null);
@@ -585,6 +698,25 @@ class _DocumentRowState extends State<_DocumentRow> {
             }),
         ]),
         if (uploading && progress != null) Padding(padding: const EdgeInsets.only(top: 8), child: ProgressLine(progress! / 100)),
+        if (versions != null)
+          Container(
+            margin: const EdgeInsets.only(top: 10),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: c.appBg, borderRadius: BorderRadius.circular(10)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              for (final ver in versions!)
+                Row(children: [
+                  Expanded(
+                    child: MutedText(
+                      'V${ver.versionNumber}${ver.versionNumber == doc.currentVersionNumber ? ' (activa)' : ''} · cargada ${formatDateTime(ver.uploadedAt)} por ${ver.uploadedVia == 'PUBLIC_PORTAL' ? 'el cliente' : (ver.uploadedByName ?? 'el staff')}',
+                      size: 12,
+                    ),
+                  ),
+                  TextButton(onPressed: () => view(ver.id, ver.versionNumber), child: Text('Ver', style: TextStyle(color: c.goldText))),
+                ]),
+              const MutedText('Ninguna versión se elimina: las anteriores quedan para trazabilidad y auditoría.', size: 11),
+            ]),
+          ),
         if (showData && version != null) _ExtractedDataPanel(document: doc, fields: fields, onEdited: (f) => setState(() => fields = fields?.map((x) => x.id == f.id ? f : x).toList())),
         if (history != null)
           Container(

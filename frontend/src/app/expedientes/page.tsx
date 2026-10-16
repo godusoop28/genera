@@ -417,7 +417,7 @@ function ExpedienteCard({ item }: { item: ExpedienteOverviewItem }) {
     <article className="group flex h-full flex-col rounded-xl border border-border bg-card p-5 shadow-[0_1px_2px_rgba(36,39,35,0.04)] transition-shadow duration-200 hover:shadow-md">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <span className="font-mono text-xs font-medium tracking-wide text-muted">{e.folio}</span>
-        <ExpedienteStatusBadge status={e.status} />
+        <ExpedienteStatusBadge status={e.status} received={item.documents?.received} />
       </div>
 
       <div className="mt-4 flex items-start gap-3">
@@ -501,7 +501,7 @@ function ExpedienteList({ items }: { items: ExpedienteOverviewItem[] }) {
                 </div>
               </div>
               <div>
-                <ExpedienteStatusBadge status={e.status} />
+                <ExpedienteStatusBadge status={e.status} received={item.documents?.received} />
               </div>
               <DocumentsProgress progress={item.documents} compact />
               <span className="text-sm text-muted">

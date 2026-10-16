@@ -150,6 +150,18 @@ export const apiClient = {
   delete: <T>(path: string, options?: RequestOptions) => request<T>(path, { ...options, method: "DELETE" }),
 };
 
+/** GET autenticado que devuelve el cuerpo binario (p. ej. una página del visor de documentos). */
+export async function getBlob(path: string): Promise<Blob> {
+  const response = await fetchWithAuth(path, (token) =>
+    fetch(`${API_BASE_URL}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" }),
+  );
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    throw new ApiError(data?.detail ?? data?.title ?? response.statusText, response.status, data?.code);
+  }
+  return response.blob();
+}
+
 export interface UploadProgress {
   loaded: number;
   total: number;

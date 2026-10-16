@@ -96,9 +96,12 @@ public class NotificationService implements NotificationsApi {
   public record EmailPreview(
       String subject, String body, List<EmailAttachmentPreview> attachments, List<String> documentTypesWithoutFile) {}
 
-  /** No envía nada: solo arma la vista previa para que el staff decida cómo enviarla manualmente. */
+  /**
+   * No envía nada: solo arma la vista previa para que el staff decida cómo enviarla manualmente.
+   * Las ligas de descarga solo van para quien puede descargar originales (Control de Cambios #6).
+   */
   @Transactional(readOnly = true)
-  public EmailPreview preview(UUID expedienteId) {
+  public EmailPreview preview(UUID expedienteId, boolean includeDownloadLinks) {
     List<AcceptedDocumentView> accepted = documentsApi.acceptedDocumentsOf(expedienteId);
     if (accepted.isEmpty()) {
       throw new UnreadyExpedienteEmailException(expedienteId);
@@ -109,10 +112,12 @@ public class NotificationService implements NotificationsApi {
             .map(
                 doc ->
                     new EmailAttachmentPreview(
-                        fileName(doc.type()),
-                        fileStorage.generateTemporaryDownloadUrl(doc.pdfStorageKey(), storageProperties.presignedUrlTtl())))
+                        fileName(doc),
+                        includeDownloadLinks
+                            ? fileStorage.generateTemporaryDownloadUrl(doc.pdfStorageKey(), storageProperties.presignedUrlTtl())
+                            : null))
             .toList();
-    List<String> withoutFile = accepted.stream().filter(doc -> doc.pdfStorageKey() == null).map(doc -> label(doc.type())).toList();
+    List<String> withoutFile = accepted.stream().filter(doc -> doc.pdfStorageKey() == null).map(doc -> doc.name() != null ? doc.name() : label(doc.type())).toList();
     return new EmailPreview(SUBJECT, BODY_INTRO, attachments, withoutFile);
   }
 
@@ -121,7 +126,7 @@ public class NotificationService implements NotificationsApi {
     List<AttachmentRef> attachments = new ArrayList<>();
     for (AcceptedDocumentView doc : documentsApi.acceptedDocumentsOf(expedienteId)) {
       if (doc.pdfStorageKey() != null) {
-        attachments.add(new AttachmentRef(doc.pdfStorageKey(), fileName(doc.type())));
+        attachments.add(new AttachmentRef(doc.pdfStorageKey(), fileName(doc)));
       }
     }
     if (attachments.isEmpty()) {
@@ -138,9 +143,9 @@ public class NotificationService implements NotificationsApi {
     }
   }
 
-  private static String fileName(String type) {
+  private static String fileName(AcceptedDocumentView doc) {
     String base =
-        java.text.Normalizer.normalize(label(type), java.text.Normalizer.Form.NFD)
+        java.text.Normalizer.normalize(doc.name() != null ? doc.name() : label(doc.type()), java.text.Normalizer.Form.NFD)
             .replaceAll("\\p{M}", "")
             .replaceAll("[^A-Za-z0-9]+", "-")
             .replaceAll("(^-|-$)", "")

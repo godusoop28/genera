@@ -62,7 +62,7 @@ public class InternalNotificationController {
   @PreAuthorize("hasAuthority('DOCUMENT_EMAIL_SEND')")
   public EmailPreview preview(@PathVariable UUID expedienteId, @AuthenticationPrincipal Jwt jwt) {
     requireAccess(expedienteId, jwt);
-    return notificationService.preview(expedienteId);
+    return notificationService.preview(expedienteId, CurrentUser.from(jwt).permissions().contains("DOCUMENT_DOWNLOAD"));
   }
 
   @PostMapping("/api/v1/internal/expedientes/{expedienteId}/notifications/send-documents")

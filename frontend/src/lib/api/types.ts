@@ -351,6 +351,14 @@ export interface DocumentResponse {
   lastReviewedAt: string | null;
   latestVersion: LatestVersionSummary | null;
   pipelineStatus: DocumentPipelineStatus | null;
+  /** Nombre capturado si se agregó a mano porque no está en el listado. */
+  customName?: string | null;
+  /** Falta, pero se aprobó como excepción: no bloquea y se entrega después. */
+  exceptionNote?: string | null;
+  exceptionAt?: string | null;
+  /** Se pidió una versión actualizada al cliente. */
+  updateRequestNote?: string | null;
+  updateRequestedAt?: string | null;
 }
 
 export interface PublicDocumentResponse {
@@ -367,6 +375,11 @@ export interface PublicDocumentResponse {
   qualityIssue: string | null;
   looksLikeWrongDocument: boolean;
   processing: boolean;
+  customName?: string | null;
+  /** El asesor aprobó que lo entregue después: no impide enviar. */
+  exception?: boolean;
+  /** Se le pidió una versión actualizada: qué debe actualizar. */
+  updateRequestNote?: string | null;
 }
 
 export interface DocumentVersionResponse {
@@ -394,6 +407,12 @@ export interface ReviewHistoryResponse {
 
 export interface DownloadResponse {
   url: string;
+}
+
+export interface ViewerResponse {
+  pageCount: number;
+  /** Solo quien tiene permiso de descarga ve los botones de descargar e imprimir. */
+  canDownload: boolean;
 }
 
 export interface ExtractedFieldObservationResponse {
@@ -617,7 +636,8 @@ export interface SubmitDocumentsResponse {
 
 export interface EmailAttachmentPreview {
   fileName: string;
-  downloadUrl: string;
+  /** Solo viene para quien puede descargar originales. */
+  downloadUrl?: string | null;
 }
 
 export type BackendRoleCode = "ADMINISTRATOR" | "DIRECTOR" | "ADVISOR" | "DOCUMENT_REVIEWER";

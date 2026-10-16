@@ -112,6 +112,26 @@ Future<DocumentResponse> markNotApplicable(String documentId, String justificati
     DocumentResponse.fromJson(_j(await _c.post('/internal/documents/$documentId/not-applicable', {'justification': justification})));
 Future<DocumentResponse> requestAgain(String documentId) async => DocumentResponse.fromJson(_j(await _c.post('/internal/documents/$documentId/request-again')));
 Future<String> getDownloadUrl(String versionId) async => '${_j(await _c.get('/internal/document-versions/$versionId/download'))['url']}';
+Future<List<DocumentVersionItem>> listVersions(String documentId) async => _l(await _c.get('/internal/documents/$documentId/versions'), DocumentVersionItem.fromJson);
+/// Documento que no está en el listado, con el nombre capturado (Control de Cambios #1).
+Future<DocumentResponse> addCustomDocument(String expedienteId, String name, String? participantId) async =>
+    DocumentResponse.fromJson(_j(await _c.post('/internal/expedientes/$expedienteId/documents', {'name': name, 'participantId': participantId})));
+/// Falta, pero se aprueba seguir sin él por ahora (Control de Cambios #5).
+Future<DocumentResponse> approveException(String documentId, String note) async =>
+    DocumentResponse.fromJson(_j(await _c.put('/internal/documents/$documentId/exception', {'note': note})));
+Future<DocumentResponse> revokeException(String documentId) async => DocumentResponse.fromJson(_j(await _c.delete('/internal/documents/$documentId/exception')));
+/// Pide al cliente una versión actualizada; la vigente se conserva (Control de Cambios #10).
+Future<DocumentResponse> requestDocumentUpdate(String documentId, String note) async =>
+    DocumentResponse.fromJson(_j(await _c.put('/internal/documents/$documentId/update-request', {'note': note})));
+Future<DocumentResponse> cancelDocumentUpdate(String documentId) async =>
+    DocumentResponse.fromJson(_j(await _c.delete('/internal/documents/$documentId/update-request')));
+/// Visor sin descarga (Control de Cambios #6): páginas y si quien consulta puede descargar.
+Future<({int pageCount, bool canDownload})> getViewer(String versionId) async {
+  final j = _j(await _c.get('/internal/document-versions/$versionId/view'));
+  return (pageCount: (j['pageCount'] as num?)?.toInt() ?? 0, canDownload: j['canDownload'] == true);
+}
+/// JPEG de la página (1 = la primera) con la marca de agua de quien consulta.
+Future<List<int>> getViewerPage(String versionId, int pageNumber) => _c.getBytes('/internal/document-versions/$versionId/view/pages/$pageNumber');
 
 // --- Datos leídos y consistencia ---------------------------------------------
 

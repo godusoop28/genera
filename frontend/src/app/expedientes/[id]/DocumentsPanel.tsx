@@ -1,5 +1,6 @@
 "use client";
 
+import { DocumentViewerModal } from "@/components/documents/DocumentViewerModal";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -8,22 +9,28 @@ import { ReasonModal } from "@/components/ui/ReasonModal";
 import { useToast } from "@/components/ui/Toast";
 import {
   acceptDocument,
-  getDownloadUrl,
+  addCustomDocument,
+  approveException,
+  cancelDocumentUpdate,
   listDocuments,
   listReviews,
+  listVersions,
   markNotApplicable,
   moveDocumentFile,
   rejectDocument,
   reprocessAllDocuments,
   reprocessDocument,
   requestAgain,
+  requestDocumentUpdate,
   returnDocument,
+  revokeException,
   uploadVersion,
 } from "@/lib/api/documents";
 import { confirmField, getExtractedFields } from "@/lib/api/extraction";
 import { getDocumentsEmailPreview } from "@/lib/api/notifications";
 import type {
   DocumentResponse,
+  DocumentVersionResponse,
   EmailPreviewResponse,
   ExtractedFieldObservationResponse,
   ReturnReasonCode,
@@ -45,11 +52,16 @@ import {
 import { useCan } from "@/lib/permissions";
 import { ACCEPTED_FILE_TYPES, UploadValidationError } from "@/lib/upload-limits";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, ArrowRightLeft, Bot, Check, Download, History, Info, Loader2, Mail, Pencil, RefreshCw, Upload, X } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, Bot, Check, Eye, History, Info, Layers, Loader2, Mail, Pencil, Plus, RefreshCw, Upload, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ExpedienteContext } from "./page";
 
 const IN_PROGRESS = ["UPLOADED", "PROCESSING"];
+
+/** Nombre con el que se muestra: el capturado si se agregó a mano (Control de Cambios #1), si no el del tipo. */
+function documentName(d: Pick<DocumentResponse, "type" | "customName">): string {
+  return d.customName ?? documentTypeLabel(d.type);
+}
 
 type StatusFilter = "ALL" | "MISSING" | "TO_REVIEW" | "RETURNED";
 
@@ -68,6 +80,7 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
   const [showOptional, setShowOptional] = useState(false);
   const [filter, setFilter] = useState<StatusFilter>("ALL");
   const [reprocessingAll, setReprocessingAll] = useState(false);
+  const [addingDocument, setAddingDocument] = useState(false);
   const names = Object.fromEntries(participants.map((p) => [p.id, p.fullName]));
   const canReprocess = can("DOCUMENT_ACCEPT") || can("EXTRACTED_DATA_EDIT") || can("DOCUMENT_UPLOAD");
 
@@ -217,6 +230,8 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
                           canReject={can("DOCUMENT_REJECT")}
                           canOverride={can("DOCUMENT_QUALITY_OVERRIDE")}
                           canMarkNotApplicable={can("DOCUMENT_MARK_NOT_APPLICABLE")}
+                          canException={can("DOCUMENT_EXCEPTION")}
+                          canRequestUpdate={can("DOCUMENT_UPDATE_REQUEST")}
                           canEditData={can("EXTRACTED_DATA_EDIT")}
                           canReprocess={canReprocess}
                         />
@@ -228,7 +243,14 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
             </div>
           </>
         )}
-        <button type="button" className="mt-3 text-xs text-dark-gold hover:underline" onClick={() => setShowOptional((v) => !v)}>
+        {can("EXPEDIENT_EDIT") || can("DOCUMENT_UPLOAD") ? (
+          <div className="mt-4">
+            <Button variant="secondary" size="sm" onClick={() => setAddingDocument(true)}>
+              <Plus className="h-4 w-4" aria-hidden /> Agregar otro documento
+            </Button>
+          </div>
+        ) : null}
+        <button type="button" className="mt-3 block text-xs text-dark-gold hover:underline" onClick={() => setShowOptional((v) => !v)}>
           {showOptional ? "Ocultar documentos que no aplican" : "Mostrar también documentos que no aplican a este expediente"}
         </button>
       </Card>
@@ -254,6 +276,23 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
         </Card>
       ) : null}
 
+      {addingDocument ? (
+        <AddDocumentModal
+          participants={[...participants].sort((a, b) => a.ordinal - b.ordinal).map((p) => ({ id: p.id, name: p.fullName }))}
+          onCancel={() => setAddingDocument(false)}
+          onConfirm={async (name, participantId) => {
+            try {
+              await addCustomDocument(expediente.id, name, participantId);
+              showToast(`Se agregó "${name}" a los documentos del expediente.`);
+              setAddingDocument(false);
+              await onChanged();
+            } catch (err) {
+              showToast(errorText(err));
+            }
+          }}
+        />
+      ) : null}
+
       <Modal open={emailPreview !== null} onClose={() => setEmailPreview(null)} title="Vista previa de envío a notaría">
         {emailPreview ? (
           <div className="flex flex-col gap-4 text-sm">
@@ -266,9 +305,13 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
               {emailPreview.attachments.map((a) => (
                 <li key={a.fileName} className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
                   <span>{a.fileName}</span>
-                  <a href={a.downloadUrl} target="_blank" rel="noreferrer" className="text-dark-gold hover:underline">
-                    Descargar
-                  </a>
+                  {a.downloadUrl ? (
+                    <a href={a.downloadUrl} target="_blank" rel="noreferrer" className="text-dark-gold hover:underline">
+                      Descargar
+                    </a>
+                  ) : (
+                    <span className="text-xs text-muted">Solo el administrador puede descargarlo</span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -298,6 +341,8 @@ interface RowProps {
   canMarkNotApplicable: boolean;
   canEditData: boolean;
   canReprocess: boolean;
+  canException: boolean;
+  canRequestUpdate: boolean;
 }
 
 function DocumentRow({
@@ -314,6 +359,8 @@ function DocumentRow({
   canMarkNotApplicable,
   canEditData,
   canReprocess,
+  canException,
+  canRequestUpdate,
 }: RowProps) {
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -328,13 +375,18 @@ function DocumentRow({
   const [moving, setMoving] = useState(false);
   const [notApplicable, setNotApplicable] = useState(false);
   const [reprocessing, setReprocessing] = useState(false);
+  const [viewing, setViewing] = useState<{ id: string; title: string } | null>(null);
+  const [versions, setVersions] = useState<DocumentVersionResponse[] | null>(null);
+  const [exceptionOpen, setExceptionOpen] = useState(false);
+  const [updateOpen, setUpdateOpen] = useState(false);
   const v = doc.latestVersion;
   const issues = v?.blockingIssues ?? [];
   const warnings = v?.warnings ?? [];
   const inProgress = doc.pipelineStatus ? IN_PROGRESS.includes(doc.pipelineStatus) : false;
   const reviewable = ["READY_FOR_REVIEW", "UPLOADED", "RETURNED"].includes(doc.status) && v && !["QUEUED", "PROCESSING"].includes(v.processingStatus);
   const mismatch = v?.aiTypeMatches === false;
-  const docLabel = documentTypeLabel(doc.type);
+  const docLabel = documentName(doc);
+  const resolved = doc.status === "ACCEPTED" || doc.status === "NOT_APPLICABLE";
 
   // Al abrir el panel de datos (y cada vez que termina una extracción) se cargan los datos leídos.
   const assessedAt = v?.aiAssessedAt ?? null;
@@ -406,14 +458,11 @@ function DocumentRow({
     }
   };
 
-  const handleDownload = async () => {
-    if (!v) return;
-    const tab = window.open("about:blank", "_blank");
+  const toggleVersions = async () => {
+    if (versions) return setVersions(null);
     try {
-      const { url } = await getDownloadUrl(v.id);
-      if (tab) tab.location.href = url;
+      setVersions([...(await listVersions(doc.id))].sort((a, b) => b.versionNumber - a.versionNumber));
     } catch (err) {
-      tab?.close();
       showToast(errorText(err));
     }
   };
@@ -444,7 +493,9 @@ function DocumentRow({
               {pipelineStatusLabels[doc.pipelineStatus]}
             </Badge>
           ) : null}
-          {doc.required && doc.deferred && doc.status === "PENDING" ? <Badge tone="neutral">Para después</Badge> : null}
+          {doc.required && doc.deferred && doc.status === "PENDING" && !doc.exceptionAt ? <Badge tone="neutral">Para después</Badge> : null}
+          {doc.exceptionAt && doc.status !== "ACCEPTED" ? <Badge tone="info">Excepción aprobada</Badge> : null}
+          {doc.updateRequestedAt ? <Badge tone="warning">Requiere actualización</Badge> : null}
           <Badge tone={documentStatusTone[doc.status]}>{documentStatusLabels[doc.status]}</Badge>
         </div>
       </div>
@@ -498,6 +549,18 @@ function DocumentRow({
           {doc.lastReviewComment ? ` — "${doc.lastReviewComment}"` : ""}
         </p>
       ) : null}
+      {doc.exceptionAt && doc.status !== "ACCEPTED" ? (
+        <p className="mt-2 rounded-lg bg-app-bg px-3 py-2 text-sm text-muted">
+          Excepción aprobada el {formatDateTime(doc.exceptionAt)}: {doc.exceptionNote}. No bloquea la aprobación ni el contrato; el cliente puede
+          entregarlo después desde su liga.
+        </p>
+      ) : null}
+      {doc.updateRequestedAt ? (
+        <p className="mt-2 rounded-lg bg-warning-bg px-3 py-2 text-sm text-warning-text">
+          Se pidió una versión actualizada el {formatDateTime(doc.updateRequestedAt)}: {doc.updateRequestNote}. La versión actual se conserva en el
+          historial.
+        </p>
+      ) : null}
       {doc.status === "NOT_APPLICABLE" ? (
         <p className="mt-2 rounded-lg bg-app-bg px-3 py-2 text-sm text-muted">
           Marcado como &quot;No aplica&quot; el {formatDateTime(doc.notApplicableAt)}: {doc.notApplicableJustification}
@@ -517,8 +580,8 @@ function DocumentRow({
           </Button>
         ) : null}
         {v ? (
-          <Button variant="secondary" size="sm" onClick={handleDownload}>
-            <Download className="h-4 w-4" aria-hidden /> Ver archivo
+          <Button variant="secondary" size="sm" onClick={() => setViewing({ id: v.id, title: `${docLabel} · versión ${v.versionNumber}` })}>
+            <Eye className="h-4 w-4" aria-hidden /> Ver archivo
           </Button>
         ) : null}
         {v && canReprocess ? (
@@ -564,6 +627,31 @@ function DocumentRow({
             Volver a solicitar
           </Button>
         ) : null}
+        {canException && doc.required && !doc.exceptionAt && !resolved ? (
+          <Button variant="ghost" size="sm" onClick={() => setExceptionOpen(true)}>
+            Aprobar excepción…
+          </Button>
+        ) : null}
+        {canException && doc.exceptionAt && doc.status !== "ACCEPTED" ? (
+          <Button variant="ghost" size="sm" onClick={() => act(() => revokeException(doc.id), "Se retiró la excepción: el documento vuelve a ser necesario.")}>
+            Retirar excepción
+          </Button>
+        ) : null}
+        {canRequestUpdate && doc.currentVersionNumber > 0 && !doc.updateRequestedAt && doc.status !== "NOT_APPLICABLE" ? (
+          <Button variant="ghost" size="sm" onClick={() => setUpdateOpen(true)}>
+            Requiere actualización…
+          </Button>
+        ) : null}
+        {canRequestUpdate && doc.updateRequestedAt ? (
+          <Button variant="ghost" size="sm" onClick={() => act(() => cancelDocumentUpdate(doc.id), "Se canceló la solicitud de actualización.")}>
+            Cancelar actualización
+          </Button>
+        ) : null}
+        {doc.currentVersionNumber > 0 ? (
+          <Button variant="ghost" size="sm" onClick={toggleVersions}>
+            <Layers className="h-4 w-4" aria-hidden /> Versiones ({doc.currentVersionNumber})
+          </Button>
+        ) : null}
         {v ? (
           <Button
             variant="ghost"
@@ -594,6 +682,28 @@ function DocumentRow({
           canEdit={canEditData}
           onEdited={(updated) => setFields((prev) => prev?.map((f) => (f.id === updated.id ? updated : f)) ?? null)}
         />
+      ) : null}
+
+      {versions ? (
+        <ul className="mt-3 flex flex-col gap-1 rounded-lg bg-app-bg p-3 text-xs text-muted" aria-label="Versiones del documento">
+          {versions.map((ver) => (
+            <li key={ver.id} className="flex flex-wrap items-center justify-between gap-2">
+              <span>
+                <strong className="text-obsessed">V{ver.versionNumber}</strong>
+                {ver.versionNumber === doc.currentVersionNumber ? <span className="ml-1.5 font-medium text-success-text">(activa)</span> : null} · cargada{" "}
+                {formatDateTime(ver.uploadedAt)} por {ver.uploadedVia === "PUBLIC_PORTAL" ? "el cliente" : ver.uploadedByName ?? "el staff"}
+              </span>
+              <button
+                type="button"
+                className="font-medium text-dark-gold hover:underline"
+                onClick={() => setViewing({ id: ver.id, title: `${docLabel} · versión ${ver.versionNumber}` })}
+              >
+                Ver
+              </button>
+            </li>
+          ))}
+          <li className="pt-1">Ninguna versión se elimina: las anteriores quedan para trazabilidad y auditoría.</li>
+        </ul>
       ) : null}
 
       {history ? (
@@ -636,7 +746,7 @@ function DocumentRow({
             const target = allDocuments.find((d) => d.id === targetId);
             await act(
               () => moveDocumentFile(doc.id, targetId),
-              `El archivo se movió a ${target ? documentTypeLabel(target.type) : "otro documento"} y se está leyendo con su tipo correcto.`,
+              `El archivo se movió a ${target ? documentName(target) : "otro documento"} y se está leyendo con su tipo correcto.`,
             );
             setMoving(false);
           }}
@@ -683,6 +793,38 @@ function DocumentRow({
         onConfirm={async (justification) => {
           await act(() => acceptDocument(doc.id, justification), "Documento aceptado por excepción (registrado en la bitácora).");
           setOverriding(false);
+        }}
+      />
+
+      <DocumentViewerModal key={viewing?.id ?? "closed"} versionId={viewing?.id ?? null} title={viewing?.title ?? ""} onClose={() => setViewing(null)} />
+
+      <ReasonModal
+        open={exceptionOpen}
+        title={`Aprobar excepción: ${docLabel}`}
+        description="El documento sigue faltando, pero no bloqueará la aprobación de la documentación ni el contrato. El cliente podrá entregarlo después desde su liga."
+        label="Nota justificatoria"
+        placeholder="Ej. La boleta está en trámite en el Registro Público; la entrega la próxima semana."
+        minLength={10}
+        confirmLabel="Aprobar excepción"
+        onCancel={() => setExceptionOpen(false)}
+        onConfirm={async (note) => {
+          await act(() => approveException(doc.id, note), "Excepción aprobada (queda en el historial).");
+          setExceptionOpen(false);
+        }}
+      />
+
+      <ReasonModal
+        open={updateOpen}
+        title={`Pedir versión actualizada: ${docLabel}`}
+        description="El cliente verá esta nota en su liga y podrá subir la nueva versión. La versión actual se conserva como historial."
+        label="¿Qué debe actualizar?"
+        placeholder="Ej. La constancia tiene más de 3 meses; súbela con fecha reciente."
+        minLength={10}
+        confirmLabel="Pedir actualización"
+        onCancel={() => setUpdateOpen(false)}
+        onConfirm={async (note) => {
+          await act(() => requestDocumentUpdate(doc.id, note), "Se pidió la versión actualizada al cliente.");
+          setUpdateOpen(false);
         }}
       />
 
@@ -904,8 +1046,8 @@ function MoveModal({
       }
     >
       <p className="mb-3 text-sm text-muted">
-        El archivo cargado como <strong>{documentTypeLabel(doc.type)}</strong> pasa al documento que elijas (sin que el cliente lo vuelva a subir) y se
-        lee otra vez con ese tipo. {documentTypeLabel(doc.type)} vuelve a quedar pendiente.
+        El archivo cargado como <strong>{documentName(doc)}</strong> pasa al documento que elijas (sin que el cliente lo vuelva a subir) y se
+        lee otra vez con ese tipo. {documentName(doc)} vuelve a quedar pendiente.
       </p>
       <label className="mb-1 block text-sm font-medium text-obsessed">¿A qué documento corresponde?</label>
       <select
@@ -915,7 +1057,7 @@ function MoveModal({
       >
         {targets.map((d) => (
           <option key={d.id} value={d.id}>
-            {documentTypeLabel(d.type)}
+            {documentName(d)}
             {d.participantId && names[d.participantId] ? ` — ${names[d.participantId]}` : ""}
             {d.currentVersionNumber > 0 ? " (ya tiene archivo: se agrega como versión nueva)" : ""}
           </option>
@@ -990,6 +1132,81 @@ function ReviewModal({
         className="w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm outline-none focus:border-gold"
       />
       <p className="mt-2 text-xs text-muted">El cliente verá este motivo en su liga y recibirá un aviso por correo si registró uno.</p>
+    </Modal>
+  );
+}
+
+/** Control de Cambios #1: documento que no está en el listado, con el nombre que el usuario le dé. */
+function AddDocumentModal({
+  participants,
+  onCancel,
+  onConfirm,
+}: {
+  participants: { id: string; name: string }[];
+  onCancel: () => void;
+  onConfirm: (name: string, participantId: string | null) => Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [owner, setOwner] = useState("");
+  const [busy, setBusy] = useState(false);
+  const valid = name.trim().length >= 3;
+  return (
+    <Modal
+      open
+      onClose={onCancel}
+      title="Agregar otro documento"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={busy}>
+            Cancelar
+          </Button>
+          <Button
+            disabled={!valid || busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await onConfirm(name.trim(), owner || null);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />} Agregar
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4 text-sm">
+        <p className="text-muted">
+          Para un documento que no está en la lista. Se guarda en el expediente igual que los demás y se le pide al cliente en su liga.
+        </p>
+        <label className="flex flex-col gap-1.5">
+          <span className="font-medium text-obsessed">Nombre del documento</span>
+          <input
+            autoFocus
+            maxLength={120}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Ej. Constancia de no adeudo de mantenimiento"
+            className="min-h-10 rounded-lg border border-border bg-card px-3 text-obsessed focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/30"
+          />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="font-medium text-obsessed">¿De quién es?</span>
+          <select
+            value={owner}
+            onChange={(e) => setOwner(e.target.value)}
+            className="min-h-10 rounded-lg border border-border bg-card px-3 text-obsessed focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/30"
+          >
+            <option value="">Del inmueble / del expediente</option>
+            {participants.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
     </Modal>
   );
 }

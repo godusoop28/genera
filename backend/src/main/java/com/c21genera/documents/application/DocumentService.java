@@ -1,7 +1,5 @@
 package com.c21genera.documents.application;
 
-import com.c21genera.shared.events.DocumentEvents.DocumentFileMoved;
-import com.c21genera.shared.events.DocumentEvents.DocumentReprocessRequested;
 import com.c21genera.documents.DocumentStatus;
 import com.c21genera.documents.DocumentsApi;
 import com.c21genera.documents.ProcessingStatus;
@@ -18,8 +16,8 @@ import com.c21genera.documents.infrastructure.DocumentRepository;
 import com.c21genera.documents.infrastructure.DocumentReviewRepository;
 import com.c21genera.documents.infrastructure.DocumentVersionRepository;
 import com.c21genera.documents.infrastructure.ExpedienteDocumentsLock;
-import com.c21genera.documents.infrastructure.FileValidator;
 import com.c21genera.documents.infrastructure.FileValidator.ValidatedFile;
+import com.c21genera.documents.infrastructure.FileValidator;
 import com.c21genera.documents.infrastructure.StorageKeys;
 import com.c21genera.shared.config.AiProperties;
 import com.c21genera.shared.domain.ConflictException;
@@ -32,8 +30,12 @@ import com.c21genera.shared.events.Actor;
 import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsApproved;
 import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsUploaded;
 import com.c21genera.shared.events.DocumentEvents.DocumentApplicabilityChanged;
-import com.c21genera.shared.events.DocumentEvents.DocumentDeferralChanged;
 import com.c21genera.shared.events.DocumentEvents.DocumentContentAssessed;
+import com.c21genera.shared.events.DocumentEvents.DocumentDeferralChanged;
+import com.c21genera.shared.events.DocumentEvents.DocumentFileMoved;
+import com.c21genera.shared.events.DocumentEvents.DocumentFollowUp;
+import com.c21genera.shared.events.DocumentEvents.DocumentFollowUpChanged;
+import com.c21genera.shared.events.DocumentEvents.DocumentReprocessRequested;
 import com.c21genera.shared.events.DocumentEvents.DocumentReviewed;
 import com.c21genera.shared.events.DocumentEvents.DocumentVersionUploaded;
 import com.c21genera.shared.events.DocumentEvents.PageRef;
@@ -132,7 +134,8 @@ public class DocumentService implements DocumentsApi {
                           event.expedienteId(), spec.requirementCode(), spec.type(), spec.participantId(), spec.required())));
     }
     for (Document d : existing) {
-      if (!currentCodes.contains(d.getRequirementCode())) {
+      // Los agregados a mano no salen de la política: siguen obligatorios hasta que alguien decida otra cosa.
+      if (!d.isCustom() && !currentCodes.contains(d.getRequirementCode())) {
         d.updateRequired(false);
       }
     }
@@ -222,7 +225,7 @@ public class DocumentService implements DocumentsApi {
     if (files == null || files.isEmpty()) {
       throw new UnprocessableException("NO_FILES", "Selecciona al menos un archivo.");
     }
-    if (via == UploadedVia.PUBLIC_PORTAL && document.getStatus() == DocumentStatus.ACCEPTED) {
+    if (via == UploadedVia.PUBLIC_PORTAL && document.getStatus() == DocumentStatus.ACCEPTED && !document.isUpdateRequested()) {
       throw new ConflictException("DOCUMENT_ALREADY_ACCEPTED", "Este documento ya fue aceptado; no es necesario volver a cargarlo.");
     }
     Completeness before = completenessOf(document.getExpedienteId());
@@ -557,6 +560,114 @@ public class DocumentService implements DocumentsApi {
     return document;
   }
 
+  static final int MIN_NOTE_LENGTH = 10;
+  static final int MAX_NOTE_LENGTH = 1000;
+  static final int MAX_CUSTOM_NAME_LENGTH = 120;
+
+  /**
+   * Control de Cambios #1: un documento que no está en el listado, con el nombre que le dé el
+   * usuario. Se guarda igual que los demás (mismo almacenamiento y revisión) y es obligatorio.
+   */
+  public Document addCustomDocument(UUID expedienteId, String name, UUID participantId, Actor actor) {
+    String cleaned = blankToNull(name);
+    if (cleaned == null || cleaned.length() < 3) {
+      throw new UnprocessableException("DOCUMENT_NAME_REQUIRED", "Escribe el nombre del documento (al menos 3 caracteres).");
+    }
+    if (cleaned.length() > MAX_CUSTOM_NAME_LENGTH) {
+      throw new UnprocessableException(
+          "DOCUMENT_NAME_TOO_LONG", "El nombre del documento puede tener hasta " + MAX_CUSTOM_NAME_LENGTH + " caracteres.");
+    }
+    List<Document> existing = documentRepository.findByExpedienteId(expedienteId);
+    boolean duplicate =
+        existing.stream()
+            .anyMatch(
+                d -> d.isCustom() && d.getCustomName().equalsIgnoreCase(cleaned) && java.util.Objects.equals(d.getParticipantId(), participantId));
+    if (duplicate) {
+      throw new ConflictException("DOCUMENT_NAME_DUPLICATE", "Ya existe un documento con ese nombre en este expediente.");
+    }
+    Completeness before = completenessOf(expedienteId);
+    Document document = documentRepository.save(Document.custom(expedienteId, cleaned, participantId));
+    events.publishEvent(
+        new DocumentFollowUpChanged(expedienteId, document.getId(), document.getType(), cleaned, DocumentFollowUp.CUSTOM_ADDED, null, actor));
+    documentRepository.flush();
+    publishCompletenessChanges(expedienteId, before);
+    return document;
+  }
+
+  /**
+   * Control de Cambios #5: falta el documento pero el asesor aprueba seguir sin él por ahora,
+   * con una nota. No bloquea la aprobación ni el contrato; el cliente puede entregarlo después.
+   */
+  public Document approveException(UUID documentId, String note, Actor actor) {
+    Document document = get(documentId);
+    String cleaned = blankToNull(note);
+    if (cleaned == null || cleaned.length() < MIN_NOTE_LENGTH) {
+      throw new UnprocessableException(
+          "EXCEPTION_NOTE_REQUIRED", "Explica por qué se aprueba la excepción (al menos " + MIN_NOTE_LENGTH + " caracteres).");
+    }
+    requireNoteLength(cleaned);
+    Completeness before = completenessOf(document.getExpedienteId());
+    document.approveException(cleaned, actor.userId(), clock.instant());
+    events.publishEvent(
+        new DocumentFollowUpChanged(
+            document.getExpedienteId(), documentId, document.getType(), document.displayName(), DocumentFollowUp.EXCEPTION_APPROVED, cleaned, actor));
+    documentRepository.flush();
+    publishCompletenessChanges(document.getExpedienteId(), before);
+    return document;
+  }
+
+  public Document revokeException(UUID documentId, Actor actor) {
+    Document document = get(documentId);
+    if (!document.hasException()) {
+      return document;
+    }
+    Completeness before = completenessOf(document.getExpedienteId());
+    document.revokeException();
+    events.publishEvent(
+        new DocumentFollowUpChanged(
+            document.getExpedienteId(), documentId, document.getType(), document.displayName(), DocumentFollowUp.EXCEPTION_REVOKED, null, actor));
+    documentRepository.flush();
+    publishCompletenessChanges(document.getExpedienteId(), before);
+    return document;
+  }
+
+  /**
+   * Control de Cambios #10: pide al cliente una versión actualizada. No cambia el estado del
+   * documento (la versión vigente sigue contando) y al subir la nueva, la anterior se conserva.
+   */
+  public Document requestUpdate(UUID documentId, String note, Actor actor) {
+    Document document = get(documentId);
+    String cleaned = blankToNull(note);
+    if (cleaned == null || cleaned.length() < MIN_NOTE_LENGTH) {
+      throw new UnprocessableException(
+          "UPDATE_NOTE_REQUIRED", "Explícale al cliente qué necesita actualizar (al menos " + MIN_NOTE_LENGTH + " caracteres).");
+    }
+    requireNoteLength(cleaned);
+    document.requestUpdate(cleaned, clock.instant());
+    events.publishEvent(
+        new DocumentFollowUpChanged(
+            document.getExpedienteId(), documentId, document.getType(), document.displayName(), DocumentFollowUp.UPDATE_REQUESTED, cleaned, actor));
+    return document;
+  }
+
+  public Document cancelUpdateRequest(UUID documentId, Actor actor) {
+    Document document = get(documentId);
+    if (!document.isUpdateRequested()) {
+      return document;
+    }
+    document.cancelUpdateRequest();
+    events.publishEvent(
+        new DocumentFollowUpChanged(
+            document.getExpedienteId(), documentId, document.getType(), document.displayName(), DocumentFollowUp.UPDATE_CANCELLED, null, actor));
+    return document;
+  }
+
+  private static void requireNoteLength(String note) {
+    if (note.length() > MAX_NOTE_LENGTH) {
+      throw new UnprocessableException("NOTE_TOO_LONG", "La nota puede tener hasta " + MAX_NOTE_LENGTH + " caracteres.");
+    }
+  }
+
   public Document requestAgain(UUID documentId, Actor actor) {
     Document document = get(documentId);
     Completeness before = completenessOf(document.getExpedienteId());
@@ -576,7 +687,7 @@ public class DocumentService implements DocumentsApi {
     List<Document> required = documentRepository.findByExpedienteId(expedienteId).stream().filter(Document::isRequired).toList();
     return new Completeness(
         !required.isEmpty(),
-        required.stream().anyMatch(d -> d.getStatus() == DocumentStatus.PENDING && !d.isDeferred()),
+        required.stream().anyMatch(d -> d.getStatus() == DocumentStatus.PENDING && !d.isDeferred() && !d.hasException()),
         !required.isEmpty() && required.stream().allMatch(Document::isSatisfiedForSubmission),
         !required.isEmpty() && required.stream().allMatch(Document::isSatisfiedForApproval));
   }
@@ -667,7 +778,7 @@ public class DocumentService implements DocumentsApi {
             d ->
                 new RequirementStatusView(
                     d.getId(), d.getType(), d.getParticipantId(), d.isRequired(), d.getStatus().name(),
-                    latestVersion(d.getId()).map(DocumentVersion::getId).orElse(null)))
+                    latestVersion(d.getId()).map(DocumentVersion::getId).orElse(null), d.displayName(), d.hasException()))
         .toList();
   }
 
@@ -743,7 +854,7 @@ public class DocumentService implements DocumentsApi {
         .map(
             d ->
                 new AcceptedDocumentView(
-                    d.getId(), d.getType().name(), d.getParticipantId(), currentAcceptedPdfStorageKey(d.getId()).orElse(null)))
+                    d.getId(), d.getType().name(), d.getParticipantId(), currentAcceptedPdfStorageKey(d.getId()).orElse(null), d.displayName()))
         .toList();
   }
 

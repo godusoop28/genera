@@ -225,7 +225,12 @@ final List<({String method, String path, Object? body})> sentRequests = [];
   if (p == '/internal/expedientes/exp-1/public-link') {
     return (200, {'createdAt': '2026-10-02T15:00:00Z', 'expiresAt': '2026-11-02T15:00:00Z', 'revokedAt': null, 'lastUsedAt': '2026-10-12T20:00:00Z', 'usable': true});
   }
+  if (method == 'POST' && p == '/internal/expedientes/exp-1/documents') {
+    return (201, {..._doc('d-extra', 'OTHER', 'PENDING', withFile: false), 'customName': (body as Map?)?['name']});
+  }
   if (p == '/internal/expedientes/exp-1/documents') return (200, _documents);
+  // Visor sin descarga (Control de Cambios #6).
+  if (RegExp(r'^/internal/document-versions/[^/]+/view$').hasMatch(p)) return (200, {'pageCount': 2, 'canDownload': false});
   if (p == '/internal/expedientes/exp-1/requirements') {
     return (200, [for (final d in _documents) {'requirementCode': d['type'], 'type': d['type'], 'required': true, 'conditional': false, 'participantId': d['participantId']}]);
   }

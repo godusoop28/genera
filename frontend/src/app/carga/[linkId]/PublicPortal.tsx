@@ -766,12 +766,13 @@ function DocumentsStep({
 
   const names = Object.fromEntries(participants.map((p) => [p.id, p.displayName]));
   // Lo que el asesor dejó para después (y aún no se sube) no impide enviar lo demás.
-  const isLater = (d: PublicDocumentResponse) => d.required && d.deferred && d.status === "PENDING";
+  const isLater = (d: PublicDocumentResponse) => d.required && (d.deferred || Boolean(d.exception)) && d.status === "PENDING";
   const later = (documents ?? []).filter(isLater);
   const now = (documents ?? []).filter((d) => !isLater(d));
   const required = now.filter((d) => d.required);
   // Solo se le pide corregir al cliente lo que el equipo devolvió o lo que de verdad no se pudo leer.
-  const toFix = (documents ?? []).filter((d) => d.status === "RETURNED" || d.status === "REJECTED" || d.qualityIssue);
+  const toFix = (documents ?? []).filter((d) => d.status === "RETURNED" || d.status === "REJECTED" || d.qualityIssue || d.updateRequestNote);
+  const [savedNotice, setSavedNotice] = useState(false);
   const allRequiredUploaded = documents !== null && required.every((d) => d.status !== "PENDING");
   const canSubmit = status === "WAITING_DOCUMENTS";
   const anyUploaded = (documents ?? []).some((d) => d.currentVersionNumber > 0);
@@ -806,8 +807,8 @@ function DocumentsStep({
         <div className="flex items-start gap-2 rounded-2xl border border-warning-text/30 bg-warning-bg p-4 text-sm text-warning-text">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden />
           <p>
-            {toFix.length === 1 ? "Hay 1 documento que necesitamos que corrijas." : `Hay ${toFix.length} documentos que necesitamos que corrijas.`} Abajo
-            te decimos cuál y por qué.
+            {toFix.length === 1 ? "Hay 1 documento que necesitamos que corrijas o actualices." : `Hay ${toFix.length} documentos que necesitamos que corrijas o actualices.`}{" "}
+            Abajo te decimos cuál y por qué.
           </p>
         </div>
       ) : null}
@@ -876,6 +877,23 @@ function DocumentsStep({
       </Card>
 
       {error ? <p className="text-sm text-danger-text">{error}</p> : null}
+      {/* Control de Cambios #5: cada archivo se guarda al subirlo; el cliente puede salir y volver con la misma liga. */}
+      {savedNotice ? (
+        <div className="flex items-start gap-2 rounded-2xl border border-success-text/30 bg-success-bg p-4 text-sm text-success-text">
+          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden />
+          <p>
+            Tu avance quedó guardado: {(documents ?? []).filter((d) => d.currentVersionNumber > 0).length} documento(s) recibido(s). Puedes cerrar esta
+            página y continuar después desde esta misma liga; no se pierde nada de lo que ya subiste.
+          </p>
+        </div>
+      ) : null}
+      {canSubmit && !allRequiredUploaded ? (
+        <div className="flex justify-start">
+          <Button variant="secondary" onClick={() => setSavedNotice(true)}>
+            Guardar avance y continuar después
+          </Button>
+        </div>
+      ) : null}
       {canSubmit ? (
         <div className="flex flex-col items-end gap-2">
           {!allRequiredUploaded ? (
@@ -983,17 +1001,18 @@ function PublicDocumentRow({
   };
 
   const status = clientDocStatus[doc.status];
-  const needsFix = doc.status === "RETURNED" || doc.status === "REJECTED" || Boolean(doc.qualityIssue);
-  const canUpload = doc.status !== "ACCEPTED" && doc.status !== "NOT_APPLICABLE";
+  const needsFix = doc.status === "RETURNED" || doc.status === "REJECTED" || Boolean(doc.qualityIssue) || Boolean(doc.updateRequestNote);
+  // Ya aceptado solo se vuelve a subir si se pidió una versión actualizada (Control de Cambios #10).
+  const canUpload = (doc.status !== "ACCEPTED" || Boolean(doc.updateRequestNote)) && doc.status !== "NOT_APPLICABLE";
 
   return (
     <div className={`rounded-lg border p-3 ${needsFix ? "border-warning-text/40" : "border-border"}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <span className="text-sm font-medium text-obsessed">{documentTypeLabel(doc.type)}</span>
+          <span className="text-sm font-medium text-obsessed">{doc.customName ?? documentTypeLabel(doc.type)}</span>
           {participantName ? <span className="text-sm text-muted"> — {participantName}</span> : null}
           {!doc.required ? <span className="ml-2 text-xs text-muted">(opcional)</span> : null}
-          {doc.required && doc.deferred && doc.status === "PENDING" ? <span className="ml-2 text-xs text-muted">(cuando lo tengas)</span> : null}
+          {doc.required && (doc.deferred || doc.exception) && doc.status === "PENDING" ? <span className="ml-2 text-xs text-muted">(cuando lo tengas)</span> : null}
         </div>
         <div className="flex items-center gap-2">
           {doc.processing ? (
@@ -1023,6 +1042,11 @@ function PublicDocumentRow({
           <strong>El archivo no se pudo leer:</strong> {doc.qualityIssue}
         </p>
       ) : null}
+      {doc.updateRequestNote ? (
+        <p className="mt-2 rounded-md bg-warning-bg px-3 py-2 text-sm text-warning-text">
+          <strong>Necesitamos una versión actualizada:</strong> {doc.updateRequestNote}. La que ya nos diste se conserva.
+        </p>
+      ) : null}
       {uploading && progress !== null ? (
         <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-app-bg" aria-hidden>
           <div className="h-full bg-gold transition-all" style={{ width: `${progress}%` }} />
@@ -1030,7 +1054,7 @@ function PublicDocumentRow({
       ) : null}
       {doc.looksLikeWrongDocument && !doc.qualityIssue && doc.status !== "RETURNED" && doc.status !== "REJECTED" ? (
         <p className="mt-2 rounded-md bg-app-bg px-3 py-2 text-xs text-muted">
-          Recibimos tu archivo. Nuestro equipo confirmará que sea tu {documentTypeLabel(doc.type)}; si hiciera falta otro, te avisaremos aquí.
+          Recibimos tu archivo. Nuestro equipo confirmará que sea tu {doc.customName ?? documentTypeLabel(doc.type)}; si hiciera falta otro, te avisaremos aquí.
         </p>
       ) : null}
       {justUploaded && !error && !doc.qualityIssue ? (
@@ -1056,9 +1080,13 @@ function ConfirmationStep({
 }) {
   // Documentos que el asesor dejó para después: se le recuerdan al cliente aquí.
   const [laterCount, setLaterCount] = useState(0);
+  const [updateCount, setUpdateCount] = useState(0);
   useEffect(() => {
     listPublicDocuments(token)
-      .then((docs) => setLaterCount(docs.filter((d) => d.required && d.deferred && d.status === "PENDING").length))
+      .then((docs) => {
+        setLaterCount(docs.filter((d) => d.required && (d.deferred || d.exception) && d.status === "PENDING").length);
+        setUpdateCount(docs.filter((d) => d.updateRequestNote).length);
+      })
       .catch(() => undefined);
   }, [token]);
 
@@ -1066,6 +1094,19 @@ function ConfirmationStep({
     <Card>
       <CardHeader title="Estado de tu trámite" />
       <p className="text-sm text-obsessed">{clientStatusText[expediente.status]}</p>
+      {updateCount > 0 ? (
+        <div className="mt-4 rounded-xl border border-warning-text/30 bg-warning-bg p-4">
+          <p className="text-sm text-warning-text">
+            {updateCount === 1
+              ? "Necesitamos una versión actualizada de 1 documento."
+              : `Necesitamos una versión actualizada de ${updateCount} documentos.`}{" "}
+            La que ya nos diste se conserva.
+          </p>
+          <Button variant="secondary" size="sm" className="mt-3" onClick={onUploadLater}>
+            <Upload className="h-4 w-4" aria-hidden /> Subir la versión actualizada
+          </Button>
+        </div>
+      ) : null}
       {laterCount > 0 ? (
         <div className="mt-4 rounded-xl border border-gold/40 bg-gold/10 p-4">
           <p className="text-sm text-obsessed">

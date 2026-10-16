@@ -57,6 +57,22 @@ public final class DocumentEvents {
   /** deferred=true: el cliente puede subirlo después (reason: por qué); false: se pide desde la primera entrega. */
   public record DocumentDeferralChanged(UUID expedienteId, UUID documentId, DocumentTypeCode type, boolean deferred, String reason, Actor actor) {}
 
+  /** Qué cambió en el seguimiento de un documento (controles de cambios #1, #5 y #10). */
+  public enum DocumentFollowUp {
+    /** Se agregó un documento que no está en el listado, con el nombre capturado. */
+    CUSTOM_ADDED,
+    /** Falta, pero el asesor aprobó la excepción: no bloquea y se entrega después. */
+    EXCEPTION_APPROVED,
+    EXCEPTION_REVOKED,
+    /** Se pidió una versión actualizada; la anterior se conserva. */
+    UPDATE_REQUESTED,
+    UPDATE_CANCELLED
+  }
+
+  /** name: nombre con el que se muestra el documento; note: la nota o justificación capturada. */
+  public record DocumentFollowUpChanged(
+      UUID expedienteId, UUID documentId, DocumentTypeCode type, String name, DocumentFollowUp change, String note, Actor actor) {}
+
   /** Se publica cuando TODOS los documentos obligatorios de un expediente quedan ACCEPTED. */
   public record AllRequiredDocumentsApproved(UUID expedienteId) {}
 

@@ -1,4 +1,4 @@
-import { apiClient, uploadFiles, type UploadProgress } from "@/lib/api/client";
+import { apiClient, getBlob, uploadFiles, type UploadProgress } from "@/lib/api/client";
 import { prepareUploads } from "@/lib/upload-limits";
 import type {
   DocumentResponse,
@@ -6,6 +6,7 @@ import type {
   DownloadResponse,
   ReturnReasonCode,
   ReviewHistoryResponse,
+  ViewerResponse,
 } from "@/lib/api/types";
 
 export function listDocuments(expedienteId: string) {
@@ -70,4 +71,37 @@ export function getProcessingStatus(versionId: string) {
 
 export function getDownloadUrl(versionId: string) {
   return apiClient.get<DownloadResponse>(`/internal/document-versions/${versionId}/download`);
+}
+
+/** Documento que no está en el listado, con el nombre que se le dé (Control de Cambios #1). */
+export function addCustomDocument(expedienteId: string, name: string, participantId: string | null) {
+  return apiClient.post<DocumentResponse>(`/internal/expedientes/${expedienteId}/documents`, { name, participantId });
+}
+
+/** Falta, pero se aprueba seguir sin él por ahora (Control de Cambios #5). */
+export function approveException(documentId: string, note: string) {
+  return apiClient.put<DocumentResponse>(`/internal/documents/${documentId}/exception`, { note });
+}
+
+export function revokeException(documentId: string) {
+  return apiClient.delete<DocumentResponse>(`/internal/documents/${documentId}/exception`);
+}
+
+/** Pide al cliente una versión actualizada; la vigente se conserva (Control de Cambios #10). */
+export function requestDocumentUpdate(documentId: string, note: string) {
+  return apiClient.put<DocumentResponse>(`/internal/documents/${documentId}/update-request`, { note });
+}
+
+export function cancelDocumentUpdate(documentId: string) {
+  return apiClient.delete<DocumentResponse>(`/internal/documents/${documentId}/update-request`);
+}
+
+/** Visor sin descarga (Control de Cambios #6): cuántas páginas tiene y si se puede descargar. */
+export function getViewer(versionId: string) {
+  return apiClient.get<ViewerResponse>(`/internal/document-versions/${versionId}/view`);
+}
+
+/** Imagen de la página (1 = la primera) con la marca de agua de quien consulta. */
+export function getViewerPage(versionId: string, pageNumber: number) {
+  return getBlob(`/internal/document-versions/${versionId}/view/pages/${pageNumber}`);
 }

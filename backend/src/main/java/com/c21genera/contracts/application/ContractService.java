@@ -291,7 +291,7 @@ public class ContractService {
     return documentsApi.acceptedDocumentsOf(summary.id()).stream()
         .map(
             d -> {
-              String label = labelOf(d.type());
+              String label = d.name() != null ? d.name() : labelOf(d.type());
               String who = d.participantId() != null ? names.get(d.participantId()) : null;
               return who != null ? label + " de " + who : label;
             })
@@ -304,11 +304,12 @@ public class ContractService {
     Map<UUID, String> names = summary.participants().stream().collect(Collectors.toMap(ParticipantView::id, ParticipantView::fullName));
 
     for (RequirementStatusView doc : documentsApi.requirementStatusOf(summary.id())) {
-      if (!doc.required() || "ACCEPTED".equals(doc.status()) || "NOT_APPLICABLE".equals(doc.status())) {
+      // Una excepción aprobada por el asesor (Control de Cambios #5) no bloquea el contrato.
+      if (!doc.required() || doc.exception() || "ACCEPTED".equals(doc.status()) || "NOT_APPLICABLE".equals(doc.status())) {
         continue;
       }
       String who = doc.participantId() != null && names.containsKey(doc.participantId()) ? " de " + names.get(doc.participantId()) : "";
-      blockers.add("Documento obligatorio sin aceptar: " + DocumentTypeLabels.of(doc.type()) + who + " (" + statusLabel(doc.status()) + ")");
+      blockers.add("Documento obligatorio sin aceptar: " + doc.displayName() + who + " (" + statusLabel(doc.status()) + ")");
     }
 
     if (summary.status().ordinal() < ExpedienteStatus.RECEPTION_SIGNED.ordinal()

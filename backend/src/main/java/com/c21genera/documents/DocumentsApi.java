@@ -59,15 +59,46 @@ public interface DocumentsApi {
 
   record PageView(int pageNumber, String storageKeyOriginal, String mimeType) {}
 
-  record AcceptedDocumentView(UUID documentId, String type, UUID participantId, String pdfStorageKey) {}
+  /** name: con el que se muestra (el capturado si se agregó a mano). */
+  record AcceptedDocumentView(UUID documentId, String type, UUID participantId, String pdfStorageKey, String name) {
 
-  /** currentVersionId: la versión vigente del documento (null si no tiene archivo). */
+    public AcceptedDocumentView(UUID documentId, String type, UUID participantId, String pdfStorageKey) {
+      this(documentId, type, participantId, pdfStorageKey, null);
+    }
+  }
+
+  /**
+   * currentVersionId: la versión vigente del documento (null si no tiene archivo). name: con el
+   * que se muestra. exception: falta, pero el asesor aprobó seguir sin él (no bloquea).
+   */
   record RequirementStatusView(
-      UUID documentId, com.c21genera.shared.domain.DocumentTypeCode type, UUID participantId, boolean required, String status, UUID currentVersionId) {
+      UUID documentId,
+      com.c21genera.shared.domain.DocumentTypeCode type,
+      UUID participantId,
+      boolean required,
+      String status,
+      UUID currentVersionId,
+      String name,
+      boolean exception) {
 
     public RequirementStatusView(
         UUID documentId, com.c21genera.shared.domain.DocumentTypeCode type, UUID participantId, boolean required, String status) {
-      this(documentId, type, participantId, required, status, null);
+      this(documentId, type, participantId, required, status, null, null, false);
+    }
+
+    public RequirementStatusView(
+        UUID documentId,
+        com.c21genera.shared.domain.DocumentTypeCode type,
+        UUID participantId,
+        boolean required,
+        String status,
+        UUID currentVersionId) {
+      this(documentId, type, participantId, required, status, currentVersionId, null, false);
+    }
+
+    /** Nombre con el que se muestra: el capturado o, si no hay, el del tipo. */
+    public String displayName() {
+      return name != null ? name : com.c21genera.shared.domain.DocumentTypeLabels.of(type);
     }
   }
 

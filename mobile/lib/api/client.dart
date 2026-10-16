@@ -169,6 +169,18 @@ class ApiClient {
   }
 
   Future<dynamic> get(String path) => request('GET', path);
+
+  /// GET autenticado que devuelve el cuerpo binario (p. ej. una página del visor de documentos).
+  Future<List<int>> getBytes(String path) async {
+    final response = await _withAuth(path, (token) {
+      final req = http.Request('GET', _uri(path))..headers.addAll({if (token != null) 'Authorization': 'Bearer $token'});
+      return httpClient.send(req).then(http.Response.fromStream);
+    });
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      _decode(response);
+    }
+    return response.bodyBytes;
+  }
   Future<dynamic> post(String path, [Object? body]) => request('POST', path, body: body);
   Future<dynamic> put(String path, [Object? body]) => request('PUT', path, body: body);
   Future<dynamic> patch(String path, [Object? body]) => request('PATCH', path, body: body);

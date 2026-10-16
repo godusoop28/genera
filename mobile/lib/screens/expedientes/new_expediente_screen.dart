@@ -94,6 +94,9 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
   String propertyCaseType = 'HOUSING';
   bool condominiumRegime = false;
   String propertyReference = '';
+
+  /// Documentos que no están en el listado, con el nombre capturado (Control de Cambios #1).
+  List<String> extraDocuments = [];
   bool showErrors = false;
   bool submitting = false;
   bool created = false;
@@ -134,6 +137,7 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
         propertyCaseType = d['propertyCaseType'] as String? ?? propertyCaseType;
         condominiumRegime = d['condominiumRegime'] == true;
         propertyReference = d['propertyReference'] as String? ?? '';
+        extraDocuments = [for (final n in (d['extraDocuments'] as List? ?? [])) '$n'];
         step = (d['step'] as num?)?.toInt() ?? 1;
         resumed = step > 1;
       }
@@ -163,6 +167,7 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
       'propertyCaseType': propertyCaseType,
       'condominiumRegime': condominiumRegime,
       'propertyReference': propertyReference,
+      'extraDocuments': extraDocuments,
       'step': step,
     });
     try {
@@ -278,11 +283,25 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
       });
       created = true;
       _saveTimer?.cancel();
+      // Los documentos agregados a mano se guardan en el expediente igual que los del listado.
+      final failed = <String>[];
+      for (final name in extraDocuments) {
+        try {
+          await api.addCustomDocument(result.id, name, null);
+        } catch (_) {
+          failed.add(name);
+        }
+      }
       try {
         await api.deleteDraft(_draftKey);
       } catch (_) {}
       if (!mounted) return;
-      showToast(context, 'Expediente ${result.folio} creado.');
+      showToast(
+        context,
+        failed.isEmpty
+            ? 'Expediente ${result.folio} creado.'
+            : 'Expediente ${result.folio} creado. No se pudo agregar: ${failed.join(', ')}; agrégalo desde la pestaña Documentos.',
+      );
       context.pushReplacement('/expedientes/${result.id}');
     } catch (err) {
       // Lo capturado se conserva: el usuario puede reintentar sin volver a escribir nada.
@@ -685,7 +704,7 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
       'ATTORNEY' => 'Apoderado',
       _ => 'Representante legal',
     };
-    final required = preview.where((i) => i.kind == 'required').length;
+    final required = preview.where((i) => i.kind == 'required').length + extraDocuments.length;
     final conditional = preview.where((i) => i.kind == 'conditional').length;
     final optional = preview.where((i) => i.kind == 'optional').length;
     return AppCard(
@@ -789,6 +808,42 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
                 ),
               const SizedBox(height: 6),
             ],
+          if (extraDocuments.isNotEmpty) ...[
+            SectionTitle('Agregados (${extraDocuments.length})'),
+            for (final name in extraDocuments)
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+                decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: c.border)),
+                child: Row(children: [
+                  Expanded(child: Text(name, style: TextStyle(color: c.fg, fontSize: 13.5))),
+                  TextButton(
+                    onPressed: () => changed(() => extraDocuments = extraDocuments.where((n) => n != name).toList()),
+                    child: Text('Quitar', style: TextStyle(color: c.goldText)),
+                  ),
+                ]),
+              ),
+            const SizedBox(height: 6),
+          ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Btn('Agregar otro documento', icon: Icons.add, small: true, variant: BtnVariant.secondary, onPressed: () async {
+              final name = await askReason(
+                context,
+                title: 'Agregar otro documento',
+                description: 'Para un documento que no está en la lista. Se guarda en el expediente igual que los demás y se le pide al cliente en su liga.',
+                label: 'Nombre del documento',
+                placeholder: 'Ej. Constancia de no adeudo de mantenimiento',
+                minLength: 3,
+                confirmLabel: 'Agregar',
+              );
+              if (name == null) return;
+              final clean = name.trim();
+              if (extraDocuments.any((n) => n.toLowerCase() == clean.toLowerCase())) return;
+              changed(() => extraDocuments = [...extraDocuments, clean]);
+            }),
+          ),
+          const SizedBox(height: 10),
           const Notice(
             tone: Tone.warning,
             icon: Icons.info_outline,

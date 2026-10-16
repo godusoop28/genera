@@ -89,6 +89,16 @@ hace nada si la variable está vacía, y nunca corre en `prod`).
   archivo del cliente) y solo URLs firmadas temporales para descarga.
 - El MIME real se detecta con Apache Tika (nunca se confía en el
   `Content-Type` del navegador).
+- El staff consulta los documentos en un visor (`DocumentViewer`): cada página
+  llega como imagen JPEG con marca de agua de quien consulta, sin el archivo
+  original. Descargar o imprimir el original requiere `DOCUMENT_DOWNLOAD`
+  (solo administrador); la vista previa del correo a notaría tampoco trae
+  ligas de descarga sin ese permiso.
+- Además de los requisitos de la política, se pueden agregar documentos con
+  nombre libre (tipo `OTHER`, `custom_name`), aprobar como excepción con nota
+  un documento faltante (`DOCUMENT_EXCEPTION`: no bloquea la aprobación ni el
+  contrato) y pedir una versión actualizada (`DOCUMENT_UPDATE_REQUEST`): la
+  nueva carga es la versión siguiente y las anteriores nunca se borran.
 - Pipeline asíncrono (`documentprocessing`, sin Kafka/RabbitMQ: una tabla
   `background_job` con `SELECT ... FOR UPDATE SKIP LOCKED`, diseñada para
   poder migrar a un broker externo después sin cambiar el dominio):

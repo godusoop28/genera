@@ -196,3 +196,10 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* Control de Cambios #6: con el visor de documentos abierto no se imprime nada de la página. */
+@media print {
+  body.c21-viewer-open * {
+    visibility: hidden !important;
+  }
+}

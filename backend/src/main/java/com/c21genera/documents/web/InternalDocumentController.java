@@ -1,8 +1,9 @@
 package com.c21genera.documents.web;
 
-import com.c21genera.documents.application.DocumentService;
 import com.c21genera.documents.application.DocumentService.ReviewCommand;
 import com.c21genera.documents.application.DocumentService.UploadedFileContent;
+import com.c21genera.documents.application.DocumentService;
+import com.c21genera.documents.application.DocumentViewer;
 import com.c21genera.documents.domain.Document;
 import com.c21genera.documents.domain.DocumentVersion;
 import com.c21genera.documents.domain.UploadedVia;
@@ -23,10 +24,15 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -48,16 +54,97 @@ import org.springframework.web.multipart.MultipartFile;
 public class InternalDocumentController {
 
   private final DocumentService documentService;
+  private final DocumentViewer viewer;
   private final FileStorage fileStorage;
   private final StorageProperties storageProperties;
   private final ExpedienteAccessPolicy accessPolicy;
 
   public InternalDocumentController(
-      DocumentService documentService, FileStorage fileStorage, StorageProperties storageProperties, ExpedienteAccessPolicy accessPolicy) {
+      DocumentService documentService,
+      DocumentViewer viewer,
+      FileStorage fileStorage,
+      StorageProperties storageProperties,
+      ExpedienteAccessPolicy accessPolicy) {
     this.documentService = documentService;
+    this.viewer = viewer;
     this.fileStorage = fileStorage;
     this.storageProperties = storageProperties;
     this.accessPolicy = accessPolicy;
+  }
+
+  public record CustomDocumentRequest(String name, UUID participantId) {}
+
+  public record NoteRequest(String note) {}
+
+  /** Control de Cambios #1: documento que no está en el listado, con el nombre que se capture. */
+  @PostMapping("/api/v1/internal/expedientes/{expedienteId}/documents")
+  @PreAuthorize("hasAnyAuthority('EXPEDIENT_EDIT', 'DOCUMENT_UPLOAD')")
+  @ResponseStatus(HttpStatus.CREATED)
+  public DocumentResponse addCustom(
+      @PathVariable UUID expedienteId, @RequestBody CustomDocumentRequest request, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = requireExpediente(expedienteId, jwt);
+    return toResponse(
+        documentService.addCustomDocument(expedienteId, request == null ? null : request.name(), request == null ? null : request.participantId(), user.toActor()));
+  }
+
+  /** Control de Cambios #5: falta, pero se aprueba seguir sin él por ahora (con nota). */
+  @PutMapping("/api/v1/internal/documents/{documentId}/exception")
+  @PreAuthorize("hasAuthority('DOCUMENT_EXCEPTION')")
+  public DocumentResponse approveException(@PathVariable UUID documentId, @RequestBody NoteRequest request, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = CurrentUser.from(jwt);
+    requireDocument(documentId, jwt);
+    return toResponse(documentService.approveException(documentId, request == null ? null : request.note(), user.toActor()));
+  }
+
+  @DeleteMapping("/api/v1/internal/documents/{documentId}/exception")
+  @PreAuthorize("hasAuthority('DOCUMENT_EXCEPTION')")
+  public DocumentResponse revokeException(@PathVariable UUID documentId, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = CurrentUser.from(jwt);
+    requireDocument(documentId, jwt);
+    return toResponse(documentService.revokeException(documentId, user.toActor()));
+  }
+
+  /** Control de Cambios #10: pedir al cliente una versión actualizada; la vigente se conserva. */
+  @PutMapping("/api/v1/internal/documents/{documentId}/update-request")
+  @PreAuthorize("hasAuthority('DOCUMENT_UPDATE_REQUEST')")
+  public DocumentResponse requestUpdate(@PathVariable UUID documentId, @RequestBody NoteRequest request, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = CurrentUser.from(jwt);
+    requireDocument(documentId, jwt);
+    return toResponse(documentService.requestUpdate(documentId, request == null ? null : request.note(), user.toActor()));
+  }
+
+  @DeleteMapping("/api/v1/internal/documents/{documentId}/update-request")
+  @PreAuthorize("hasAuthority('DOCUMENT_UPDATE_REQUEST')")
+  public DocumentResponse cancelUpdateRequest(@PathVariable UUID documentId, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = CurrentUser.from(jwt);
+    requireDocument(documentId, jwt);
+    return toResponse(documentService.cancelUpdateRequest(documentId, user.toActor()));
+  }
+
+  /** canDownload: si quien consulta puede además descargar o imprimir el original. */
+  public record ViewerResponse(int pageCount, boolean canDownload) {}
+
+  /** Control de Cambios #6: el visor muestra cada página como imagen con marca de agua, sin el archivo. */
+  @GetMapping("/api/v1/internal/document-versions/{versionId}/view")
+  public ViewerResponse view(@PathVariable UUID versionId, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = requireVersion(versionId, jwt);
+    return new ViewerResponse(viewer.info(versionId).pageCount(), user.permissions().contains("DOCUMENT_DOWNLOAD"));
+  }
+
+  @GetMapping(value = "/api/v1/internal/document-versions/{versionId}/view/pages/{pageNumber}", produces = MediaType.IMAGE_JPEG_VALUE)
+  public ResponseEntity<byte[]> viewPage(@PathVariable UUID versionId, @PathVariable int pageNumber, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = requireVersion(versionId, jwt);
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
+        .contentType(MediaType.IMAGE_JPEG)
+        .body(viewer.page(versionId, pageNumber, user.name()));
+  }
+
+  private CurrentUser requireVersion(UUID versionId, Jwt jwt) {
+    DocumentVersion version = documentService.getVersion(versionId);
+    requireDocument(version.getDocumentId(), jwt);
+    return CurrentUser.from(jwt);
   }
 
   @GetMapping("/api/v1/internal/expedientes/{expedienteId}/documents")
@@ -222,8 +309,12 @@ public class InternalDocumentController {
 
   public record DownloadResponse(URI url) {}
 
-  /** Nunca se exponen URLs permanentes: siempre firmadas y temporales (ver AGENTS §29/§101). */
+  /**
+   * Nunca se exponen URLs permanentes: siempre firmadas y temporales (ver AGENTS §29/§101).
+   * Descargar el original es un permiso especial (Control de Cambios #6); los demás usan el visor.
+   */
   @GetMapping("/api/v1/internal/document-versions/{versionId}/download")
+  @PreAuthorize("hasAuthority('DOCUMENT_DOWNLOAD')")
   public DownloadResponse download(@PathVariable UUID versionId, @AuthenticationPrincipal Jwt jwt) {
     DocumentVersion version = documentService.getVersion(versionId);
     requireDocument(version.getDocumentId(), jwt);

@@ -11,6 +11,7 @@ import { StateMessage } from "@/components/ui/StateMessage";
 import { Toggle } from "@/components/ui/Toggle";
 import { useToast } from "@/components/ui/Toast";
 import { ApiError } from "@/lib/api/client";
+import { addCustomDocument } from "@/lib/api/documents";
 import { checkClientDuplicates, createExpediente, type DuplicateMatchResponse } from "@/lib/api/expedientes";
 import { backendStatusLabels } from "@/lib/api/status-labels";
 import { formatDate } from "@/lib/labels";
@@ -61,6 +62,8 @@ interface NewExpedienteDraft {
   propertyCaseType: BackendPropertyCaseType;
   condominiumRegime: boolean;
   propertyReference?: string;
+  /** Documentos que no están en el listado, con el nombre capturado (Control de Cambios #1). */
+  extraDocuments?: string[];
   /** Paso en el que se iba, para retomarlo al recargar. */
   step?: StepId;
 }
@@ -115,6 +118,8 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
   const [propertyCaseType, setPropertyCaseType] = useState<BackendPropertyCaseType>(draft?.propertyCaseType ?? "HOUSING");
   const [condominiumRegime, setCondominiumRegime] = useState(draft?.condominiumRegime ?? false);
   const [propertyReference, setPropertyReference] = useState(draft?.propertyReference ?? "");
+  const [extraDocuments, setExtraDocuments] = useState<string[]>(draft?.extraDocuments ?? []);
+  const [newDocument, setNewDocument] = useState<string | null>(null);
   const [showErrors, setShowErrors] = useState(false);
   // Campos que el usuario ya visitó: su error se muestra al salir de ellos, sin esperar a "Continuar".
   const [touched, setTouched] = useState<Set<string>>(() => new Set());
@@ -147,9 +152,23 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
       propertyCaseType,
       condominiumRegime,
       propertyReference,
+      extraDocuments,
       step,
     } satisfies NewExpedienteDraft);
-  }, [updateDraft, personType, signedByAttorney, owners, representatives, attorney, accreditationType, propertyCaseType, condominiumRegime, propertyReference, step]);
+  }, [
+    updateDraft,
+    personType,
+    signedByAttorney,
+    owners,
+    representatives,
+    attorney,
+    accreditationType,
+    propertyCaseType,
+    condominiumRegime,
+    propertyReference,
+    extraDocuments,
+    step,
+  ]);
 
   const isMoral = personType === "MORAL";
   const participants = useMemo<ParticipantRequest[]>(() => {
@@ -280,8 +299,17 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
         duplicateAuthorizationReason: duplicatesAuthorized ? duplicateReason.trim() : undefined,
       });
       setCreated(true);
+      // Los documentos agregados a mano se guardan en el expediente igual que los del listado.
+      const failed: string[] = [];
+      for (const name of extraDocuments) {
+        await addCustomDocument(result.id, name, null).catch(() => failed.push(name));
+      }
       await serverDraft.clear();
-      showToast(`Expediente ${result.folio} creado.`);
+      showToast(
+        failed.length > 0
+          ? `Expediente ${result.folio} creado. No se pudo agregar: ${failed.join(", ")}; agrégalo desde la pestaña Documentos.`
+          : `Expediente ${result.folio} creado.`,
+      );
       router.push(`/expedientes/${result.id}`);
     } catch (err) {
       // Lo capturado se conserva: el usuario puede reintentar sin volver a escribir nada.
@@ -593,7 +621,7 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
                 <ReviewRow label="Régimen de condominio" value={condominiumRegime ? "Sí" : "No"} />
               </ReviewSection>
               <p className="mt-4 text-sm text-muted">
-                Al crear el expediente se registran <strong className="text-obsessed">{requiredPreview.length} documentos obligatorios</strong>
+                Al crear el expediente se registran <strong className="text-obsessed">{requiredPreview.length + extraDocuments.length} documentos obligatorios</strong>
                 {conditionalPreview.length > 0 ? `, ${conditionalPreview.length} que dependen de lo que declare el cliente` : ""}
                 {optionalPreview.length > 0 ? ` y ${optionalPreview.length} opcionales` : ""}. Después podrás generar la liga para que el cliente los cargue.
               </p>
@@ -626,6 +654,57 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
                   </ul>
                 </section>
               ) : null,
+            )}
+            {extraDocuments.length > 0 ? (
+              <section className="mt-3">
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Agregados ({extraDocuments.length})</h3>
+                <ul className="flex flex-col gap-2">
+                  {extraDocuments.map((name) => (
+                    <li key={name} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm text-obsessed">
+                      <span className="min-w-0 break-words">{name}</span>
+                      <button
+                        type="button"
+                        className="shrink-0 text-xs font-medium text-dark-gold hover:underline"
+                        onClick={() => setExtraDocuments((prev) => prev.filter((n) => n !== name))}
+                      >
+                        Quitar
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+            {newDocument !== null ? (
+              <div className="mt-3 flex flex-col gap-2">
+                <Input
+                  label="Nombre del documento"
+                  autoFocus
+                  maxLength={120}
+                  value={newDocument}
+                  onChange={(e) => setNewDocument(e.target.value)}
+                  placeholder="Ej. Constancia de no adeudo de mantenimiento"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    disabled={newDocument.trim().length < 3}
+                    onClick={() => {
+                      const name = newDocument.trim();
+                      setExtraDocuments((prev) => (prev.some((n) => n.toLowerCase() === name.toLowerCase()) ? prev : [...prev, name]));
+                      setNewDocument(null);
+                    }}
+                  >
+                    Agregar
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setNewDocument(null)}>
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button variant="secondary" size="sm" className="mt-3" onClick={() => setNewDocument("")}>
+                <Plus className="h-4 w-4" aria-hidden /> Agregar otro documento
+              </Button>
             )}
             <p className="mt-4 flex items-start gap-2 rounded-xl bg-warning-bg px-3 py-2.5 text-sm text-warning-text">
               <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />

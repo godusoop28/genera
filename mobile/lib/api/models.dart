@@ -397,12 +397,38 @@ class DocumentResponse {
         lastReviewComment = _s(j['lastReviewComment']),
         lastReviewedAt = _s(j['lastReviewedAt']),
         latestVersion = j['latestVersion'] is Map ? LatestVersion.fromJson(Json.from(j['latestVersion'] as Map)) : null,
-        pipelineStatus = _s(j['pipelineStatus']);
+        pipelineStatus = _s(j['pipelineStatus']),
+        customName = _s(j['customName']),
+        exceptionNote = _s(j['exceptionNote']),
+        exceptionAt = _s(j['exceptionAt']),
+        updateRequestNote = _s(j['updateRequestNote']),
+        updateRequestedAt = _s(j['updateRequestedAt']);
   final String id, type, status;
   final String? participantId, deferralReason, notApplicableJustification, notApplicableAt, lastReviewReasonCode, lastReviewComment, lastReviewedAt, pipelineStatus;
+
+  /// Nombre capturado si se agregó a mano porque no está en el listado (Control de Cambios #1).
+  final String? customName;
+
+  /// Falta, pero se aprobó como excepción (Control de Cambios #5).
+  final String? exceptionNote, exceptionAt;
+
+  /// Se pidió una versión actualizada al cliente (Control de Cambios #10).
+  final String? updateRequestNote, updateRequestedAt;
   final bool required, deferred;
   final int currentVersionNumber;
   final LatestVersion? latestVersion;
+}
+
+class DocumentVersionItem {
+  DocumentVersionItem.fromJson(Json j)
+      : id = _sr(j['id']),
+        versionNumber = _i(j['versionNumber']),
+        uploadedAt = _sr(j['uploadedAt']),
+        uploadedVia = _sr(j['uploadedVia']),
+        uploadedByName = _s(j['uploadedByName']);
+  final String id, uploadedAt, uploadedVia;
+  final String? uploadedByName;
+  final int versionNumber;
 }
 
 class ReviewHistory {
@@ -465,10 +491,11 @@ class EmailPreview {
   EmailPreview.fromJson(Json j)
       : subject = _sr(j['subject']),
         body = _sr(j['body']),
-        attachments = _list(j['attachments'], (a) => (fileName: _sr(a['fileName']), downloadUrl: _sr(a['downloadUrl']))),
+        attachments = _list(j['attachments'], (a) => (fileName: _sr(a['fileName']), downloadUrl: _s(a['downloadUrl']))),
         documentTypesWithoutFile = _ls(j['documentTypesWithoutFile']);
   final String subject, body;
-  final List<({String fileName, String downloadUrl})> attachments;
+  /// downloadUrl solo viene para quien puede descargar originales (Control de Cambios #6).
+  final List<({String fileName, String? downloadUrl})> attachments;
   final List<String> documentTypesWithoutFile;
 }
 
