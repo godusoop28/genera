@@ -235,7 +235,20 @@ export const extractedFieldLabels: Record<string, string> = {
   summary: "De qué trata",
   unitNumber: "Unidad privativa",
   undividedPercentage: "Porcentaje de indiviso",
+  undividedLandArea: "Superficie de terreno de indivisos",
+  addressProofKind: "Tipo de comprobante",
 };
+
+/** Control de Cambios #13: comprobantes de domicilio aceptados. */
+export const ADDRESS_PROOF_KIND_LABELS: Record<string, string> = {
+  ELECTRICITY: "Recibo de luz / energía eléctrica (CFE u otro proveedor)",
+  BANK_STATEMENT: "Estado de cuenta bancario",
+  TELMEX: "Recibo de Telmex",
+  PHONE: "Recibo de telefonía (cualquier operadora)",
+  INTERNET: "Recibo de internet (cualquier proveedor)",
+};
+
+export const ADDRESS_PROOF_KINDS = ["ELECTRICITY", "BANK_STATEMENT", "TELMEX", "PHONE", "INTERNET"] as const;
 
 /** Nombre legible de un dato leído: los extra traen su propia etiqueta ("extra.Sección electoral"). */
 export function extractedFieldLabel(fieldName: string): string {

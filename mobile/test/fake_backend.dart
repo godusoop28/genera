@@ -255,6 +255,26 @@ final List<({String method, String path, Object? body})> sentRequests = [];
       ]
     );
   }
+  // Controles de cambios #14, #15, #20, #21 y #23.
+  if (RegExp(r'^/internal/documents/[^/]+/pending$').hasMatch(p) && method == 'PUT') {
+    final id = p.split('/')[3];
+    final base = _documents.firstWhere((d) => d['id'] == id, orElse: () => _documents.first);
+    return (200, {...base, 'markedPending': true, 'pendingNote': (body as Map?)?['note'], 'pendingAt': _now});
+  }
+  if (p == '/internal/expedientes/exp-1/condominium-areas') {
+    return (
+      200,
+      [
+        {'key': 'condo-land-area', 'field': 'landArea', 'label': 'Superficie de terreno (m²)', 'condominiumRegime': '85.40', 'deed': '85.40', 'propertyTax': '85.40', 'consistent': true},
+        {'key': 'condo-undivided-area', 'field': 'undividedLandArea', 'label': 'Superficie de terreno de indivisos (m²)', 'condominiumRegime': '12.50', 'deed': '12.50', 'propertyTax': '19.00', 'consistent': false},
+      ]
+    );
+  }
+  if (p == '/internal/expedientes/exp-1/notary') {
+    return (200, {'closingActive': false, 'documents': [], 'submissions': []});
+  }
+  if (p == '/internal/expedientes/exp-1/signed-contracts') return (200, []);
+  if (p == '/internal/settings/visit-instructions') return (200, {'text': 'Las visitas al inmueble deberán programarse previamente.'});
   if (p == '/internal/expedientes/exp-1/client-data') return (200, {'authorizedPrice': 4500000, 'email': 'maria@example.com', 'phone': '777 123 4567', 'bedrooms': 3, 'bathrooms': 2});
   if (p == '/internal/expedientes/exp-1/legal-details') return (200, {'deed': {'number': null}, 'propertyChecklist': {'LICENSES': true}});
   if (p == '/internal/expedientes/exp-1/contract/readiness') {

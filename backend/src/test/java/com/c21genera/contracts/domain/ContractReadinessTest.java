@@ -60,7 +60,7 @@ class ContractReadinessTest {
     service =
         new ContractService(
             expedienteApi, documentsApi, privacyApi, extractionApi, null, null, null, null, null, null, null,
-            Clock.fixed(Instant.parse("2026-09-25T18:00:00Z"), ZoneOffset.UTC));
+            Clock.fixed(Instant.parse("2026-09-25T18:00:00Z"), ZoneOffset.UTC), null);
   }
 
   @Test

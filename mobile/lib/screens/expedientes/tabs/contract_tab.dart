@@ -11,6 +11,7 @@ import '../../../ui/file_pick.dart';
 import '../../../ui/signature_pad.dart';
 import '../../../ui/widgets.dart';
 import '../expediente_detail_screen.dart';
+import 'signed_contract_card.dart';
 
 SigningLink _withFrontendUrl(SigningLink l) => l.withUrl(frontendLink(l.url, 'firma'));
 
@@ -93,6 +94,7 @@ class _ContractTabState extends State<ContractTab> {
     return TabBody(
       onRefresh: refresh,
       children: [
+        SignedContractCard(expedienteId: e.id, onUploaded: refresh),
         AppCard(
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             const CardHeader(

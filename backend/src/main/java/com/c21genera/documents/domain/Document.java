@@ -91,6 +91,23 @@ public class Document extends AuditableEntity {
 
   private Instant updateRequestedAt;
 
+  /**
+   * Control de Cambios #13: qué comprobante de domicilio se entregó (recibo de luz, estado de
+   * cuenta, Telmex, telefonía o internet). Ver {@link AddressProofKind}.
+   */
+  @Column(length = 24)
+  private String addressProofKind;
+
+  /**
+   * Control de Cambios #14: el asesor lo marcó "Pendiente" (se entregará después). No bloquea el
+   * avance; al subirse el archivo deja de estar pendiente y queda "Entregado".
+   */
+  private String pendingNote;
+
+  private java.time.LocalDate pendingDueDate;
+  private UUID pendingByUserId;
+  private Instant pendingAt;
+
   protected Document() {}
 
   public Document(UUID expedienteId, String requirementCode, DocumentTypeCode type, UUID participantId, boolean required) {
@@ -128,6 +145,8 @@ public class Document extends AuditableEntity {
     }
     this.currentVersionNumber += 1;
     this.status = DocumentStatus.UPLOADED;
+    // Lo que estaba pendiente ya se entregó (Control de Cambios #14).
+    clearPending();
     // La versión nueva es la actualización que se pidió; la anterior queda en el historial.
     this.updateRequestNote = null;
     this.updateRequestedAt = null;
@@ -143,6 +162,64 @@ public class Document extends AuditableEntity {
     this.exceptionNote = note;
     this.exceptionByUserId = byUserId;
     this.exceptionAt = when;
+  }
+
+  /** Control de Cambios #14: se entregará después (nota y fecha estimada opcionales). */
+  public void markPending(String note, java.time.LocalDate dueDate, UUID byUserId, Instant when) {
+    if (status == DocumentStatus.ACCEPTED || status == DocumentStatus.NOT_APPLICABLE) {
+      throw new ConflictException(
+          "DOCUMENT_ALREADY_RESOLVED", "Este documento ya está aceptado o marcado como \"No aplica\"; no puede quedar pendiente.");
+    }
+    this.pendingNote = note;
+    this.pendingDueDate = dueDate;
+    this.pendingByUserId = byUserId;
+    this.pendingAt = when;
+  }
+
+  public void clearPending() {
+    this.pendingNote = null;
+    this.pendingDueDate = null;
+    this.pendingByUserId = null;
+    this.pendingAt = null;
+  }
+
+  public boolean isMarkedPending() {
+    return pendingAt != null;
+  }
+
+  /** Control de Cambios #18: corrige el nombre de un documento agregado a mano; el archivo no cambia. */
+  public void rename(String name) {
+    if (customName == null) {
+      throw new ConflictException("DOCUMENT_NOT_CUSTOM", "Solo se puede cambiar el nombre de los documentos agregados a mano.");
+    }
+    this.customName = name;
+  }
+
+  public void changeAddressProofKind(AddressProofKind kind) {
+    if (type != DocumentTypeCode.PROOF_OF_ADDRESS) {
+      throw new ConflictException("NOT_PROOF_OF_ADDRESS", "Solo el comprobante de domicilio tiene tipo de comprobante.");
+    }
+    this.addressProofKind = kind == null ? null : kind.name();
+  }
+
+  public AddressProofKind getAddressProofKind() {
+    return AddressProofKind.parse(addressProofKind);
+  }
+
+  public String getPendingNote() {
+    return pendingNote;
+  }
+
+  public java.time.LocalDate getPendingDueDate() {
+    return pendingDueDate;
+  }
+
+  public UUID getPendingByUserId() {
+    return pendingByUserId;
+  }
+
+  public Instant getPendingAt() {
+    return pendingAt;
   }
 
   public void revokeException() {
@@ -227,7 +304,7 @@ public class Document extends AuditableEntity {
 
   /** Cuenta como "cargado" para poder enviar el expediente (un "No aplica" también cuenta; uno para después no se espera). */
   public boolean isSatisfiedForSubmission() {
-    return deferred || hasException() || status != DocumentStatus.PENDING;
+    return deferred || hasException() || isMarkedPending() || status != DocumentStatus.PENDING;
   }
 
   /** Pedirlo desde la primera entrega o dejar que el cliente lo suba después. */
@@ -248,9 +325,12 @@ public class Document extends AuditableEntity {
     return deferralReason;
   }
 
-  /** Cuenta como resuelto para aprobar la documentación: aceptado, "No aplica" justificado o excepción aprobada. */
+  /**
+   * Cuenta como resuelto para aprobar la documentación: aceptado, "No aplica" justificado, excepción
+   * aprobada o marcado "Pendiente" por el asesor (Control de Cambios #14: no bloquea el avance).
+   */
   public boolean isSatisfiedForApproval() {
-    return status == DocumentStatus.ACCEPTED || status == DocumentStatus.NOT_APPLICABLE || hasException();
+    return status == DocumentStatus.ACCEPTED || status == DocumentStatus.NOT_APPLICABLE || hasException() || isMarkedPending();
   }
 
   public boolean isCustom() {

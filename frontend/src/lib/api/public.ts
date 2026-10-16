@@ -97,9 +97,12 @@ export async function uploadPublicDocumentVersion(
   documentId: string,
   files: File[],
   onProgress?: (progress: UploadProgress) => void,
+  addressProofKind?: string | null,
 ) {
+  // Control de Cambios #13: qué comprobante de domicilio está subiendo.
+  const query = addressProofKind ? `?addressProofKind=${addressProofKind}` : "";
   return uploadFiles<DocumentVersionResponse>(
-    `/public/expedientes/${token}/documents/${documentId}/versions`,
+    `/public/expedientes/${token}/documents/${documentId}/versions${query}`,
     "files",
     await prepareUploads(files),
     onProgress,

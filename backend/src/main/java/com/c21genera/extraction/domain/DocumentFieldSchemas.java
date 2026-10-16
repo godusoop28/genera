@@ -49,17 +49,19 @@ public final class DocumentFieldSchemas {
         concat(
             List.of("ownerFullName", "propertyAddress", "deedNumber", "deedDate"),
             NOTARY,
-            List.of("publicRegistryFolio", "landArea", "builtArea")));
-    SCHEMAS.put(DocumentTypeCode.PROOF_OF_ADDRESS, List.of("fullName", "address", "issueDate"));
+            List.of("publicRegistryFolio", "registryDate", "landArea", "builtArea", "undividedLandArea")));
+    SCHEMAS.put(DocumentTypeCode.PROOF_OF_ADDRESS, List.of("fullName", "address", "issueDate", "addressProofKind"));
     SCHEMAS.put(DocumentTypeCode.LIEN_CERTIFICATE, List.of("ownerFullName", "propertyAddress", "publicRegistryFolio", "hasLiens", "issueDate"));
-    SCHEMAS.put(DocumentTypeCode.PROPERTY_TAX, List.of("ownerFullName", "propertyAddress", "cadastralKey", "landArea", "builtArea", "paidPeriod"));
+    SCHEMAS.put(
+        DocumentTypeCode.PROPERTY_TAX,
+        List.of("ownerFullName", "propertyAddress", "cadastralKey", "landArea", "builtArea", "undividedLandArea", "paidPeriod"));
     SCHEMAS.put(
         DocumentTypeCode.POWER_OF_ATTORNEY,
         concat(List.of("grantorFullName", "attorneyFullName", "instrumentNumber", "instrumentDate"), NOTARY, List.of("publicRegistryFolio")));
     SCHEMAS.put(
         DocumentTypeCode.CONDOMINIUM_REGIME,
         concat(
-            List.of("propertyAddress", "unitNumber", "undividedPercentage", "deedNumber", "deedDate"),
+            List.of("propertyAddress", "unitNumber", "undividedPercentage", "landArea", "undividedLandArea", "deedNumber", "deedDate"),
             NOTARY,
             List.of("registryDate", "regimeRegistrationFolio")));
     SCHEMAS.put(DocumentTypeCode.WATER_RECEIPT, List.of("fullName", "address", "issueDate", "serviceNumber"));
@@ -168,13 +170,20 @@ public final class DocumentFieldSchemas {
           Map.entry("notaryTitle", "si quien da fe es Notario o Corredor"),
           Map.entry("publicRegistryFolio", "folio real o datos de inscripción en el Registro Público"),
           Map.entry("registryDate", "fecha de inscripción en el Registro Público"),
-          Map.entry("landArea", "superficie del terreno en m²"),
+          Map.entry("landArea", "superficie del terreno en m² (en condominio, la de la unidad privativa)"),
+          Map.entry(
+              "undividedLandArea",
+              "superficie de terreno de indivisos en m²: la porción de áreas comunes asignada a la unidad (solo en condominio; vacío si no aplica)"),
           Map.entry("builtArea", "superficie construida en m²"),
           Map.entry("issueDate", "fecha de emisión"),
           Map.entry("hasLiens", "si reporta gravámenes (sí/no y cuáles)"),
           Map.entry("cadastralKey", "clave catastral"),
           Map.entry("paidPeriod", "periodo o año pagado"),
           Map.entry("serviceNumber", "número de servicio o de cuenta"),
+          Map.entry(
+              "addressProofKind",
+              "qué comprobante es: ELECTRICITY (luz / energía eléctrica), BANK_STATEMENT (estado de cuenta bancario), TELMEX,"
+                  + " PHONE (otra telefonía), INTERNET u OTRO si no es ninguno de esos"),
           Map.entry("grantorFullName", "nombre de quien otorga el poder"),
           Map.entry("attorneyFullName", "nombre del apoderado"),
           Map.entry("instrumentNumber", "número del instrumento notarial"),
@@ -243,8 +252,12 @@ public final class DocumentFieldSchemas {
           """
           Testimonio notarial; puede ser largo y viejo. El número de escritura, volumen, fecha y notario \
           suelen estar en las primeras páginas; el inmueble (ubicación, superficie, medidas) en las \
-          declaraciones y cláusulas; la inscripción en el Registro Público (folio real) suele estar en un \
-          sello o boleta al final.""",
+          declaraciones y cláusulas; la inscripción en el Registro Público (folio real y fecha de \
+          inscripción) suele estar en un sello o boleta al final. Los ANTECEDENTES citan escrituras \
+          anteriores con sus propias fechas, notarios y folios: notaryNumber, notaryPlace, notaryName, \
+          deedDate, registryDate y publicRegistryFolio son los del instrumento ACTUAL; si hay varios \
+          posibles, lístalos todos en alternatives. Si el inmueble está en condominio, undividedLandArea es \
+          la superficie de terreno de indivisos (áreas comunes) que corresponde a la unidad.""",
           DocumentTypeCode.MARRIAGE_CERTIFICATE,
           """
           Acta del Registro Civil; puede ser formato antiguo, copia certificada o impresión moderna. \
@@ -278,6 +291,10 @@ public final class DocumentFieldSchemas {
   /** Campos de {@link #fieldsFor} con los que se mide si la extracción quedó completa. */
   public static List<String> expectedFieldsFor(DocumentTypeCode type) {
     List<String> fields = fieldsFor(type);
+    // Los indivisos solo existen en condominio: una escritura o predial de casa sola no los trae.
+    if (type != DocumentTypeCode.CONDOMINIUM_REGIME) {
+      fields = fields.stream().filter(f -> !"undividedLandArea".equals(f)).toList();
+    }
     return type == DocumentTypeCode.INE ? fields.stream().filter(f -> !VARIANT_ONLY_FIELDS.contains(f)).toList() : fields;
   }
 

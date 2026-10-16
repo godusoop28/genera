@@ -70,6 +70,7 @@ final Map<String, Map<String, _Target>> _mapping = {
     'notaryNumber': _legal('deed.notaryNumber'),
     'notaryPlace': _legal('deed.notaryPlace'),
     'publicRegistryFolio': _legal('deed.registryData'),
+    'registryDate': _legal('deed.registryDate', true),
     'landArea': _area('landAreaM2'),
     'builtArea': _area('builtAreaM2'),
   },

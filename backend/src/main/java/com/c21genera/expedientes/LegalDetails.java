@@ -56,7 +56,14 @@ public record LegalDetails(
       String notaryName,
       String notaryNumber,
       String notaryPlace,
-      String registryData) {}
+      String registryData,
+      /* Control de Cambios #19: fecha de inscripción en el Registro Público de la Propiedad. */
+      LocalDate registryDate) {
+
+    public DeedData(String number, LocalDate date, String notaryName, String notaryNumber, String notaryPlace, String registryData) {
+      this(number, date, notaryName, notaryNumber, notaryPlace, registryData, null);
+    }
+  }
 
   /** Propiedad acreditada con contrato privado ratificado (declaración II.d, segunda opción). */
   public record PrivateContractData(

@@ -12,26 +12,29 @@ import {
   addCustomDocument,
   approveException,
   cancelDocumentUpdate,
+  clearDocumentPending,
   listDocuments,
   listReviews,
   listVersions,
+  markDocumentPending,
   markNotApplicable,
   moveDocumentFile,
   rejectDocument,
+  renameDocument,
   reprocessAllDocuments,
   reprocessDocument,
   requestAgain,
   requestDocumentUpdate,
   returnDocument,
   revokeException,
+  setAddressProofKind,
   uploadVersion,
 } from "@/lib/api/documents";
 import { confirmField, getExtractedFields } from "@/lib/api/extraction";
-import { getDocumentsEmailPreview } from "@/lib/api/notifications";
 import type {
+  AddressProofKind,
   DocumentResponse,
   DocumentVersionResponse,
-  EmailPreviewResponse,
   ExtractedFieldObservationResponse,
   ReturnReasonCode,
   ReviewHistoryResponse,
@@ -39,9 +42,12 @@ import type {
 import { documentTypeLabel } from "@/lib/document-type-labels";
 import { errorText } from "@/lib/errors";
 import {
+  ADDRESS_PROOF_KIND_LABELS,
+  ADDRESS_PROOF_KINDS,
   documentStatusLabels,
   documentStatusTone,
   extractedFieldLabel,
+  formatDate,
   formatDateTime,
   label,
   participantRoleLabels,
@@ -52,8 +58,9 @@ import {
 import { useCan } from "@/lib/permissions";
 import { ACCEPTED_FILE_TYPES, UploadValidationError } from "@/lib/upload-limits";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, ArrowRightLeft, Bot, Check, Eye, History, Info, Layers, Loader2, Mail, Pencil, Plus, RefreshCw, Upload, X } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, Bot, Check, Clock, Eye, History, Info, Layers, Loader2, Pencil, Plus, RefreshCw, Upload, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { NotaryStagesPanel } from "./NotaryStagesPanel";
 import type { ExpedienteContext } from "./page";
 
 const IN_PROGRESS = ["UPLOADED", "PROCESSING"];
@@ -63,11 +70,13 @@ function documentName(d: Pick<DocumentResponse, "type" | "customName">): string 
   return d.customName ?? documentTypeLabel(d.type);
 }
 
-type StatusFilter = "ALL" | "MISSING" | "TO_REVIEW" | "RETURNED";
+type StatusFilter = "ALL" | "MISSING" | "MARKED_PENDING" | "TO_REVIEW" | "RETURNED";
 
 const statusFilters: Record<StatusFilter, { label: string; matches: (d: DocumentResponse) => boolean }> = {
   ALL: { label: "Todos", matches: () => true },
   MISSING: { label: "Faltantes", matches: (d) => d.required && d.status === "PENDING" },
+  // Control de Cambios #14: los que el asesor marcó "Pendiente" (se entregan después).
+  MARKED_PENDING: { label: "Pendientes de entrega", matches: (d) => Boolean(d.markedPending) },
   TO_REVIEW: { label: "Por revisar", matches: (d) => d.status === "UPLOADED" || d.status === "READY_FOR_REVIEW" },
   RETURNED: { label: "Devueltos o rechazados", matches: (d) => d.status === "RETURNED" || d.status === "REJECTED" },
 };
@@ -76,7 +85,6 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
   const { showToast } = useToast();
   const can = useCan();
   const [documents, setDocuments] = useState<DocumentResponse[] | null>(null);
-  const [emailPreview, setEmailPreview] = useState<EmailPreviewResponse | null>(null);
   const [showOptional, setShowOptional] = useState(false);
   const [filter, setFilter] = useState<StatusFilter>("ALL");
   const [reprocessingAll, setReprocessingAll] = useState(false);
@@ -111,6 +119,7 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
   const visible = (documents ?? []).filter((d) => d.required || d.currentVersionNumber > 0 || d.status === "NOT_APPLICABLE" || showOptional);
   const isPending = (d: DocumentResponse) => d.required && d.status !== "ACCEPTED" && d.status !== "NOT_APPLICABLE";
   const pendingCount = visible.filter(isPending).length;
+  const markedPendingCount = (documents ?? []).filter((d) => d.markedPending).length;
   const requiredCount = visible.filter((d) => d.required).length;
   const withFiles = (documents ?? []).filter((d) => d.currentVersionNumber > 0 && d.status !== "NOT_APPLICABLE");
   const filtered = visible.filter(statusFilters[filter].matches);
@@ -132,7 +141,7 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
     <div className="flex flex-col gap-6">
       <Card>
         <CardHeader
-          title="Documentos"
+          title="Etapa 1 · Documentos para comercialización"
           description={
             // Hasta tener la lista no se calcula nada: antes decía "todos resueltos" mientras cargaba.
             documents === null
@@ -144,6 +153,16 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
                   : "Este expediente todavía no tiene documentos obligatorios registrados."
           }
         />
+        <p className="-mt-2 mb-3 text-xs text-muted">
+          Lo necesario para publicar y promover el inmueble; no tienen que estar al corriente. Estado de cada uno: recibido, pendiente o excepción.
+        </p>
+        {markedPendingCount > 0 ? (
+          <p className="mb-3 flex items-center gap-2 rounded-lg bg-info-bg px-3 py-2 text-sm text-info-text">
+            <Clock className="h-4 w-4 shrink-0" aria-hidden />
+            {markedPendingCount === 1 ? "1 documento está pendiente de entrega" : `${markedPendingCount} documentos están pendientes de entrega`}{" "}
+            (marcados por el asesor; no bloquean el avance del expediente).
+          </p>
+        ) : null}
         {processing ? (
           <p className="mb-3 flex items-center gap-2 rounded-lg bg-app-bg px-3 py-2 text-xs text-muted">
             <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> La extracción automática continúa. Puedes seguir trabajando; la
@@ -255,26 +274,7 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
         </button>
       </Card>
 
-      {can("DOCUMENT_EMAIL_SEND") ? (
-        <Card>
-          <CardHeader
-            title="Envío a notaría"
-            description="Arma el correo con los documentos aceptados para que lo revises y lo envíes tú desde tu correo."
-          />
-          <Button
-            size="sm"
-            onClick={async () => {
-              try {
-                setEmailPreview(await getDocumentsEmailPreview(expediente.id));
-              } catch (err) {
-                showToast(errorText(err));
-              }
-            }}
-          >
-            <Mail className="h-4 w-4" aria-hidden /> Vista previa de envío
-          </Button>
-        </Card>
-      ) : null}
+      <NotaryStagesPanel expedienteId={expediente.id} names={names} stamp={(documents ?? []).map((d) => `${d.id}:${d.currentVersionNumber}:${d.status}`).join("|")} />
 
       {addingDocument ? (
         <AddDocumentModal
@@ -293,36 +293,6 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
         />
       ) : null}
 
-      <Modal open={emailPreview !== null} onClose={() => setEmailPreview(null)} title="Vista previa de envío a notaría">
-        {emailPreview ? (
-          <div className="flex flex-col gap-4 text-sm">
-            <p className="text-xs text-muted">Esto no envía nada. Descarga los documentos y envíalos tú desde tu correo.</p>
-            <p>
-              <span className="font-medium">Asunto:</span> {emailPreview.subject}
-            </p>
-            <p className="whitespace-pre-wrap">{emailPreview.body}</p>
-            <ul className="flex flex-col gap-2">
-              {emailPreview.attachments.map((a) => (
-                <li key={a.fileName} className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
-                  <span>{a.fileName}</span>
-                  {a.downloadUrl ? (
-                    <a href={a.downloadUrl} target="_blank" rel="noreferrer" className="text-dark-gold hover:underline">
-                      Descargar
-                    </a>
-                  ) : (
-                    <span className="text-xs text-muted">Solo el administrador puede descargarlo</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-            {emailPreview.documentTypesWithoutFile.length > 0 ? (
-              <p className="rounded-lg bg-warning-bg px-3 py-2 text-warning-text">
-                Sin archivo para adjuntar todavía: {emailPreview.documentTypesWithoutFile.join(", ")}.
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-      </Modal>
     </div>
   );
 }
@@ -379,6 +349,8 @@ function DocumentRow({
   const [versions, setVersions] = useState<DocumentVersionResponse[] | null>(null);
   const [exceptionOpen, setExceptionOpen] = useState(false);
   const [updateOpen, setUpdateOpen] = useState(false);
+  const [pendingOpen, setPendingOpen] = useState(false);
+  const [renaming, setRenaming] = useState<string | null>(null);
   const v = doc.latestVersion;
   const issues = v?.blockingIssues ?? [];
   const warnings = v?.warnings ?? [];
@@ -469,14 +441,63 @@ function DocumentRow({
 
   const moveTargets = allDocuments.filter((d) => d.id !== doc.id && d.status !== "ACCEPTED");
 
+  /** Control de Cambios #18: corrige el nombre de un documento agregado a mano (el archivo no cambia). */
+  const saveName = async () => {
+    const name = (renaming ?? "").trim();
+    if (name.length < 3 || name === doc.customName) {
+      setRenaming(null);
+      return;
+    }
+    await act(() => renameDocument(doc.id, name), "Nombre actualizado.");
+    setRenaming(null);
+  };
+
   return (
     <div className="rounded-xl border border-border p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <p className="text-sm font-medium text-obsessed">
-            {docLabel}
-            {participantName ? <span className="text-muted"> — {participantName}</span> : null}
-          </p>
+        <div className="min-w-0">
+          {renaming !== null ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                autoFocus
+                maxLength={120}
+                value={renaming}
+                onChange={(e) => setRenaming(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void saveName();
+                  if (e.key === "Escape") setRenaming(null);
+                }}
+                aria-label="Nombre del documento"
+                className="min-h-9 min-w-0 flex-1 rounded-lg border border-border bg-card px-2 text-sm text-obsessed outline-none focus:border-gold"
+              />
+              <Button size="sm" onClick={saveName} disabled={(renaming ?? "").trim().length < 3}>
+                <Check className="h-4 w-4" aria-hidden /> Guardar
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setRenaming(null)}>
+                Cancelar
+              </Button>
+            </div>
+          ) : (
+            <p className="flex flex-wrap items-center gap-1.5 text-sm font-medium text-obsessed">
+              <span>
+                {docLabel}
+                {participantName ? <span className="text-muted"> — {participantName}</span> : null}
+              </span>
+              {doc.customName && canUpload ? (
+                <button
+                  type="button"
+                  onClick={() => setRenaming(doc.customName ?? "")}
+                  className="inline-flex items-center gap-1 rounded px-1 text-xs font-normal text-dark-gold hover:underline"
+                  aria-label={`Editar el nombre de ${docLabel}`}
+                >
+                  <Pencil className="h-3.5 w-3.5" aria-hidden /> Editar nombre
+                </button>
+              ) : null}
+            </p>
+          )}
+          {doc.type === "PROOF_OF_ADDRESS" ? (
+            <AddressProofKindLine document={doc} canEdit={canUpload || canAccept} onChanged={onChanged} />
+          ) : null}
           <p className="text-xs text-muted">
             {doc.required
               ? doc.deferred && doc.status === "PENDING"
@@ -493,7 +514,8 @@ function DocumentRow({
               {pipelineStatusLabels[doc.pipelineStatus]}
             </Badge>
           ) : null}
-          {doc.required && doc.deferred && doc.status === "PENDING" && !doc.exceptionAt ? <Badge tone="neutral">Para después</Badge> : null}
+          {doc.required && doc.deferred && doc.status === "PENDING" && !doc.exceptionAt && !doc.markedPending ? <Badge tone="neutral">Para después</Badge> : null}
+          {doc.markedPending ? <Badge tone="info">Pendiente de entrega</Badge> : null}
           {doc.exceptionAt && doc.status !== "ACCEPTED" ? <Badge tone="info">Excepción aprobada</Badge> : null}
           {doc.updateRequestedAt ? <Badge tone="warning">Requiere actualización</Badge> : null}
           <Badge tone={documentStatusTone[doc.status]}>{documentStatusLabels[doc.status]}</Badge>
@@ -553,6 +575,13 @@ function DocumentRow({
         <p className="mt-2 rounded-lg bg-app-bg px-3 py-2 text-sm text-muted">
           Excepción aprobada el {formatDateTime(doc.exceptionAt)}: {doc.exceptionNote}. No bloquea la aprobación ni el contrato; el cliente puede
           entregarlo después desde su liga.
+        </p>
+      ) : null}
+      {doc.markedPending ? (
+        <p className="mt-2 rounded-lg bg-info-bg px-3 py-2 text-sm text-info-text">
+          Pendiente de entrega desde el {formatDateTime(doc.pendingAt)}
+          {doc.pendingDueDate ? ` · entrega estimada: ${formatDate(doc.pendingDueDate)}` : ""}
+          {doc.pendingNote ? ` · ${doc.pendingNote}` : ""}. No bloquea el avance; al subirse el archivo queda como entregado.
         </p>
       ) : null}
       {doc.updateRequestedAt ? (
@@ -625,6 +654,16 @@ function DocumentRow({
         {canMarkNotApplicable && doc.status === "NOT_APPLICABLE" ? (
           <Button variant="ghost" size="sm" onClick={() => act(() => requestAgain(doc.id), "El documento se volvió a solicitar.")}>
             Volver a solicitar
+          </Button>
+        ) : null}
+        {(canUpload || canAccept) && !doc.markedPending && !resolved ? (
+          <Button variant="ghost" size="sm" onClick={() => setPendingOpen(true)}>
+            <Clock className="h-4 w-4" aria-hidden /> Marcar como pendiente…
+          </Button>
+        ) : null}
+        {(canUpload || canAccept) && doc.markedPending ? (
+          <Button variant="ghost" size="sm" onClick={() => act(() => clearDocumentPending(doc.id), "Se quitó la marca de pendiente.")}>
+            Quitar pendiente
           </Button>
         ) : null}
         {canException && doc.required && !doc.exceptionAt && !resolved ? (
@@ -813,6 +852,17 @@ function DocumentRow({
         }}
       />
 
+      {pendingOpen ? (
+        <PendingModal
+          documentLabel={docLabel}
+          onCancel={() => setPendingOpen(false)}
+          onConfirm={async (note, dueDate) => {
+            await act(() => markDocumentPending(doc.id, note, dueDate), "Marcado como pendiente de entrega (no bloquea el expediente).");
+            setPendingOpen(false);
+          }}
+        />
+      ) : null}
+
       <ReasonModal
         open={updateOpen}
         title={`Pedir versión actualizada: ${docLabel}`}
@@ -951,14 +1001,17 @@ function FieldRow({
   const [value, setValue] = useState(f.confirmedValue ?? f.detectedValue ?? "");
   const [saving, setSaving] = useState(false);
   const confidence = confidenceBadge(f.confirmedValue !== null ? 1 : f.confidence);
+  const alternatives = f.alternatives ?? [];
+  const choosing = alternatives.length > 1 && f.confirmedValue === null;
 
-  const save = async () => {
-    if (!value.trim()) return;
+  const save = async (chosen?: string) => {
+    const final = (chosen ?? value).trim();
+    if (!final) return;
     setSaving(true);
     try {
-      onEdited(await confirmField(f.id, value.trim()));
+      onEdited(await confirmField(f.id, final));
       setEditing(false);
-      showToast("Dato confirmado.");
+      showToast(chosen ? "Valor elegido: queda registrado con tu nombre." : "Dato confirmado.");
     } catch (err) {
       showToast(errorText(err));
     } finally {
@@ -981,7 +1034,7 @@ function FieldRow({
               className="min-w-0 flex-1 rounded-lg border border-border bg-card px-2 py-1 text-sm outline-none focus:border-gold"
               autoFocus
             />
-            <button type="button" aria-label="Guardar dato" onClick={save} disabled={saving} className="text-success-text">
+            <button type="button" aria-label="Guardar dato" onClick={() => save()} disabled={saving} className="text-success-text">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
             </button>
             <button type="button" aria-label="Cancelar" onClick={() => setEditing(false)} className="text-muted">
@@ -991,9 +1044,42 @@ function FieldRow({
         ) : (
           <p className="text-sm break-words text-obsessed">{f.confirmedValue ?? f.detectedValue ?? "—"}</p>
         )}
+        {choosing ? (
+          // Control de Cambios #19: la escritura trae varios valores (antecedentes); una persona elige el del instrumento actual.
+          <div className="mt-2 rounded-lg border border-warning-text/30 bg-warning-bg p-2.5">
+            <p className="flex items-start gap-1.5 text-xs font-medium text-warning-text">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+              Se encontraron varios valores en el documento. ¿Cuál corresponde a este instrumento?
+            </p>
+            <ul className="mt-2 flex flex-col gap-1.5">
+              {alternatives.map((a) => (
+                <li key={a.value} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-card px-2 py-1.5">
+                  <span className="min-w-0 text-sm text-obsessed">
+                    <strong className="break-words">{a.value}</strong>
+                    {a.context ? <span className="text-xs text-muted"> — {a.context}</span> : null}
+                    {a.page ? <span className="text-xs text-muted"> · pág. {a.page}</span> : null}
+                  </span>
+                  {canEdit ? (
+                    <Button size="sm" variant="secondary" disabled={saving} onClick={() => save(a.value)}>
+                      Es este
+                    </Button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {f.confirmedValue !== null && f.confirmedByName ? (
+          <p className="mt-0.5 text-xs text-success-text">
+            Confirmado por {f.confirmedByName}
+            {f.confirmedAt ? ` · ${formatDateTime(f.confirmedAt)}` : ""}
+          </p>
+        ) : null}
       </div>
       <div className="flex items-center gap-2">
-        <Badge tone={f.confirmedValue !== null ? "success" : confidence.tone}>{f.confirmedValue !== null ? "confirmado por el staff" : confidence.text}</Badge>
+        <Badge tone={f.confirmedValue !== null ? "success" : choosing ? "warning" : confidence.tone}>
+          {f.confirmedValue !== null ? "confirmado por el staff" : choosing ? "elegir valor" : confidence.text}
+        </Badge>
         {canEdit && !editing ? (
           <button type="button" aria-label="Editar dato" onClick={() => setEditing(true)} className="text-muted hover:text-obsessed">
             <Pencil className="h-3.5 w-3.5" aria-hidden />
@@ -1205,6 +1291,123 @@ function AddDocumentModal({
               </option>
             ))}
           </select>
+        </label>
+      </div>
+    </Modal>
+  );
+}
+
+/** Control de Cambios #13: qué comprobante de domicilio se entregó (y los que se aceptan). */
+function AddressProofKindLine({
+  document: doc,
+  canEdit,
+  onChanged,
+}: {
+  document: DocumentResponse;
+  canEdit: boolean;
+  onChanged: (updated?: DocumentResponse) => Promise<void>;
+}) {
+  const { showToast } = useToast();
+  const [busy, setBusy] = useState(false);
+  const change = async (kind: string) => {
+    setBusy(true);
+    try {
+      await onChanged(await setAddressProofKind(doc.id, (kind || null) as AddressProofKind | null));
+    } catch (err) {
+      showToast(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="mt-1 flex flex-col gap-1 text-xs text-muted">
+      <p>Se acepta: recibo de luz, estado de cuenta bancario, recibo de Telmex, de telefonía o de internet.</p>
+      {canEdit ? (
+        <label className="flex flex-wrap items-center gap-2">
+          <span>Tipo entregado:</span>
+          <select
+            value={doc.addressProofKind ?? ""}
+            disabled={busy}
+            onChange={(e) => change(e.target.value)}
+            className="min-h-8 rounded-lg border border-border bg-card px-2 text-xs text-obsessed"
+          >
+            <option value="">Sin indicar</option>
+            {ADDRESS_PROOF_KINDS.map((k) => (
+              <option key={k} value={k}>
+                {ADDRESS_PROOF_KIND_LABELS[k]}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <p>Tipo entregado: {doc.addressProofKind ? ADDRESS_PROOF_KIND_LABELS[doc.addressProofKind] : "sin indicar"}</p>
+      )}
+    </div>
+  );
+}
+
+/** Control de Cambios #14: "Marcar como pendiente" con nota y fecha estimada opcionales. */
+function PendingModal({
+  documentLabel,
+  onCancel,
+  onConfirm,
+}: {
+  documentLabel: string;
+  onCancel: () => void;
+  onConfirm: (note: string, dueDate: string | null) => Promise<void>;
+}) {
+  const [note, setNote] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <Modal
+      open
+      onClose={onCancel}
+      title={`Marcar como pendiente: ${documentLabel}`}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={busy}>
+            Cancelar
+          </Button>
+          <Button
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await onConfirm(note.trim(), dueDate || null);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Clock className="h-4 w-4" aria-hidden />} Marcar pendiente
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4 text-sm">
+        <p className="text-muted">
+          El documento todavía no está listo pero se entregará después. No bloquea el avance del expediente y, al subirse, pasa a entregado.
+        </p>
+        <label className="flex flex-col gap-1.5">
+          <span className="font-medium text-obsessed">Nota (opcional)</span>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            maxLength={1000}
+            placeholder="Ej. El cliente lo tramita en el municipio."
+            className="rounded-lg border border-border bg-card px-3 py-2 text-obsessed outline-none focus:border-gold"
+          />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="font-medium text-obsessed">Fecha estimada de entrega (opcional)</span>
+          <input
+            type="date"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+            className="min-h-10 rounded-lg border border-border bg-card px-3 text-obsessed"
+          />
         </label>
       </div>
     </Modal>

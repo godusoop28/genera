@@ -58,11 +58,16 @@ public class PublicDocumentController {
   @PostMapping("/{documentId}/versions")
   @ResponseStatus(HttpStatus.ACCEPTED)
   public DocumentVersionResponse upload(
-      @PathVariable String token, @PathVariable UUID documentId, @RequestParam("files") List<MultipartFile> files) {
+      @PathVariable String token,
+      @PathVariable UUID documentId,
+      @RequestParam("files") List<MultipartFile> files,
+      @RequestParam(value = "addressProofKind", required = false) String addressProofKind) {
     UUID expedienteId = resolve(token);
     requireOwnedByExpediente(documentId, expedienteId);
     List<UploadedFileContent> contents = files.stream().map(PublicDocumentController::readFile).toList();
-    return DocumentVersionResponse.from(documentService.uploadVersion(documentId, contents, UploadedVia.PUBLIC_PORTAL, Actor.client()));
+    // Control de Cambios #13: el cliente indica qué comprobante de domicilio sube.
+    return DocumentVersionResponse.from(
+        documentService.uploadVersion(documentId, contents, UploadedVia.PUBLIC_PORTAL, Actor.client(), addressProofKind));
   }
 
   /**

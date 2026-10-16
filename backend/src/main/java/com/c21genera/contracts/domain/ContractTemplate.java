@@ -95,7 +95,20 @@ public final class ContractTemplate {
       ContractCalculator.Result calculations,
       List<String> deliveredDocuments,
       int versionNumber,
-      LocalDate today) {}
+      LocalDate today,
+      /* Control de Cambios #21: instrucciones para visitas tal como quedaron (o el texto estándar). */
+      String visitInstructions) {
+
+    public ContractInput(
+        ExpedienteSummary expediente,
+        ManualClientDataView clientData,
+        ContractCalculator.Result calculations,
+        List<String> deliveredDocuments,
+        int versionNumber,
+        LocalDate today) {
+      this(expediente, clientData, calculations, deliveredDocuments, versionNumber, today, null);
+    }
+  }
 
   private final ContractInput in;
   private final LinkedHashSet<String> missing = new LinkedHashSet<>();
@@ -411,6 +424,10 @@ public final class ContractTemplate {
       if (d != null && notBlank(d.registryData())) {
         spans.add(t(", debidamente inscrita en el Registro Público de la Propiedad bajo los datos registrales "));
         spans.add(b(d.registryData()));
+        if (d.registryDate() != null) {
+          spans.add(t(", con fecha de inscripción "));
+          spans.add(b(date(d.registryDate())));
+        }
         spans.add(t("."));
       } else {
         spans.add(t(", debidamente inscrita en el Registro Público de la Propiedad bajo los datos registrales que se desprenden de la escritura correspondiente / pendientes de confirmar con certificado actualizado."));
@@ -545,7 +562,7 @@ public final class ContractTemplate {
     blocks.add(
         Paragraph.of(
             b("VI. Instrucciones adicionales del cliente.-"),
-            t(" Las visitas al inmueble deberán realizarse previa cita y confirmación del cliente. La intermediaria no podrá compartir documentación sensible del inmueble ni datos personales del cliente con terceros, salvo lo necesario para la promoción, análisis de ofertas y formalización de la compraventa.")));
+            t(" " + visitInstructions() + " La intermediaria no podrá compartir documentación sensible del inmueble ni datos personales del cliente con terceros, salvo lo necesario para la promoción, análisis de ofertas y formalización de la compraventa.")));
 
     blocks.add(
         Paragraph.of(
@@ -830,6 +847,16 @@ public final class ContractTemplate {
   // ---------------------------------------------------------------------
   // Datos derivados
   // ---------------------------------------------------------------------
+
+  /** Control de Cambios #21: instrucciones para visitas (las del expediente o el texto estándar). */
+  private String visitInstructions() {
+    String text = in.visitInstructions();
+    if (text == null || text.isBlank()) {
+      return "Las visitas al inmueble deberán realizarse previa cita y confirmación del cliente.";
+    }
+    String cleaned = text.strip();
+    return cleaned.endsWith(".") ? cleaned : cleaned + ".";
+  }
 
   private LegalDetails legal() {
     return in.expediente().legalDetails() != null ? in.expediente().legalDetails() : LegalDetails.empty();

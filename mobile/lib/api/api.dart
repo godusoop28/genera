@@ -96,6 +96,16 @@ Future<List<DocumentResponse>> listDocuments(String expedienteId) async => _l(aw
 Future<List<ReviewHistory>> listReviews(String documentId) async => _l(await _c.get('/internal/documents/$documentId/reviews'), ReviewHistory.fromJson);
 Future<void> uploadVersion(String documentId, List<UploadFile> files, {void Function(int)? onProgress}) =>
     _c.upload('/internal/documents/$documentId/versions', 'files', files, onProgress: onProgress);
+/// "Marcar como pendiente" con nota y fecha estimada opcionales (Control de Cambios #14).
+Future<DocumentResponse> markDocumentPending(String documentId, String note, String? dueDate) async =>
+    DocumentResponse.fromJson(_j(await _c.put('/internal/documents/$documentId/pending', {'note': note, 'dueDate': dueDate})));
+Future<DocumentResponse> clearDocumentPending(String documentId) async => DocumentResponse.fromJson(_j(await _c.delete('/internal/documents/$documentId/pending')));
+/// Corrige el nombre de un documento agregado a mano; el archivo no cambia (Control de Cambios #18).
+Future<DocumentResponse> renameDocument(String documentId, String name) async =>
+    DocumentResponse.fromJson(_j(await _c.put('/internal/documents/$documentId/name', {'name': name})));
+/// Qué comprobante de domicilio se entregó (Control de Cambios #13).
+Future<DocumentResponse> setAddressProofKind(String documentId, String? kind) async =>
+    DocumentResponse.fromJson(_j(await _c.put('/internal/documents/$documentId/address-proof-kind', {'kind': kind})));
 Future<DocumentResponse> reprocessDocument(String documentId) async => DocumentResponse.fromJson(_j(await _c.post('/internal/documents/$documentId/reprocess', {'full': false})));
 Future<int> reprocessAllDocuments(String expedienteId) async => (_j(await _c.post('/internal/expedientes/$expedienteId/documents/reprocess'))['reprocessed'] as num?)?.toInt() ?? 0;
 Future<DocumentResponse> moveDocumentFile(String documentId, String targetDocumentId) async =>
@@ -150,7 +160,29 @@ Future<ExtractedField> confirmField(String observationId, String confirmedValue)
     ExtractedField.fromJson(_j(await _c.post('/internal/extracted-fields/$observationId/confirm', {'confirmedValue': confirmedValue})));
 Future<List<DataConflict>> getDataConflicts(String expedienteId) async => _l(await _c.get('/internal/expedientes/$expedienteId/data-conflicts'), DataConflict.fromJson);
 Future<List<DataConflict>> runConsistencyCheck(String expedienteId) async => _l(await _c.post('/internal/expedientes/$expedienteId/consistency-check'), DataConflict.fromJson);
-Future<void> resolveConflict(String conflictId, String note) => _c.post('/internal/data-conflicts/$conflictId/resolve', {'note': note});
+/// Solo un directivo o administrador autoriza, confirmando con su contraseña (Control de Cambios #17).
+Future<void> resolveConflict(String conflictId, String note, String password) =>
+    _c.post('/internal/data-conflicts/$conflictId/resolve', {'note': note, 'password': password});
+/// m² de terreno e indivisos: Régimen de condominio vs. Escritura y Predial (Control de Cambios #15).
+Future<List<CondominiumArea>> getCondominiumAreas(String expedienteId) async =>
+    _l(await _c.get('/internal/expedientes/$expedienteId/condominium-areas'), CondominiumArea.fromJson);
+
+// --- Notaría por etapa (Control de Cambios #23) --------------------------------
+
+Future<NotaryOverview> getNotaryOverview(String expedienteId) async => NotaryOverview.fromJson(_j(await _c.get('/internal/expedientes/$expedienteId/notary')));
+Future<NotaryOverview> registerOfferAccepted(String expedienteId, String note) async =>
+    NotaryOverview.fromJson(_j(await _c.post('/internal/expedientes/$expedienteId/notary/offer-accepted', {'note': note})));
+Future<NotaryOverview> clearOfferAccepted(String expedienteId) async =>
+    NotaryOverview.fromJson(_j(await _c.delete('/internal/expedientes/$expedienteId/notary/offer-accepted')));
+Future<void> setClosingCheck(String documentId, bool valid, String note) => _c.put('/internal/documents/$documentId/closing-check', {'valid': valid, 'note': note});
+Future<void> sendToNotary(String expedienteId, String kind, Map<String, String> versionByDocument, {String? recipientEmail, String? note, bool confirmWarnings = false}) =>
+    _c.post('/internal/expedientes/$expedienteId/notary/submissions', {
+      'kind': kind,
+      'documents': versionByDocument.entries.map((e) => {'documentId': e.key, 'versionId': e.value}).toList(),
+      'recipientEmail': recipientEmail,
+      'note': note,
+      'confirmWarnings': confirmWarnings,
+    });
 
 // --- Contratos ----------------------------------------------------------------
 
@@ -167,6 +199,14 @@ Future<void> signAsIntermediary(String contractId, {required String typedName, r
 Future<void> registerAutographSignature(String contractId, UploadFile file) => _c.upload('/internal/contracts/$contractId/signatures/autograph', 'file', [file]);
 Future<SigningLink> reissueSigningLink(String signatureId) async => SigningLink.fromJson(_j(await _c.post('/internal/contract-signatures/$signatureId/reissue-link')));
 Future<void> markContractDelivered(String contractId, String method) => _c.post('/internal/contracts/$contractId/mark-delivered', {'method': method});
+/// Contrato firmado fuera del sistema: DOCUSIGN o PHYSICAL, también históricos (Control de Cambios #20).
+Future<List<SignedContractUpload>> listSignedContracts(String expedienteId) async =>
+    _l(await _c.get('/internal/expedientes/$expedienteId/signed-contracts'), SignedContractUpload.fromJson);
+Future<void> uploadSignedContract(String expedienteId, List<UploadFile> files, String signatureMethod, bool historical, String note) =>
+    _c.upload('/internal/expedientes/$expedienteId/signed-contracts${_q({'signatureMethod': signatureMethod, 'historical': historical, 'note': note.trim()})}', 'files', files);
+/// Texto estándar de "Instrucciones para visitas" (Control de Cambios #21).
+Future<String> getVisitInstructions() async => _sOf(_j(await _c.get('/internal/settings/visit-instructions'))['text']);
+String _sOf(dynamic v) => v?.toString() ?? '';
 
 // --- CRM: leads y dashboard -------------------------------------------------
 

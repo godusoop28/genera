@@ -80,6 +80,7 @@ public class ContractService {
   private final ApplicationEventPublisher events;
   private final ObjectMapper objectMapper;
   private final Clock clock;
+  private final ContractSettingsService settings;
 
   public ContractService(
       ExpedienteLifecycleApi expedienteApi,
@@ -93,7 +94,9 @@ public class ContractService {
       ContractSignatureService signatureService,
       ApplicationEventPublisher events,
       ObjectMapper objectMapper,
-      Clock clock) {
+      Clock clock,
+      ContractSettingsService settings) {
+    this.settings = settings;
     this.expedienteApi = expedienteApi;
     this.documentsApi = documentsApi;
     this.privacyApi = privacyApi;
@@ -282,7 +285,12 @@ public class ContractService {
         data.authorizedPrice() == null || data.authorizedPrice().signum() <= 0
             ? null
             : ContractCalculator.calculate(data.authorizedPrice(), data.contractSignatureDate() != null ? data.contractSignatureDate() : today());
-    return new ContractInput(summary, data, calculations, deliveredDocuments(summary), versionNumber, today());
+    // Control de Cambios #21: el contrato lleva las instrucciones como quedaron; si se dejaron vacías, el texto estándar.
+    String visitInstructions =
+        data.visitInstructions() != null && !data.visitInstructions().isBlank()
+            ? data.visitInstructions().strip()
+            : settings == null ? ContractSettingsService.DEFAULT_VISIT_INSTRUCTIONS : settings.visitInstructionsText();
+    return new ContractInput(summary, data, calculations, deliveredDocuments(summary), versionNumber, today(), visitInstructions);
   }
 
   /** Documentos aceptados, con el nombre del participante cuando aplica (cláusula tercera). */

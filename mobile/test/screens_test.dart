@@ -298,6 +298,49 @@ void main() {
     await _close(tester);
   });
 
+  testWidgets('flujo: marcar un documento como pendiente de entrega', (tester) async {
+    await _open(tester, '/expedientes/exp-1');
+    await tester.tap(find.text('Documentos'));
+    await settle(tester);
+    final button = find.text('Marcar como pendiente…').first;
+    await Scrollable.ensureVisible(tester.element(button), alignment: 0.5);
+    await settle(tester, 1);
+    await tester.tap(button);
+    await settle(tester);
+    await tester.enterText(find.byType(TextField).first, 'Lo entrega la próxima semana');
+    await settle(tester, 1);
+    await tester.tap(find.text('Marcar pendiente'));
+    await settle(tester);
+    final sent = sentRequests.where((r) => r.method == 'PUT' && r.path.endsWith('/pending')).toList();
+    expect(sent, hasLength(1));
+    expect((sent.first.body as Map)['note'], 'Lo entrega la próxima semana');
+    await _close(tester);
+  });
+
+  testWidgets('flujo: autorizar una inconsistencia pide la contraseña', (tester) async {
+    await _open(tester, '/expedientes/exp-1');
+    await tester.ensureVisible(find.text('Consistencia'));
+    await settle(tester, 1);
+    await tester.tap(find.text('Consistencia'));
+    await settle(tester);
+    await tester.ensureVisible(find.text('Autorizar').first);
+    await settle(tester, 1);
+    await tester.tap(find.text('Autorizar').first);
+    await settle(tester);
+    await tester.enterText(find.byType(TextField).at(0), 'El predial está a nombre del copropietario');
+    await tester.enterText(find.byType(TextField).at(1), 'secreta123');
+    await settle(tester, 1);
+    await tester.tap(find.text('Autorizar').last);
+    await settle(tester);
+    final sent = sentRequests.where((r) => r.method == 'POST' && r.path.endsWith('/resolve')).toList();
+    expect(sent, hasLength(1));
+    expect((sent.first.body as Map)['password'], 'secreta123');
+    await tester.scrollUntilVisible(find.text('Cotejo del régimen de condominio'), 300, scrollable: find.byType(Scrollable).last);
+    await settle(tester, 1);
+    expect(find.text('⚠️ Difiere'), findsOneWidget);
+    await _close(tester);
+  });
+
   testWidgets('flujo: el aviso de privacidad pendiente no bloquea y se puede cargar firmado', (tester) async {
     await _open(tester, '/expedientes/exp-1');
     await tester.scrollUntilVisible(find.text('Pendiente de firma'), 300, scrollable: find.byType(Scrollable).last);

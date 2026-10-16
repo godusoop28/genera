@@ -135,7 +135,7 @@ public class DocumentFieldExtractionService implements ExtractionApi {
       if (field.value() == null || field.value().isBlank() || confirmed.contains(field.fieldName())) {
         continue;
       }
-      observationRepository.save(
+      ExtractedFieldObservation observation =
           new ExtractedFieldObservation(
               payload.expedienteId(),
               payload.documentId(),
@@ -145,7 +145,10 @@ public class DocumentFieldExtractionService implements ExtractionApi {
               FieldOrigin.AI_EXTRACTED,
               field.confidence(),
               now,
-              field.page()));
+              field.page());
+      // Control de Cambios #19: varios valores posibles (antecedentes de la escritura) → una persona elige.
+      observation.recordAlternatives(field.value(), field.alternatives());
+      observationRepository.save(observation);
     }
 
     List<String> schema = DocumentFieldSchemas.expectedFieldsFor(payload.type());
@@ -185,13 +188,13 @@ public class DocumentFieldExtractionService implements ExtractionApi {
     for (FieldResult f : result.fields()) {
       if (f.value() != null && f.value().contains("?")) {
         // La IA marcó con "?" un carácter que no distinguió: nunca es un dato confiable.
-        fields.add(new FieldResult(f.fieldName(), f.value(), Math.min(f.confidence(), 0.3), f.page()));
+        fields.add(f.withConfidence(Math.min(f.confidence(), 0.3)));
         warnings.add("Revisa " + DocumentFieldSchemas.describe(List.of(f.fieldName())).getFirst() + ": tiene caracteres que no se distinguieron (\"" + f.value() + "\")");
         continue;
       }
       var problem = com.c21genera.extraction.domain.FieldFormats.problem(f.fieldName(), f.value());
       if (problem.isPresent()) {
-        fields.add(new FieldResult(f.fieldName(), f.value(), Math.min(f.confidence(), 0.3), f.page()));
+        fields.add(f.withConfidence(Math.min(f.confidence(), 0.3)));
         warnings.add("Revisa " + DocumentFieldSchemas.describe(List.of(f.fieldName())).getFirst() + ": " + problem.get());
       } else {
         fields.add(f);
@@ -231,8 +234,14 @@ public class DocumentFieldExtractionService implements ExtractionApi {
 
   @Transactional
   public ExtractedFieldObservation confirm(UUID observationId, String confirmedValue) {
+    return confirm(observationId, confirmedValue, null, null);
+  }
+
+  /** Queda registrado quién confirmó o eligió el valor y cuándo ("Confirmado por ..."). */
+  @Transactional
+  public ExtractedFieldObservation confirm(UUID observationId, String confirmedValue, UUID byUserId, String byName) {
     ExtractedFieldObservation observation = getObservation(observationId);
-    observation.confirm(confirmedValue, clock.instant());
+    observation.confirm(confirmedValue, clock.instant(), byUserId, byName);
     runConsistencyCheck(observation.getExpedienteId());
     return observation;
   }
@@ -308,6 +317,25 @@ public class DocumentFieldExtractionService implements ExtractionApi {
     return conflict;
   }
 
+  /**
+   * Control de Cambios #17: un directivo autoriza la inconsistencia (ya confirmó su contraseña).
+   * Queda "Autorizada por [nombre]" con fecha y hora, y en la bitácora del expediente.
+   */
+  @Transactional
+  public DataConflict authorizeConflict(UUID conflictId, com.c21genera.shared.events.Actor actor, String note) {
+    DataConflict conflict = getConflict(conflictId);
+    String cleaned = note == null ? "" : note.strip();
+    if (cleaned.length() < 10) {
+      throw new com.c21genera.shared.domain.UnprocessableException(
+          "AUTHORIZATION_NOTE_REQUIRED", "Explica por qué se autoriza la inconsistencia (al menos 10 caracteres).");
+    }
+    conflict.resolve(actor.userId(), actor.name(), cleaned, clock.instant());
+    events.publishEvent(
+        new com.c21genera.shared.events.ExpedienteEvents.InconsistencyAuthorized(
+            conflict.getExpedienteId(), conflict.getId(), conflict.getDescription(), cleaned, actor));
+    return conflict;
+  }
+
   /** Si se corrige un dato capturado (nombre, domicilio, superficies...) la comparación se repite. */
   @ApplicationModuleListener
   void on(ExpedienteDataCorrected event) {
@@ -322,28 +350,7 @@ public class DocumentFieldExtractionService implements ExtractionApi {
    */
   @Transactional
   public List<DataConflict> runConsistencyCheck(UUID expedienteId) {
-    Map<UUID, RequirementStatusView> documents =
-        documentsApi.requirementStatusOf(expedienteId).stream()
-            .filter(d -> !"NOT_APPLICABLE".equals(d.status()) && !"REJECTED".equals(d.status()))
-            .collect(Collectors.toMap(RequirementStatusView::documentId, d -> d));
-
-    Map<UUID, List<ExtractedFieldObservation>> byDocument =
-        currentVersionsOnly(observationRepository.findByExpedienteIdOrderByFieldNameAsc(expedienteId), documents).stream()
-            .collect(Collectors.groupingBy(ExtractedFieldObservation::getDocumentId, LinkedHashMap::new, Collectors.toList()));
-
-    List<DocumentFacts> facts = new ArrayList<>();
-    byDocument.forEach(
-        (documentId, observations) -> {
-          RequirementStatusView doc = documents.get(documentId);
-          if (doc == null) {
-            return;
-          }
-          Map<String, String> fields = new HashMap<>();
-          for (ExtractedFieldObservation o : observations) {
-            fields.put(o.getFieldName(), o.getConfirmedValue() != null ? o.getConfirmedValue() : o.getDetectedValue());
-          }
-          facts.add(new DocumentFacts(documentId, doc.type(), doc.participantId(), fields));
-        });
+    List<DocumentFacts> facts = currentFacts(expedienteId);
 
     completePropertyData(expedienteId, facts);
     ExpedienteSummary summary = expedienteApi.getSummary(expedienteId);
@@ -377,6 +384,42 @@ public class DocumentFieldExtractionService implements ExtractionApi {
     open.values().stream().filter(c -> !currentKeys.contains(c.getFieldName())).forEach(c -> c.closeBecauseDataNowMatches(now));
 
     return conflictRepository.findByExpedienteIdOrderByDetectedAtDesc(expedienteId);
+  }
+
+  /**
+   * Control de Cambios #15: cotejo de m² de terreno e indivisos del Régimen de condominio contra la
+   * Escritura y el Predial, para la página de Consistencias. Vacío si no hay régimen de condominio.
+   */
+  @Transactional(readOnly = true)
+  public List<DocumentConsistencyChecker.AreaComparison> condominiumAreas(UUID expedienteId) {
+    return DocumentConsistencyChecker.condominiumAreas(currentFacts(expedienteId));
+  }
+
+  /** Datos vigentes de cada documento (lo confirmado por una persona o, si no, lo detectado). */
+  private List<DocumentFacts> currentFacts(UUID expedienteId) {
+    Map<UUID, RequirementStatusView> documents =
+        documentsApi.requirementStatusOf(expedienteId).stream()
+            .filter(d -> !"NOT_APPLICABLE".equals(d.status()) && !"REJECTED".equals(d.status()))
+            .collect(Collectors.toMap(RequirementStatusView::documentId, d -> d));
+
+    Map<UUID, List<ExtractedFieldObservation>> byDocument =
+        currentVersionsOnly(observationRepository.findByExpedienteIdOrderByFieldNameAsc(expedienteId), documents).stream()
+            .collect(Collectors.groupingBy(ExtractedFieldObservation::getDocumentId, LinkedHashMap::new, Collectors.toList()));
+
+    List<DocumentFacts> facts = new ArrayList<>();
+    byDocument.forEach(
+        (documentId, observations) -> {
+          RequirementStatusView doc = documents.get(documentId);
+          if (doc == null) {
+            return;
+          }
+          Map<String, String> fields = new HashMap<>();
+          for (ExtractedFieldObservation o : observations) {
+            fields.put(o.getFieldName(), o.getConfirmedValue() != null ? o.getConfirmedValue() : o.getDetectedValue());
+          }
+          facts.add(new DocumentFacts(documentId, doc.type(), doc.participantId(), fields));
+        });
+    return facts;
   }
 
   /** Documentos de los que se toma el domicilio del inmueble, del más al menos confiable. */

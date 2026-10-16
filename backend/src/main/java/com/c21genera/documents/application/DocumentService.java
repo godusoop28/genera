@@ -3,6 +3,7 @@ package com.c21genera.documents.application;
 import com.c21genera.documents.DocumentStatus;
 import com.c21genera.documents.DocumentsApi;
 import com.c21genera.documents.ProcessingStatus;
+import com.c21genera.documents.domain.AddressProofKind;
 import com.c21genera.documents.domain.Document;
 import com.c21genera.documents.domain.DocumentNotReviewableException;
 import com.c21genera.documents.domain.DocumentPage;
@@ -221,7 +222,21 @@ public class DocumentService implements DocumentsApi {
 
   /** Público o interno: fotos JPG/PNG o PDF (según app.upload). Ver AGENTS §32/§94. */
   public DocumentVersion uploadVersion(UUID documentId, List<UploadedFileContent> files, UploadedVia via, Actor actor) {
+    return uploadVersion(documentId, files, via, actor, null);
+  }
+
+  /**
+   * addressProofKind: qué comprobante de domicilio se está subiendo (Control de Cambios #13);
+   * solo aplica a ese tipo de documento y es opcional.
+   */
+  public DocumentVersion uploadVersion(
+      UUID documentId, List<UploadedFileContent> files, UploadedVia via, Actor actor, String addressProofKind) {
     Document document = get(documentId);
+    AddressProofKind proofKind = AddressProofKind.parse(addressProofKind);
+    if (proofKind != null && document.getType() == DocumentTypeCode.PROOF_OF_ADDRESS) {
+      document.changeAddressProofKind(proofKind);
+    }
+    boolean wasMarkedPending = document.isMarkedPending();
     if (files == null || files.isEmpty()) {
       throw new UnprocessableException("NO_FILES", "Selecciona al menos un archivo.");
     }
@@ -280,6 +295,11 @@ public class DocumentService implements DocumentsApi {
             actor,
             previousStatus,
             document.isDeferred()));
+    if (wasMarkedPending) {
+      events.publishEvent(
+          new DocumentFollowUpChanged(
+              document.getExpedienteId(), documentId, document.getType(), document.displayName(), DocumentFollowUp.PENDING_DELIVERED, null, actor));
+    }
 
     documentRepository.flush();
     publishCompletenessChanges(document.getExpedienteId(), before);
@@ -578,6 +598,24 @@ public class DocumentService implements DocumentsApi {
     return document.getId();
   }
 
+  static final String SIGNED_CONTRACT_REQUIREMENT = "contrato-firmado";
+
+  @Override
+  public UUID attachSignedContract(UUID expedienteId, List<IncomingFile> files, Actor actor) {
+    Document document =
+        documentRepository.findByExpedienteId(expedienteId).stream()
+            .filter(d -> SIGNED_CONTRACT_REQUIREMENT.equals(d.getRequirementCode()))
+            .findFirst()
+            .orElseGet(() -> documentRepository.save(new Document(expedienteId, SIGNED_CONTRACT_REQUIREMENT, DocumentTypeCode.SIGNED_CONTRACT, null, false)));
+    documentRepository.flush();
+    uploadVersion(
+        document.getId(),
+        files.stream().map(f -> new UploadedFileContent(f.size(), f.originalFilename(), f.source())).toList(),
+        UploadedVia.INTERNAL,
+        actor);
+    return document.getId();
+  }
+
   static final int MIN_NOTE_LENGTH = 10;
   static final int MAX_NOTE_LENGTH = 1000;
   static final int MAX_CUSTOM_NAME_LENGTH = 120;
@@ -587,14 +625,7 @@ public class DocumentService implements DocumentsApi {
    * usuario. Se guarda igual que los demás (mismo almacenamiento y revisión) y es obligatorio.
    */
   public Document addCustomDocument(UUID expedienteId, String name, UUID participantId, Actor actor) {
-    String cleaned = blankToNull(name);
-    if (cleaned == null || cleaned.length() < 3) {
-      throw new UnprocessableException("DOCUMENT_NAME_REQUIRED", "Escribe el nombre del documento (al menos 3 caracteres).");
-    }
-    if (cleaned.length() > MAX_CUSTOM_NAME_LENGTH) {
-      throw new UnprocessableException(
-          "DOCUMENT_NAME_TOO_LONG", "El nombre del documento puede tener hasta " + MAX_CUSTOM_NAME_LENGTH + " caracteres.");
-    }
+    String cleaned = validCustomName(name);
     List<Document> existing = documentRepository.findByExpedienteId(expedienteId);
     boolean duplicate =
         existing.stream()
@@ -680,6 +711,102 @@ public class DocumentService implements DocumentsApi {
     return document;
   }
 
+  /**
+   * Control de Cambios #14: el asesor marca que el documento se entregará después, con nota y
+   * fecha estimada opcionales. No bloquea el avance; al subirse pasa solo a "Entregado".
+   */
+  public Document markPending(UUID documentId, String note, java.time.LocalDate dueDate, Actor actor) {
+    Document document = get(documentId);
+    String cleaned = blankToNull(note);
+    if (cleaned != null) {
+      requireNoteLength(cleaned);
+    }
+    Completeness before = completenessOf(document.getExpedienteId());
+    document.markPending(cleaned, dueDate, actor.userId(), clock.instant());
+    String detail = cleaned;
+    if (dueDate != null) {
+      String due = "entrega estimada " + dueDate.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"));
+      detail = detail == null ? due : detail + " (" + due + ")";
+    }
+    events.publishEvent(
+        new DocumentFollowUpChanged(
+            document.getExpedienteId(), documentId, document.getType(), document.displayName(), DocumentFollowUp.PENDING_MARKED, detail, actor));
+    documentRepository.flush();
+    publishCompletenessChanges(document.getExpedienteId(), before);
+    return document;
+  }
+
+  public Document clearPending(UUID documentId, Actor actor) {
+    Document document = get(documentId);
+    if (!document.isMarkedPending()) {
+      return document;
+    }
+    Completeness before = completenessOf(document.getExpedienteId());
+    document.clearPending();
+    events.publishEvent(
+        new DocumentFollowUpChanged(
+            document.getExpedienteId(), documentId, document.getType(), document.displayName(), DocumentFollowUp.PENDING_CLEARED, null, actor));
+    documentRepository.flush();
+    publishCompletenessChanges(document.getExpedienteId(), before);
+    return document;
+  }
+
+  /** Control de Cambios #18: cambia el nombre de un documento agregado a mano; el archivo no cambia. */
+  public Document rename(UUID documentId, String name, Actor actor) {
+    Document document = get(documentId);
+    String cleaned = validCustomName(name);
+    if (cleaned.equals(document.getCustomName())) {
+      return document;
+    }
+    boolean duplicate =
+        documentRepository.findByExpedienteId(document.getExpedienteId()).stream()
+            .anyMatch(
+                d -> !d.getId().equals(documentId)
+                    && d.isCustom()
+                    && d.getCustomName().equalsIgnoreCase(cleaned)
+                    && java.util.Objects.equals(d.getParticipantId(), document.getParticipantId()));
+    if (duplicate) {
+      throw new ConflictException("DOCUMENT_NAME_DUPLICATE", "Ya existe un documento con ese nombre en este expediente.");
+    }
+    String previous = document.displayName();
+    document.rename(cleaned);
+    events.publishEvent(
+        new DocumentFollowUpChanged(document.getExpedienteId(), documentId, document.getType(), cleaned, DocumentFollowUp.RENAMED, previous, actor));
+    return document;
+  }
+
+  /** Control de Cambios #13: qué comprobante de domicilio se entregó (o null para quitarlo). */
+  public Document changeAddressProofKind(UUID documentId, String kind, Actor actor) {
+    Document document = get(documentId);
+    AddressProofKind parsed = AddressProofKind.parse(kind);
+    if (parsed == document.getAddressProofKind()) {
+      return document;
+    }
+    document.changeAddressProofKind(parsed);
+    events.publishEvent(
+        new DocumentFollowUpChanged(
+            document.getExpedienteId(),
+            documentId,
+            document.getType(),
+            document.displayName(),
+            DocumentFollowUp.ADDRESS_PROOF_KIND_CHANGED,
+            parsed == null ? null : parsed.label(),
+            actor));
+    return document;
+  }
+
+  private static String validCustomName(String name) {
+    String cleaned = blankToNull(name);
+    if (cleaned == null || cleaned.length() < 3) {
+      throw new UnprocessableException("DOCUMENT_NAME_REQUIRED", "Escribe el nombre del documento (al menos 3 caracteres).");
+    }
+    if (cleaned.length() > MAX_CUSTOM_NAME_LENGTH) {
+      throw new UnprocessableException(
+          "DOCUMENT_NAME_TOO_LONG", "El nombre del documento puede tener hasta " + MAX_CUSTOM_NAME_LENGTH + " caracteres.");
+    }
+    return cleaned;
+  }
+
   private static void requireNoteLength(String note) {
     if (note.length() > MAX_NOTE_LENGTH) {
       throw new UnprocessableException("NOTE_TOO_LONG", "La nota puede tener hasta " + MAX_NOTE_LENGTH + " caracteres.");
@@ -705,7 +832,7 @@ public class DocumentService implements DocumentsApi {
     List<Document> required = documentRepository.findByExpedienteId(expedienteId).stream().filter(Document::isRequired).toList();
     return new Completeness(
         !required.isEmpty(),
-        required.stream().anyMatch(d -> d.getStatus() == DocumentStatus.PENDING && !d.isDeferred() && !d.hasException()),
+        required.stream().anyMatch(d -> d.getStatus() == DocumentStatus.PENDING && !d.isDeferred() && !d.hasException() && !d.isMarkedPending()),
         !required.isEmpty() && required.stream().allMatch(Document::isSatisfiedForSubmission),
         !required.isEmpty() && required.stream().allMatch(Document::isSatisfiedForApproval));
   }
@@ -796,7 +923,8 @@ public class DocumentService implements DocumentsApi {
             d ->
                 new RequirementStatusView(
                     d.getId(), d.getType(), d.getParticipantId(), d.isRequired(), d.getStatus().name(),
-                    latestVersion(d.getId()).map(DocumentVersion::getId).orElse(null), d.displayName(), d.hasException()))
+                    latestVersion(d.getId()).map(DocumentVersion::getId).orElse(null), d.displayName(),
+                    d.hasException() || d.isMarkedPending(), d.isMarkedPending()))
         .toList();
   }
 
@@ -825,6 +953,14 @@ public class DocumentService implements DocumentsApi {
   @Transactional(readOnly = true)
   public Optional<UUID> currentVersionIdOf(UUID documentId) {
     return latestVersion(documentId).map(DocumentVersion::getId);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<VersionView> versionViewsOf(UUID documentId) {
+    return versionRepository.findByDocumentIdOrderByVersionNumberDesc(documentId).stream()
+        .map(v -> new VersionView(v.getId(), v.getDocumentId(), v.getVersionNumber(), v.getUploadedAt(), v.getStorageKeyPdf()))
+        .toList();
   }
 
   private DocumentVersion findVersion(UUID documentVersionId) {

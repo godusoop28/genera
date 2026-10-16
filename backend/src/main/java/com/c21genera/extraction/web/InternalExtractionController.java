@@ -9,6 +9,9 @@ import com.c21genera.extraction.web.ExtractionDtos.ExpedienteObservationResponse
 import com.c21genera.extraction.web.ExtractionDtos.ObservationResponse;
 import com.c21genera.extraction.web.ExtractionDtos.ResolveConflictRequest;
 import com.c21genera.identity.CurrentUser;
+import com.c21genera.identity.UserDirectory;
+import com.c21genera.shared.domain.DocumentTypeCode;
+import com.c21genera.shared.domain.UnprocessableException;
 import com.c21genera.shared.domain.NotFoundException;
 import com.c21genera.shared.security.ExpedienteAccessPolicy;
 import jakarta.validation.Valid;
@@ -31,9 +34,15 @@ public class InternalExtractionController {
   private final ExpedienteAutoFill autoFill;
   private final DocumentsApi documentsApi;
   private final ExpedienteAccessPolicy accessPolicy;
+  private final UserDirectory userDirectory;
 
   public InternalExtractionController(
-      DocumentFieldExtractionService service, ExpedienteAutoFill autoFill, DocumentsApi documentsApi, ExpedienteAccessPolicy accessPolicy) {
+      DocumentFieldExtractionService service,
+      ExpedienteAutoFill autoFill,
+      DocumentsApi documentsApi,
+      ExpedienteAccessPolicy accessPolicy,
+      UserDirectory userDirectory) {
+    this.userDirectory = userDirectory;
     this.service = service;
     this.autoFill = autoFill;
     this.documentsApi = documentsApi;
@@ -74,8 +83,8 @@ public class InternalExtractionController {
   public ObservationResponse confirm(
       @PathVariable UUID observationId, @Valid @RequestBody ConfirmFieldRequest request, @AuthenticationPrincipal Jwt jwt) {
     UUID expedienteId = service.getObservation(observationId).getExpedienteId();
-    requireAccess(expedienteId, jwt);
-    ObservationResponse response = ObservationResponse.from(service.confirm(observationId, request.confirmedValue()));
+    CurrentUser user = requireAccess(expedienteId, jwt);
+    ObservationResponse response = ObservationResponse.from(service.confirm(observationId, request.confirmedValue(), user.id(), user.name()));
     fillAfterReview(expedienteId);
     return response;
   }
@@ -85,6 +94,27 @@ public class InternalExtractionController {
   public List<ExpedienteObservationResponse> observationsOfExpediente(@PathVariable UUID expedienteId, @AuthenticationPrincipal Jwt jwt) {
     requireAccess(expedienteId, jwt);
     return service.observationsOfExpediente(expedienteId).stream().map(ExpedienteObservationResponse::from).toList();
+  }
+
+  public record AreaComparisonResponse(
+      String key, String field, String label, String condominiumRegime, String deed, String propertyTax, boolean consistent) {}
+
+  /** Control de Cambios #15: cotejo de m² de terreno e indivisos (Régimen de condominio, Escritura y Predial). */
+  @GetMapping("/api/v1/internal/expedientes/{expedienteId}/condominium-areas")
+  public List<AreaComparisonResponse> condominiumAreas(@PathVariable UUID expedienteId, @AuthenticationPrincipal Jwt jwt) {
+    requireAccess(expedienteId, jwt);
+    return service.condominiumAreas(expedienteId).stream()
+        .map(
+            r ->
+                new AreaComparisonResponse(
+                    r.key(),
+                    r.field(),
+                    r.label(),
+                    r.values().get(DocumentTypeCode.CONDOMINIUM_REGIME),
+                    r.values().get(DocumentTypeCode.DEED),
+                    r.values().get(DocumentTypeCode.PROPERTY_TAX),
+                    r.consistent()))
+        .toList();
   }
 
   @GetMapping("/api/v1/internal/expedientes/{expedienteId}/data-conflicts")
@@ -100,13 +130,20 @@ public class InternalExtractionController {
     return service.runConsistencyCheck(expedienteId).stream().map(ConflictResponse::from).toList();
   }
 
+  /**
+   * Control de Cambios #17: autorizar una inconsistencia es decisión de un directivo o administrador
+   * (INCONSISTENCY_AUTHORIZE) y se confirma con su contraseña.
+   */
   @PostMapping("/api/v1/internal/data-conflicts/{conflictId}/resolve")
-  @PreAuthorize("hasAuthority('EXTRACTED_DATA_EDIT')")
+  @PreAuthorize("hasAuthority('INCONSISTENCY_AUTHORIZE')")
   public ConflictResponse resolve(
       @PathVariable UUID conflictId, @Valid @RequestBody ResolveConflictRequest request, @AuthenticationPrincipal Jwt jwt) {
     UUID expedienteId = service.getConflict(conflictId).getExpedienteId();
     CurrentUser user = requireAccess(expedienteId, jwt);
-    ConflictResponse response = ConflictResponse.from(service.resolveConflict(conflictId, user.id(), request.note()));
+    if (!userDirectory.passwordMatches(user.id(), request.password())) {
+      throw new UnprocessableException("INVALID_PASSWORD", "La contraseña no es correcta. Escribe tu contraseña para autorizar.");
+    }
+    ConflictResponse response = ConflictResponse.from(service.authorizeConflict(conflictId, user.toActor(), request.note()));
     fillAfterReview(expedienteId);
     return response;
   }

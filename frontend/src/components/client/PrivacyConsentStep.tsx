@@ -6,14 +6,14 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useDemoApp } from "@/context/DemoAppProvider";
 import { makeActivity } from "@/lib/expediente-factory";
-import { PRIVACY_CONSENT_TEXT, PRIVACY_SECONDARY_OPT_OUT_TEXT } from "@/data/privacy-reference";
+import { PRIVACY_CONSENT_TEXT, PRIVACY_SECONDARY_CONSENT_TEXT } from "@/data/privacy-reference";
 import type { Expediente } from "@/types/expediente";
 import { useState } from "react";
 
 export function PrivacyConsentStep({ expediente, onContinue }: { expediente: Expediente; onContinue: () => void }) {
   const { updateExpediente } = useDemoApp();
   const [mainConsent, setMainConsent] = useState(expediente.privacyConsent.mainConsent);
-  const [secondaryOptOut, setSecondaryOptOut] = useState(!expediente.privacyConsent.secondaryConsent);
+  const [secondaryConsent, setSecondaryConsent] = useState(expediente.privacyConsent.secondaryConsent);
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | undefined>(
     expediente.privacyConsent.signatureDataUrl,
   );
@@ -27,7 +27,7 @@ export function PrivacyConsentStep({ expediente, onContinue }: { expediente: Exp
       status: current.status === "waiting_privacy" ? "waiting_documents" : current.status,
       privacyConsent: {
         mainConsent,
-        secondaryConsent: !secondaryOptOut,
+        secondaryConsent: mainConsent && secondaryConsent,
         signedAt: now,
         signatureDataUrl,
       },
@@ -48,7 +48,11 @@ export function PrivacyConsentStep({ expediente, onContinue }: { expediente: Exp
           <input
             type="checkbox"
             checked={mainConsent}
-            onChange={(e) => setMainConsent(e.target.checked)}
+            onChange={(e) => {
+              // CC#12: aceptar el aviso marca también las finalidades secundarias; quitarlo las desmarca.
+              setMainConsent(e.target.checked);
+              setSecondaryConsent(e.target.checked);
+            }}
             className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-[var(--color-c21-dark-gold)]"
           />
           <span className="text-sm text-obsessed">{PRIVACY_CONSENT_TEXT}</span>
@@ -58,14 +62,15 @@ export function PrivacyConsentStep({ expediente, onContinue }: { expediente: Exp
           <label className="flex items-start gap-3">
             <input
               type="checkbox"
-              checked={secondaryOptOut}
-              onChange={(e) => setSecondaryOptOut(e.target.checked)}
+              checked={secondaryConsent}
+              disabled={!mainConsent}
+              onChange={(e) => setSecondaryConsent(e.target.checked)}
               className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-[var(--color-c21-dark-gold)]"
             />
-            <span className="text-sm text-obsessed">{PRIVACY_SECONDARY_OPT_OUT_TEXT}</span>
+            <span className="text-sm text-obsessed">{PRIVACY_SECONDARY_CONSENT_TEXT}</span>
           </label>
           <p className="mt-1.5 pl-7 text-xs text-muted">
-            Esta preferencia es independiente del consentimiento principal: no bloquea el proceso.
+            Se marca al aceptar el aviso; puedes desmarcarla si no autorizas esas finalidades. No bloquea el proceso.
           </p>
         </div>
 

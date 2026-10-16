@@ -6,6 +6,7 @@ import com.c21genera.identity.infrastructure.UserRepository;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,9 +15,23 @@ import org.springframework.transaction.annotation.Transactional;
 class UserDirectoryService implements UserDirectory {
 
   private final UserRepository userRepository;
+  private final PasswordEncoder passwordEncoder;
 
-  UserDirectoryService(UserRepository userRepository) {
+  UserDirectoryService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
     this.userRepository = userRepository;
+    this.passwordEncoder = passwordEncoder;
+  }
+
+  @Override
+  public boolean passwordMatches(UUID userId, String rawPassword) {
+    if (userId == null || rawPassword == null || rawPassword.isEmpty()) {
+      return false;
+    }
+    return userRepository
+        .findById(userId)
+        .filter(u -> u.getStatus() == UserStatus.ACTIVE)
+        .map(u -> passwordEncoder.matches(rawPassword, u.getPasswordHash()))
+        .orElse(false);
   }
 
   @Override

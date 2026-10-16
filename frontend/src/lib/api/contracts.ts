@@ -51,3 +51,41 @@ export function reissueSigningLink(signatureId: string) {
 export function markContractDelivered(contractId: string, method: string) {
   return apiClient.post<ContractGenerationResponse>(`/internal/contracts/${contractId}/mark-delivered`, { method });
 }
+
+/** Control de Cambios #20: contrato firmado fuera del sistema (DocuSign o escaneo de la firma física). */
+export type SignatureMethod = "DOCUSIGN" | "PHYSICAL";
+
+export interface SignedContractUploadResponse {
+  id: string;
+  documentId: string;
+  signatureMethod: SignatureMethod;
+  historical: boolean;
+  note: string | null;
+  uploadedByName: string | null;
+  uploadedAt: string;
+}
+
+export function listSignedContracts(expedienteId: string) {
+  return apiClient.get<SignedContractUploadResponse[]>(`/internal/expedientes/${expedienteId}/signed-contracts`);
+}
+
+export function uploadSignedContract(expedienteId: string, files: File[], signatureMethod: SignatureMethod, historical: boolean, note: string) {
+  const query = new URLSearchParams({ signatureMethod, historical: String(historical) });
+  if (note.trim()) query.set("note", note.trim());
+  return uploadFiles<SignedContractUploadResponse>(`/internal/expedientes/${expedienteId}/signed-contracts?${query.toString()}`, "files", files);
+}
+
+/** Control de Cambios #21: texto estándar de "Instrucciones para visitas" (lo edita el administrador). */
+export interface VisitInstructionsResponse {
+  text: string;
+  updatedAt: string | null;
+  updatedByName: string | null;
+}
+
+export function getVisitInstructions() {
+  return apiClient.get<VisitInstructionsResponse>(`/internal/settings/visit-instructions`);
+}
+
+export function updateVisitInstructions(text: string) {
+  return apiClient.put<VisitInstructionsResponse>(`/internal/settings/visit-instructions`, { text });
+}

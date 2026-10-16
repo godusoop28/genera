@@ -89,6 +89,12 @@ public interface ExpedienteLifecycleApi {
   /** READY_FOR_SIGNATURE -> CONTRACT_SIGNED. Idempotente. */
   void recordContractSigned(UUID expedienteId);
 
+  /**
+   * Control de Cambios #20: se subió el contrato firmado fuera del sistema (DocuSign o en papel,
+   * incluso de operaciones anteriores al sistema): el expediente queda con contrato firmado.
+   */
+  void recordContractSignedExternally(UUID expedienteId);
+
   /** READY_FOR_SIGNATURE -> CONTRACT_PREPARATION, cuando el contrato pendiente de firma quedó sin efecto. */
   void recordContractInvalidated(UUID expedienteId);
 }

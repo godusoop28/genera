@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { SaveStatus } from "@/components/ui/SaveStatus";
 import { ORG_OFFICE_ADDRESS, ORG_OFFICE_MAPS_URL } from "@/data/organization";
-import { PRIVACY_CONSENT_TEXT, PRIVACY_SECONDARY_OPT_OUT_TEXT } from "@/data/privacy-reference";
+import { PRIVACY_CONSENT_TEXT, PRIVACY_SECONDARY_CONSENT_TEXT } from "@/data/privacy-reference";
 import { ApiError } from "@/lib/api/client";
 import {
   addPublicCoOwner,
@@ -40,7 +40,7 @@ import { readDraft, writeDraft } from "@/lib/drafts";
 import { DraftSync, type DraftSaveState } from "@/lib/draft-sync";
 import { ACCEPTED_FILE_TYPES, UploadValidationError } from "@/lib/upload-limits";
 import { publicDraftTransport, sessionDraftStore } from "@/lib/use-server-draft";
-import { civilStatusLabels, label, maritalRegimeLabels, participantRoleLabels, returnReasonLabels } from "@/lib/labels";
+import { civilStatusLabels, label, maritalRegimeLabels, participantRoleLabels, returnReasonLabels, ADDRESS_PROOF_KIND_LABELS, ADDRESS_PROOF_KINDS } from "@/lib/labels";
 import { AlertTriangle, Bot, CheckCircle2, FileText, HelpCircle, Loader2, MapPin, Pencil, Plus, ScanLine, ShieldCheck, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -388,7 +388,7 @@ function ConfirmStep({
 
 function PrivacyStep({ token, onContinue }: { token: string; onContinue: () => void }) {
   const [mainConsent, setMainConsent] = useState(false);
-  const [secondaryOptOut, setSecondaryOptOut] = useState(false);
+  const [secondaryConsent, setSecondaryConsent] = useState(false);
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | undefined>(undefined);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -397,7 +397,7 @@ function PrivacyStep({ token, onContinue }: { token: string; onContinue: () => v
     setSubmitting(true);
     setError(null);
     try {
-      await recordPrivacyConsent(token, mainConsent, !secondaryOptOut, signatureDataUrl);
+      await recordPrivacyConsent(token, mainConsent, mainConsent && secondaryConsent, signatureDataUrl);
       onContinue();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "No se pudo registrar tu consentimiento. Intenta de nuevo.");
@@ -414,7 +414,11 @@ function PrivacyStep({ token, onContinue }: { token: string; onContinue: () => v
           <input
             type="checkbox"
             checked={mainConsent}
-            onChange={(e) => setMainConsent(e.target.checked)}
+            onChange={(e) => {
+              // CC#12: aceptar el aviso marca también las finalidades secundarias; quitarlo las desmarca.
+              setMainConsent(e.target.checked);
+              setSecondaryConsent(e.target.checked);
+            }}
             className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-[var(--color-c21-dark-gold)]"
           />
           <span className="text-sm text-obsessed">{PRIVACY_CONSENT_TEXT}</span>
@@ -423,13 +427,14 @@ function PrivacyStep({ token, onContinue }: { token: string; onContinue: () => v
           <label className="flex items-start gap-3">
             <input
               type="checkbox"
-              checked={secondaryOptOut}
-              onChange={(e) => setSecondaryOptOut(e.target.checked)}
+              checked={secondaryConsent}
+              disabled={!mainConsent}
+              onChange={(e) => setSecondaryConsent(e.target.checked)}
               className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-[var(--color-c21-dark-gold)]"
             />
-            <span className="text-sm text-obsessed">{PRIVACY_SECONDARY_OPT_OUT_TEXT}</span>
+            <span className="text-sm text-obsessed">{PRIVACY_SECONDARY_CONSENT_TEXT}</span>
           </label>
-          <p className="mt-1.5 pl-7 text-xs text-muted">Esta preferencia es independiente del consentimiento principal: no bloquea el proceso.</p>
+          <p className="mt-1.5 pl-7 text-xs text-muted">Se marca al aceptar el aviso; puedes desmarcarla si no autorizas esas finalidades. No bloquea el proceso.</p>
         </div>
         <div className="mt-5 border-t border-border pt-4">
           <p className="mb-2 text-sm font-medium text-obsessed">Firma del titular</p>
@@ -794,7 +799,7 @@ function DocumentsStep({
 
   const names = Object.fromEntries(participants.map((p) => [p.id, p.displayName]));
   // Lo que el asesor dejó para después (y aún no se sube) no impide enviar lo demás.
-  const isLater = (d: PublicDocumentResponse) => d.required && (d.deferred || Boolean(d.exception)) && d.status === "PENDING";
+  const isLater = (d: PublicDocumentResponse) => d.required && (d.deferred || Boolean(d.exception) || Boolean(d.markedPending)) && d.status === "PENDING";
   const later = (documents ?? []).filter(isLater);
   const now = (documents ?? []).filter((d) => !isLater(d));
   const required = now.filter((d) => d.required);
@@ -1004,6 +1009,9 @@ function PublicDocumentRow({
   const [error, setError] = useState<string | null>(null);
   const [justUploaded, setJustUploaded] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
+  // Control de Cambios #13: el cliente elige qué comprobante de domicilio entrega antes de subirlo.
+  const isProofOfAddress = doc.type === "PROOF_OF_ADDRESS";
+  const [proofKind, setProofKind] = useState<string>(doc.addressProofKind ?? "");
 
   const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -1012,7 +1020,7 @@ function PublicDocumentRow({
     setError(null);
     setProgress(null);
     try {
-      await uploadPublicDocumentVersion(token, doc.id, Array.from(files), (p) => setProgress(p.percent));
+      await uploadPublicDocumentVersion(token, doc.id, Array.from(files), (p) => setProgress(p.percent), isProofOfAddress ? proofKind : null);
       setJustUploaded(true);
       onUploaded();
     } catch (err) {
@@ -1040,7 +1048,7 @@ function PublicDocumentRow({
           <span className="text-sm font-medium text-obsessed">{doc.customName ?? documentTypeLabel(doc.type)}</span>
           {participantName ? <span className="text-sm text-muted"> — {participantName}</span> : null}
           {!doc.required ? <span className="ml-2 text-xs text-muted">(opcional)</span> : null}
-          {doc.required && (doc.deferred || doc.exception) && doc.status === "PENDING" ? <span className="ml-2 text-xs text-muted">(cuando lo tengas)</span> : null}
+          {doc.required && (doc.deferred || doc.exception || doc.markedPending) && doc.status === "PENDING" ? <span className="ml-2 text-xs text-muted">(cuando lo tengas)</span> : null}
         </div>
         <div className="flex items-center gap-2">
           {doc.processing ? (
@@ -1052,13 +1060,47 @@ function PublicDocumentRow({
           )}
           <input ref={fileInputRef} type="file" accept={ACCEPTED_FILE_TYPES} multiple className="hidden" onChange={handleFileSelected} />
           {canUpload ? (
-            <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading || (isProofOfAddress && !proofKind)}
+              title={isProofOfAddress && !proofKind ? "Primero elige qué comprobante vas a subir" : undefined}
+            >
               {uploading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4" aria-hidden />}
               {uploading ? (progress !== null && progress < 100 ? `Subiendo ${progress}%` : "Preparando…") : doc.currentVersionNumber > 0 ? "Subir de nuevo" : "Subir"}
             </Button>
           ) : null}
         </div>
       </div>
+      {isProofOfAddress && canUpload ? (
+        <div className="mt-2 rounded-md bg-app-bg px-3 py-2 text-sm">
+          <p className="font-medium text-obsessed">Documentos aceptados como comprobante de domicilio:</p>
+          <ul className="ml-5 mt-1 list-disc text-muted">
+            {ADDRESS_PROOF_KINDS.map((k) => (
+              <li key={k}>{ADDRESS_PROOF_KIND_LABELS[k]}</li>
+            ))}
+          </ul>
+          <label className="mt-2 flex flex-col gap-1">
+            <span className="text-xs font-medium text-obsessed">¿Cuál vas a subir?</span>
+            <select
+              value={proofKind}
+              onChange={(e) => setProofKind(e.target.value)}
+              className="min-h-10 rounded-lg border border-border bg-card px-3 text-sm text-obsessed"
+            >
+              <option value="">Elige uno…</option>
+              {ADDRESS_PROOF_KINDS.map((k) => (
+                <option key={k} value={k}>
+                  {ADDRESS_PROOF_KIND_LABELS[k]}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      ) : null}
+      {isProofOfAddress && !canUpload && doc.addressProofKind ? (
+        <p className="mt-1 text-xs text-muted">Entregaste: {ADDRESS_PROOF_KIND_LABELS[doc.addressProofKind]}</p>
+      ) : null}
       {doc.status === "RETURNED" || doc.status === "REJECTED" ? (
         <p className="mt-2 rounded-md bg-warning-bg px-3 py-2 text-sm text-warning-text">
           <strong>Qué corregir:</strong> {label(returnReasonLabels, doc.correctionReasonCode)}
@@ -1112,7 +1154,7 @@ function ConfirmationStep({
   useEffect(() => {
     listPublicDocuments(token)
       .then((docs) => {
-        setLaterCount(docs.filter((d) => d.required && (d.deferred || d.exception) && d.status === "PENDING").length);
+        setLaterCount(docs.filter((d) => d.required && (d.deferred || d.exception || d.markedPending) && d.status === "PENDING").length);
         setUpdateCount(docs.filter((d) => d.updateRequestNote).length);
       })
       .catch(() => undefined);

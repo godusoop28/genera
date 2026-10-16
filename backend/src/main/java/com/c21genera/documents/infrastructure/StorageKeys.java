@@ -33,6 +33,7 @@ public final class StorageKeys {
           LEASE_AGREEMENT,
           PRIVATE_CONTRACT -> "property";
       case PRIVACY_NOTICE -> "privacy";
+      case SIGNED_CONTRACT -> "contracts";
       case OTHER -> "misc";
     };
   }

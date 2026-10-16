@@ -145,6 +145,8 @@ export interface DeedData {
   notaryNumber?: string | null;
   notaryPlace?: string | null;
   registryData?: string | null;
+  /** Control de Cambios #19: fecha de inscripción en el Registro Público de la Propiedad. */
+  registryDate?: string | null;
 }
 
 export interface PrivateContractData {
@@ -359,7 +361,17 @@ export interface DocumentResponse {
   /** Se pidió una versión actualizada al cliente. */
   updateRequestNote?: string | null;
   updateRequestedAt?: string | null;
+  /** Control de Cambios #13: qué comprobante de domicilio se entregó. */
+  addressProofKind?: AddressProofKind | null;
+  /** Control de Cambios #14: el asesor lo marcó "Pendiente" (no bloquea; al subirse queda "Entregado"). */
+  markedPending?: boolean;
+  pendingNote?: string | null;
+  pendingDueDate?: string | null;
+  pendingAt?: string | null;
 }
+
+/** Control de Cambios #13: comprobantes de domicilio aceptados. */
+export type AddressProofKind = "ELECTRICITY" | "BANK_STATEMENT" | "TELMEX" | "PHONE" | "INTERNET";
 
 export interface PublicDocumentResponse {
   id: string;
@@ -380,6 +392,10 @@ export interface PublicDocumentResponse {
   exception?: boolean;
   /** Se le pidió una versión actualizada: qué debe actualizar. */
   updateRequestNote?: string | null;
+  /** Control de Cambios #13: qué comprobante de domicilio entregó. */
+  addressProofKind?: AddressProofKind | null;
+  /** Control de Cambios #14: el asesor lo dejó pendiente (se entrega después). */
+  markedPending?: boolean;
 }
 
 export interface DocumentVersionResponse {
@@ -429,6 +445,27 @@ export interface ExtractedFieldObservationResponse {
   sourcePage: number | null;
   /** Dato útil fuera del esquema del tipo: fieldName = "extra.<etiqueta>". */
   extra: boolean;
+  /** Control de Cambios #19: valores posibles cuando el documento trae varios (antecedentes). */
+  alternatives?: FieldAlternative[];
+  confirmedByName?: string | null;
+  confirmedAt?: string | null;
+}
+
+export interface FieldAlternative {
+  value: string;
+  context: string | null;
+  page: number | null;
+}
+
+/** Control de Cambios #15: cotejo de superficies del condominio. */
+export interface CondominiumAreaComparison {
+  key: string;
+  field: string;
+  label: string;
+  condominiumRegime: string | null;
+  deed: string | null;
+  propertyTax: string | null;
+  consistent: boolean;
 }
 
 export type ConflictSeverity = "INFO" | "WARNING" | "CRITICAL";
@@ -444,6 +481,8 @@ export interface DataConflictResponse {
   detectedAt: string;
   resolvedAt: string | null;
   severity: ConflictSeverity;
+  /** Control de Cambios #17: "Autorizada por ..." */
+  resolvedByName?: string | null;
 }
 
 export type ContractGenerationStatus =

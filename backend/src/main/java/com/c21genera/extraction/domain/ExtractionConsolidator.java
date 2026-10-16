@@ -36,7 +36,9 @@ public final class ExtractionConsolidator {
       }
       FieldResult current = best.get(field.fieldName());
       if (current == null || field.confidence() > current.confidence()) {
-        best.put(field.fieldName(), field);
+        best.put(field.fieldName(), current == null ? field : withAlternativesOf(field, current));
+      } else if (!field.alternatives().isEmpty()) {
+        best.put(field.fieldName(), withAlternativesOf(current, field));
       }
     }
     warnings.addAll(batch.warnings());
@@ -61,6 +63,20 @@ public final class ExtractionConsolidator {
         legible = a.legible();
       }
     }
+  }
+
+  /** Conserva las opciones que dio cualquier lote (antecedentes vistos en páginas distintas). */
+  private static FieldResult withAlternativesOf(FieldResult kept, FieldResult other) {
+    if (other.alternatives().isEmpty()) {
+      return kept;
+    }
+    List<StructuredExtractionProvider.Alternative> merged = new ArrayList<>(kept.alternatives());
+    for (StructuredExtractionProvider.Alternative a : other.alternatives()) {
+      if (merged.stream().noneMatch(m -> m.value().equalsIgnoreCase(a.value()))) {
+        merged.add(a);
+      }
+    }
+    return new FieldResult(kept.fieldName(), kept.value(), kept.confidence(), kept.page(), merged);
   }
 
   /** Una relectura dirigida corrigió el campo: reemplaza el valor anterior aunque tuviera más confianza. */

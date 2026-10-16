@@ -110,9 +110,75 @@ public final class DocumentConsistencyChecker {
         "publicRegistryFolio",
         Set.of(DocumentTypeCode.DEED, DocumentTypeCode.PRIVATE_CONTRACT, DocumentTypeCode.RPP_REGISTRATION_SLIP),
         findings);
-    checkArea(documents, "land-area", "Superficie de terreno", "landArea", declared.landArea(), findings);
-    checkArea(documents, "built-area", "Superficie de construcción", "builtArea", declared.builtArea(), findings);
+    // En condominio el régimen reporta el terreno de la unidad privativa: se coteja aparte (abajo).
+    List<DocumentFacts> notRegime = documents.stream().filter(d -> d.type() != DocumentTypeCode.CONDOMINIUM_REGIME).toList();
+    checkArea(notRegime, "land-area", "Superficie de terreno", "landArea", declared.landArea(), findings);
+    checkArea(notRegime, "built-area", "Superficie de construcción", "builtArea", declared.builtArea(), findings);
+    for (AreaComparison row : condominiumAreas(documents)) {
+      if (!row.consistent()) {
+        findings.add(
+            new Finding(
+                row.key(),
+                "Posible inconsistencia: %s distinta entre el Régimen de condominio, la Escritura y el Predial: %s."
+                    .formatted(row.label(), row.describe()),
+                DataConflict.Severity.WARNING));
+      }
+    }
     return findings;
+  }
+
+  /** Documentos que se cotejan contra el Régimen de condominio (Control de Cambios #15). */
+  public static final List<DocumentTypeCode> CONDOMINIUM_SOURCES =
+      List.of(DocumentTypeCode.CONDOMINIUM_REGIME, DocumentTypeCode.DEED, DocumentTypeCode.PROPERTY_TAX);
+
+  /**
+   * Una fila del cotejo de superficies del condominio. values: valor leído en cada documento de
+   * {@link #CONDOMINIUM_SOURCES} (null si no se leyó o no se ha cargado). consistent: los que se
+   * leyeron coinciden (con la misma tolerancia que las demás superficies).
+   */
+  public record AreaComparison(String key, String field, String label, Map<DocumentTypeCode, String> values, boolean consistent) {
+
+    String describe() {
+      List<String> parts = new ArrayList<>();
+      values.forEach((type, value) -> parts.add(DocumentTypeLabels.of(type) + ": " + (value == null ? "sin dato" : "\"" + value + "\"")));
+      return String.join("; ", parts);
+    }
+  }
+
+  /**
+   * Control de Cambios #15: m² de terreno y m² de terreno de indivisos del Régimen de condominio
+   * contra la Escritura y el Predial. Vacío si el expediente no tiene régimen de condominio con datos.
+   */
+  public static List<AreaComparison> condominiumAreas(List<DocumentFacts> documents) {
+    DocumentFacts regime = documents.stream().filter(d -> d.type() == DocumentTypeCode.CONDOMINIUM_REGIME).findFirst().orElse(null);
+    if (regime == null) {
+      return List.of();
+    }
+    List<AreaComparison> rows = new ArrayList<>();
+    rows.add(compareAreas(documents, "condo-land-area", "landArea", "Superficie de terreno (m²)"));
+    rows.add(compareAreas(documents, "condo-undivided-area", "undividedLandArea", "Superficie de terreno de indivisos (m²)"));
+    return rows;
+  }
+
+  private static AreaComparison compareAreas(List<DocumentFacts> documents, String key, String field, String label) {
+    Map<DocumentTypeCode, String> values = new LinkedHashMap<>();
+    List<BigDecimal> numbers = new ArrayList<>();
+    for (DocumentTypeCode type : CONDOMINIUM_SOURCES) {
+      String value = documents.stream().filter(d -> d.type() == type).map(d -> d.get(field)).filter(v -> v != null).findFirst().orElse(null);
+      values.put(type, value);
+      BigDecimal parsed = parseNumber(value);
+      if (parsed != null && parsed.signum() > 0) {
+        numbers.add(parsed);
+      }
+    }
+    boolean consistent = true;
+    if (numbers.size() >= 2) {
+      BigDecimal min = numbers.stream().min(BigDecimal::compareTo).orElseThrow();
+      BigDecimal max = numbers.stream().max(BigDecimal::compareTo).orElseThrow();
+      double difference = max.subtract(min).doubleValue();
+      consistent = !(difference > 0.5 && difference / max.doubleValue() > AREA_TOLERANCE);
+    }
+    return new AreaComparison(key, field, label, values, consistent);
   }
 
   // ---------------------------------------------------------------------

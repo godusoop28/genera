@@ -69,6 +69,12 @@ public class NotificationService implements NotificationsApi {
     queueEmail(expedienteId, kind, recipientEmail, subject, body, List.of());
   }
 
+  @Override
+  public void notifyWithFiles(UUID expedienteId, String kind, String recipientEmail, String subject, String body, List<FileAttachment> files) {
+    queueEmail(
+        expedienteId, kind, recipientEmail, subject, body, files.stream().map(f -> new AttachmentRef(f.storageKey(), f.filename())).toList());
+  }
+
   private void queueEmail(
       UUID expedienteId, String kind, String recipientEmail, String subject, String body, List<AttachmentRef> attachments) {
     String recipient = recipientEmail == null || recipientEmail.isBlank() ? null : recipientEmail.strip();

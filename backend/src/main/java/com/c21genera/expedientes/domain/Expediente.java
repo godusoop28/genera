@@ -183,6 +183,17 @@ public class Expediente extends AuditableEntity {
     return true;
   }
 
+  /**
+   * Control de Cambios #20: el contrato se firmó fuera del sistema (DocuSign o en papel). Puede
+   * llegar desde cualquier etapa previa (p. ej. una operación anterior al sistema); un expediente
+   * ya decidido o cerrado no cambia.
+   */
+  public void markContractSignedExternally() {
+    if (this.status.ordinal() < ExpedienteStatus.CONTRACT_SIGNED.ordinal()) {
+      this.status = ExpedienteStatus.CONTRACT_SIGNED;
+    }
+  }
+
   public void acceptProperty(UUID decidedByUserId, Instant when) {
     ExpedienteStateMachine.ensureAllowed(this.status, ExpedienteStatus.PROPERTY_ACCEPTED);
     this.status = ExpedienteStatus.PROPERTY_ACCEPTED;

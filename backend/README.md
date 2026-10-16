@@ -19,6 +19,7 @@ Modulith. Base de paquete: `com.c21genera`.
 | `notifications` | Envío de correo vía outbox transaccional (nunca síncrono en el request) |
 | `audit` | Rastro técnico (`AuditEvent`) separado de la línea de tiempo amigable (`Activity`) |
 | `closing` | Seguimiento genérico de cierre tras la aceptación del inmueble |
+| `notary` | Documentos por etapa (comercialización, envío inicial a notaría, cierre con oferta aceptada): paquetes enviados con la versión de cada documento y vigencia de los documentos de cierre |
 | `leads` | CRM (Módulo 3): leads, etapas, actividades, ruteo de asesores (asesor de la propiedad o ruleta ponderada) y dashboard |
 | `online21` | Consulta de solo lectura del inventario de 21Online (API REST con JWT) y registro opcional de prospectos |
 | `assistant` | Asistente de WhatsApp con IA (misma lógica que el panel de Inova): WhatsApp Cloud API, OpenAI con herramientas acotadas, bandeja y simulador |
@@ -99,6 +100,19 @@ hace nada si la variable está vacía, y nunca corre en `prod`).
   un documento faltante (`DOCUMENT_EXCEPTION`: no bloquea la aprobación ni el
   contrato) y pedir una versión actualizada (`DOCUMENT_UPDATE_REQUEST`): la
   nueva carga es la versión siguiente y las anteriores nunca se borran.
+- Controles de cambios 16/10: un documento se puede marcar "Pendiente" (nota y
+  fecha estimada; no bloquea y al subirse queda entregado), los agregados a mano
+  se pueden renombrar, el comprobante de domicilio registra cuál de los cinco
+  aceptados es, y el contrato firmado fuera del sistema (DocuSign o escaneo,
+  también histórico) se sube como documento `SIGNED_CONTRACT` y deja el
+  expediente en `CONTRACT_SIGNED`. Descargar/imprimir en el visor: administrador
+  y directivo.
+- Autorizar una inconsistencia (`DataConflict`) requiere
+  `INCONSISTENCY_AUTHORIZE` (administrador y directivo) y la contraseña del
+  usuario; queda "Autorizada por" con fecha en la bitácora. El régimen de
+  condominio se coteja contra escritura y predial (m² de terreno e indivisos) y
+  la IA devuelve las opciones cuando una escritura trae varios valores
+  (antecedentes) para que una persona elija.
 - Pipeline asíncrono (`documentprocessing`, sin Kafka/RabbitMQ: una tabla
   `background_job` con `SELECT ... FOR UPDATE SKIP LOCKED`, diseñada para
   poder migrar a un broker externo después sin cambiar el dominio):

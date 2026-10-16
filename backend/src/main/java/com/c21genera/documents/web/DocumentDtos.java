@@ -92,7 +92,14 @@ public final class DocumentDtos {
       String exceptionNote,
       Instant exceptionAt,
       String updateRequestNote,
-      Instant updateRequestedAt) {
+      Instant updateRequestedAt,
+      /* Control de Cambios #13: ELECTRICITY, BANK_STATEMENT, TELMEX, PHONE o INTERNET (solo comprobante de domicilio). */
+      String addressProofKind,
+      /* Control de Cambios #14: marcado "Pendiente" por el asesor (no bloquea). */
+      boolean markedPending,
+      String pendingNote,
+      java.time.LocalDate pendingDueDate,
+      Instant pendingAt) {
 
     public static DocumentResponse from(Document d, DocumentVersion latest) {
       return new DocumentResponse(
@@ -118,7 +125,12 @@ public final class DocumentDtos {
           d.getExceptionNote(),
           d.getExceptionAt(),
           d.getUpdateRequestNote(),
-          d.getUpdateRequestedAt());
+          d.getUpdateRequestedAt(),
+          d.getAddressProofKind() == null ? null : d.getAddressProofKind().name(),
+          d.isMarkedPending(),
+          d.getPendingNote(),
+          d.getPendingDueDate(),
+          d.getPendingAt());
     }
   }
 
@@ -183,7 +195,11 @@ public final class DocumentDtos {
       /* El asesor aprobó entregarlo después: no impide enviar ni avanzar. */
       boolean exception,
       /* Se pidió una versión actualizada: qué hay que actualizar. */
-      String updateRequestNote) {
+      String updateRequestNote,
+      /* Control de Cambios #13: qué comprobante de domicilio entregó. */
+      String addressProofKind,
+      /* Control de Cambios #14: el asesor lo dejó pendiente (se entrega después, no impide avanzar). */
+      boolean markedPending) {
 
     public static PublicDocumentResponse from(Document d, DocumentVersion latest) {
       boolean needsCorrection = d.getStatus() == DocumentStatus.RETURNED || d.getStatus() == DocumentStatus.REJECTED;
@@ -217,7 +233,9 @@ public final class DocumentDtos {
           processing,
           d.getCustomName(),
           d.hasException(),
-          d.getUpdateRequestNote());
+          d.getUpdateRequestNote(),
+          d.getAddressProofKind() == null ? null : d.getAddressProofKind().name(),
+          d.isMarkedPending());
     }
   }
 

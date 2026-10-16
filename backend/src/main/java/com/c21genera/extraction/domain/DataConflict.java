@@ -41,6 +41,10 @@ public class DataConflict {
 
   private String resolutionNote;
 
+  /** Control de Cambios #17: nombre del directivo que autorizó la inconsistencia ("Autorizada por ..."). */
+  @Column(length = 160)
+  private String resolvedByName;
+
   @Column(nullable = false)
   private boolean resolvedAutomatically;
 
@@ -76,7 +80,15 @@ public class DataConflict {
   }
 
   public void resolve(UUID resolvedByUserId, String resolutionNote, Instant now) {
+    resolve(resolvedByUserId, null, resolutionNote, now);
+  }
+
+  public void resolve(UUID resolvedByUserId, String resolvedByName, String resolutionNote, Instant now) {
+    if (this.resolved) {
+      throw new com.c21genera.shared.domain.ConflictException("CONFLICT_ALREADY_RESOLVED", "Esta inconsistencia ya está autorizada o resuelta.");
+    }
     this.resolved = true;
+    this.resolvedByName = resolvedByName;
     this.resolvedByUserId = resolvedByUserId;
     this.resolutionNote = resolutionNote;
     this.resolvedAt = now;
@@ -141,6 +153,10 @@ public class DataConflict {
 
   public UUID getResolvedByUserId() {
     return resolvedByUserId;
+  }
+
+  public String getResolvedByName() {
+    return resolvedByName;
   }
 
   public String getResolutionNote() {

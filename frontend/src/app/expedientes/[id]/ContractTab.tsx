@@ -31,6 +31,7 @@ import { useCan } from "@/lib/permissions";
 import { CircleAlert, Copy, Download, FileText, Loader2, PenLine, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ExpedienteContext } from "./page";
+import { SignedContractCard } from "./SignedContractCard";
 
 export function ContractTab({ expediente, reload, freshSigningLinks: links, setFreshSigningLinks: setLinks }: ExpedienteContext) {
   const { showToast } = useToast();
@@ -93,6 +94,7 @@ export function ContractTab({ expediente, reload, freshSigningLinks: links, setF
 
   return (
     <div className="flex flex-col gap-6">
+      <SignedContractCard expedienteId={expediente.id} onUploaded={refresh} />
       <Card>
         <CardHeader
           title="Generar contrato"

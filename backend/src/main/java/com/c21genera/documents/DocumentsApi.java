@@ -79,11 +79,25 @@ public interface DocumentsApi {
       String status,
       UUID currentVersionId,
       String name,
-      boolean exception) {
+      boolean exception,
+      /* Control de Cambios #14: el asesor lo marcó "Pendiente" (también cuenta en exception: no bloquea). */
+      boolean markedPending) {
+
+    public RequirementStatusView(
+        UUID documentId,
+        com.c21genera.shared.domain.DocumentTypeCode type,
+        UUID participantId,
+        boolean required,
+        String status,
+        UUID currentVersionId,
+        String name,
+        boolean exception) {
+      this(documentId, type, participantId, required, status, currentVersionId, name, exception, false);
+    }
 
     public RequirementStatusView(
         UUID documentId, com.c21genera.shared.domain.DocumentTypeCode type, UUID participantId, boolean required, String status) {
-      this(documentId, type, participantId, required, status, null, null, false);
+      this(documentId, type, participantId, required, status, null, null, false, false);
     }
 
     public RequirementStatusView(
@@ -93,7 +107,7 @@ public interface DocumentsApi {
         boolean required,
         String status,
         UUID currentVersionId) {
-      this(documentId, type, participantId, required, status, currentVersionId, null, false);
+      this(documentId, type, participantId, required, status, currentVersionId, null, false, false);
     }
 
     /** Nombre con el que se muestra: el capturado o, si no hay, el del tipo. */
@@ -109,8 +123,20 @@ public interface DocumentsApi {
    * Guarda el aviso de privacidad firmado en papel como documento del expediente (mismo
    * almacenamiento, visor y versiones que los demás). Devuelve el id del documento.
    */
+  /**
+   * Control de Cambios #20: guarda el contrato firmado fuera del sistema (DocuSign o escaneo) como
+   * documento del expediente (cada carga es una versión nueva). Devuelve el id del documento.
+   */
+  UUID attachSignedContract(UUID expedienteId, List<IncomingFile> files, com.c21genera.shared.events.Actor actor);
+
   UUID attachSignedPrivacyNotice(UUID expedienteId, List<IncomingFile> files, com.c21genera.shared.events.Actor actor);
 
   /** Versión vigente de un documento: los datos leídos de versiones anteriores ya no cuentan. */
   Optional<UUID> currentVersionIdOf(UUID documentId);
+
+  /** Versiones de un documento, de la más reciente a la más antigua (Control de Cambios #23: elegir cuál enviar). */
+  List<VersionView> versionViewsOf(UUID documentId);
+
+  /** pdfStorageKey: PDF procesado de la versión (null si no generó PDF). */
+  record VersionView(UUID id, UUID documentId, int versionNumber, java.time.Instant uploadedAt, String pdfStorageKey) {}
 }

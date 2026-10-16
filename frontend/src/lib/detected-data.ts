@@ -66,6 +66,7 @@ const MAPPING: Record<string, Record<string, Target | Target[]>> = {
     notaryNumber: { kind: "legal", key: "deed.notaryNumber" },
     notaryPlace: { kind: "legal", key: "deed.notaryPlace" },
     publicRegistryFolio: { kind: "legal", key: "deed.registryData" },
+    registryDate: { kind: "legal", key: "deed.registryDate", date: true },
     landArea: { kind: "area", key: "landAreaM2" },
     builtArea: { kind: "area", key: "builtAreaM2" },
   },
@@ -88,7 +89,10 @@ const MAPPING: Record<string, Record<string, Target | Target[]>> = {
       { kind: "legal", key: "deed.registryData" },
       { kind: "legal", key: "privateContract.realFolio" },
     ],
-    registryDate: { kind: "legal", key: "privateContract.registryDate", date: true },
+    registryDate: [
+      { kind: "legal", key: "privateContract.registryDate", date: true },
+      { kind: "legal", key: "deed.registryDate", date: true },
+    ],
   },
   CONDOMINIUM_REGIME: {
     deedNumber: { kind: "legal", key: "condominium.deedNumber" },

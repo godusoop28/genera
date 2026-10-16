@@ -6,6 +6,7 @@ import com.c21genera.extraction.domain.DocumentFieldSchemas;
 import com.c21genera.extraction.domain.ExtractedFieldObservation;
 import jakarta.validation.constraints.NotBlank;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 public final class ExtractionDtos {
@@ -24,7 +25,11 @@ public final class ExtractionDtos {
       Instant updatedAt,
       Integer sourcePage,
       /* Dato útil fuera del esquema del tipo (fieldName empieza con "extra."). */
-      boolean extra) {
+      boolean extra,
+      /* Control de Cambios #19: valores posibles cuando el documento trae varios (antecedentes). */
+      List<AlternativeResponse> alternatives,
+      String confirmedByName,
+      Instant confirmedAt) {
 
     public static ObservationResponse from(ExtractedFieldObservation o) {
       return new ObservationResponse(
@@ -38,9 +43,14 @@ public final class ExtractionDtos {
           o.getConfidence(),
           o.getUpdatedAt(),
           o.getSourcePage(),
-          DocumentFieldSchemas.isExtra(o.getFieldName()));
+          DocumentFieldSchemas.isExtra(o.getFieldName()),
+          o.getAlternatives().stream().map(a -> new AlternativeResponse(a.value(), a.context(), a.page())).toList(),
+          o.getConfirmedByName(),
+          o.getConfirmedAt());
     }
   }
+
+  public record AlternativeResponse(String value, String context, Integer page) {}
 
   /** Dato detectado junto con el documento del que salió (para prellenar el contrato). */
   public record ExpedienteObservationResponse(
@@ -81,7 +91,9 @@ public final class ExtractionDtos {
       UUID resolvedByUserId,
       Instant detectedAt,
       Instant resolvedAt,
-      String severity) {
+      String severity,
+      /* Control de Cambios #17: "Autorizada por ..." */
+      String resolvedByName) {
 
     public static ConflictResponse from(DataConflict c) {
       return new ConflictResponse(
@@ -94,10 +106,11 @@ public final class ExtractionDtos {
           c.getResolvedByUserId(),
           c.getDetectedAt(),
           c.getResolvedAt(),
-          c.getSeverity());
+          c.getSeverity(),
+          c.getResolvedByName());
     }
   }
 
   /** Resolver una diferencia exige explicar por qué es aceptable (p. ej. "el predial está a nombre del copropietario"). */
-  public record ResolveConflictRequest(@NotBlank String note) {}
+  public record ResolveConflictRequest(@NotBlank String note, String password) {}
 }

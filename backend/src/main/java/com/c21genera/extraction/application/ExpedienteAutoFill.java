@@ -80,6 +80,7 @@ public class ExpedienteAutoFill {
     map("DEED", "notaryNumber", legal("deed.notaryNumber"));
     map("DEED", "notaryPlace", legal("deed.notaryPlace"));
     map("DEED", "publicRegistryFolio", legal("deed.registryData"));
+    map("DEED", "registryDate", legalDate("deed.registryDate"));
     map("DEED", "landArea", area("landAreaM2"));
     map("DEED", "builtArea", area("builtAreaM2"));
 
@@ -96,7 +97,7 @@ public class ExpedienteAutoFill {
 
     // La boleta del RPP es la fuente del folio real (Control de Cambios #8).
     map("RPP_REGISTRATION_SLIP", "publicRegistryFolio", legal("deed.registryData"), legal("privateContract.realFolio"));
-    map("RPP_REGISTRATION_SLIP", "registryDate", legalDate("privateContract.registryDate"));
+    map("RPP_REGISTRATION_SLIP", "registryDate", legalDate("privateContract.registryDate"), legalDate("deed.registryDate"));
 
     map("CONDOMINIUM_REGIME", "deedNumber", legal("condominium.deedNumber"));
     map("CONDOMINIUM_REGIME", "deedDate", legalDate("condominium.date"));
@@ -230,6 +231,10 @@ public class ExpedienteAutoFill {
       return true;
     }
     String value = obs.getDetectedValue();
+    // Control de Cambios #19: con varios valores posibles (antecedentes), una persona elige antes de usarlo.
+    if (!obs.getAlternatives().isEmpty()) {
+      return false;
+    }
     return "ACCEPTED".equals(o.document().status())
         && value != null
         && !value.contains("?")

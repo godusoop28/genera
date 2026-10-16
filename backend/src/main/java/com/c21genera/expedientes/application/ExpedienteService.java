@@ -876,6 +876,11 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
   }
 
   @Override
+  public void recordContractSignedExternally(UUID expedienteId) {
+    get(expedienteId).markContractSignedExternally();
+  }
+
+  @Override
   public void recordContractInvalidated(UUID expedienteId) {
     Expediente expediente = get(expedienteId);
     if (expediente.getStatus() == ExpedienteStatus.READY_FOR_SIGNATURE) {

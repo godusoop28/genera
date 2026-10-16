@@ -402,8 +402,20 @@ class DocumentResponse {
         exceptionNote = _s(j['exceptionNote']),
         exceptionAt = _s(j['exceptionAt']),
         updateRequestNote = _s(j['updateRequestNote']),
-        updateRequestedAt = _s(j['updateRequestedAt']);
+        updateRequestedAt = _s(j['updateRequestedAt']),
+        addressProofKind = _s(j['addressProofKind']),
+        markedPending = _b(j['markedPending']),
+        pendingNote = _s(j['pendingNote']),
+        pendingDueDate = _s(j['pendingDueDate']),
+        pendingAt = _s(j['pendingAt']);
   final String id, type, status;
+
+  /// Qué comprobante de domicilio se entregó (Control de Cambios #13).
+  final String? addressProofKind;
+
+  /// El asesor lo marcó "Pendiente": se entrega después y no bloquea (Control de Cambios #14).
+  final bool markedPending;
+  final String? pendingNote, pendingDueDate, pendingAt;
   final String? participantId, deferralReason, notApplicableJustification, notApplicableAt, lastReviewReasonCode, lastReviewComment, lastReviewedAt, pipelineStatus;
 
   /// Nombre capturado si se agregó a mano porque no está en el listado (Control de Cambios #1).
@@ -452,9 +464,16 @@ class ExtractedField {
         confirmedValue = _s(j['confirmedValue']),
         confidence = _dn(j['confidence']),
         sourcePage = _in(j['sourcePage']),
-        extra = _b(j['extra']);
+        extra = _b(j['extra']),
+        alternatives = _list(j['alternatives'], (a) => (value: _sr(a['value']), context: _s(a['context']), page: _in(a['page']))),
+        confirmedByName = _s(j['confirmedByName']),
+        confirmedAt = _s(j['confirmedAt']);
   final String id, fieldName;
   final String? detectedValue, confirmedValue;
+
+  /// Valores posibles cuando el documento trae varios (antecedentes de la escritura), Control de Cambios #19.
+  final List<({String value, String? context, int? page})> alternatives;
+  final String? confirmedByName, confirmedAt;
   final double? confidence;
   final int? sourcePage;
   final bool extra;
@@ -481,10 +500,108 @@ class DataConflict {
         resolutionNote = _s(j['resolutionNote']),
         detectedAt = _sr(j['detectedAt']),
         resolvedAt = _s(j['resolvedAt']),
-        severity = _s(j['severity']) ?? 'WARNING';
+        severity = _s(j['severity']) ?? 'WARNING',
+        resolvedByName = _s(j['resolvedByName']);
   final String id, description, detectedAt, severity;
   final bool resolved, resolvedAutomatically;
   final String? resolutionNote, resolvedAt;
+
+  /// "Autorizada por ..." (Control de Cambios #17).
+  final String? resolvedByName;
+}
+
+/// Cotejo de superficies del condominio (Control de Cambios #15).
+class CondominiumArea {
+  CondominiumArea.fromJson(Json j)
+      : key = _sr(j['key']),
+        label = _sr(j['label']),
+        condominiumRegime = _s(j['condominiumRegime']),
+        deed = _s(j['deed']),
+        propertyTax = _s(j['propertyTax']),
+        consistent = _b(j['consistent']);
+  final String key, label;
+  final String? condominiumRegime, deed, propertyTax;
+  final bool consistent;
+}
+
+/// Envíos a notaría por etapa (Control de Cambios #23).
+class NotaryVersion {
+  NotaryVersion.fromJson(Json j)
+      : id = _sr(j['id']),
+        versionNumber = _i(j['versionNumber']),
+        uploadedAt = _sr(j['uploadedAt']),
+        current = _b(j['current']);
+  final String id, uploadedAt;
+  final int versionNumber;
+  final bool current;
+}
+
+class NotaryDocument {
+  NotaryDocument.fromJson(Json j)
+      : documentId = _sr(j['documentId']),
+        type = _sr(j['type']),
+        name = _sr(j['name']),
+        participantId = _s(j['participantId']),
+        status = _sr(j['status']),
+        versions = _list(j['versions'], NotaryVersion.fromJson),
+        closingRequired = _b(j['closingRequired']),
+        closingValid = _b(j['closingValid']),
+        closingCheckValid = j['closingCheckValid'] is bool ? j['closingCheckValid'] as bool : null,
+        closingCheckedVersion = _in(j['closingCheckedVersion']),
+        closingCheckedByName = _s(j['closingCheckedByName']),
+        closingCheckedAt = _s(j['closingCheckedAt']);
+  final String documentId, type, name, status;
+  final String? participantId, closingCheckedByName, closingCheckedAt;
+  final List<NotaryVersion> versions;
+  final bool closingRequired, closingValid;
+  final bool? closingCheckValid;
+  final int? closingCheckedVersion;
+
+  NotaryVersion? get current => versions.where((v) => v.current).firstOrNull ?? versions.firstOrNull;
+}
+
+class NotarySubmission {
+  NotarySubmission.fromJson(Json j)
+      : id = _sr(j['id']),
+        kind = _sr(j['kind']),
+        sentAt = _sr(j['sentAt']),
+        sentByName = _s(j['sentByName']),
+        recipientEmail = _s(j['recipientEmail']),
+        note = _s(j['note']),
+        warnings = _s(j['warnings']),
+        items = _list(j['items'], (i) => (documentName: _sr(i['documentName']), versionNumber: _i(i['versionNumber'])));
+  final String id, kind, sentAt;
+  final String? sentByName, recipientEmail, note, warnings;
+  final List<({String documentName, int versionNumber})> items;
+}
+
+class NotaryOverview {
+  NotaryOverview.fromJson(Json j)
+      : closingActive = _b(j['closingActive']),
+        offerAcceptedAt = _s(j['offerAcceptedAt']),
+        offerAcceptedByName = _s(j['offerAcceptedByName']),
+        offerNote = _s(j['offerNote']),
+        documents = _list(j['documents'], NotaryDocument.fromJson),
+        submissions = _list(j['submissions'], NotarySubmission.fromJson);
+  final bool closingActive;
+  final String? offerAcceptedAt, offerAcceptedByName, offerNote;
+  final List<NotaryDocument> documents;
+  final List<NotarySubmission> submissions;
+}
+
+/// Contrato firmado fuera del sistema (Control de Cambios #20).
+class SignedContractUpload {
+  SignedContractUpload.fromJson(Json j)
+      : id = _sr(j['id']),
+        documentId = _sr(j['documentId']),
+        signatureMethod = _sr(j['signatureMethod']),
+        historical = _b(j['historical']),
+        note = _s(j['note']),
+        uploadedByName = _s(j['uploadedByName']),
+        uploadedAt = _sr(j['uploadedAt']);
+  final String id, documentId, signatureMethod, uploadedAt;
+  final bool historical;
+  final String? note, uploadedByName;
 }
 
 class EmailPreview {

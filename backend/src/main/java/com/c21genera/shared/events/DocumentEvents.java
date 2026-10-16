@@ -66,7 +66,16 @@ public final class DocumentEvents {
     EXCEPTION_REVOKED,
     /** Se pidió una versión actualizada; la anterior se conserva. */
     UPDATE_REQUESTED,
-    UPDATE_CANCELLED
+    UPDATE_CANCELLED,
+    /** Control de Cambios #14: el asesor lo marcó "Pendiente" (se entrega después, no bloquea). */
+    PENDING_MARKED,
+    PENDING_CLEARED,
+    /** Se subió el archivo de un documento que estaba pendiente: queda "Entregado". */
+    PENDING_DELIVERED,
+    /** Control de Cambios #18: se corrigió el nombre (note trae el nombre anterior). */
+    RENAMED,
+    /** Control de Cambios #13: se indicó qué comprobante de domicilio es (note trae cuál). */
+    ADDRESS_PROOF_KIND_CHANGED
   }
 
   /** name: nombre con el que se muestra el documento; note: la nota o justificación capturada. */

@@ -216,6 +216,8 @@ const extractedFieldLabels = {
   'summary': 'De qué trata',
   'unitNumber': 'Unidad privativa',
   'undividedPercentage': 'Porcentaje de indiviso',
+  'undividedLandArea': 'Superficie de terreno de indivisos',
+  'addressProofKind': 'Tipo de comprobante',
 };
 
 String extractedFieldLabel(String fieldName) =>
@@ -266,6 +268,8 @@ const documentTypeLabels = {
   'MARRIAGE_CERTIFICATE': 'Acta de matrimonio',
   'PRIVATE_CONTRACT': 'Contrato privado de compraventa ratificado',
   'INCORPORATION_DEED': 'Acta constitutiva',
+  'PRIVACY_NOTICE': 'Aviso de privacidad firmado',
+  'SIGNED_CONTRACT': 'Contrato firmado',
   'OTHER': 'Otro',
 };
 
@@ -574,3 +578,12 @@ String initials(String name) =>
 String whatsappLink(String phone) => 'https://wa.me/${phone.replaceAll(RegExp(r'\D'), '')}';
 
 String plural(int n, String singular, [String? pluralForm]) => n == 1 ? singular : (pluralForm ?? '${singular}s');
+
+/// Comprobantes de domicilio aceptados (Control de Cambios #13).
+const addressProofKindLabels = {
+  'ELECTRICITY': 'Recibo de luz / energía eléctrica (CFE u otro proveedor)',
+  'BANK_STATEMENT': 'Estado de cuenta bancario',
+  'TELMEX': 'Recibo de Telmex',
+  'PHONE': 'Recibo de telefonía (cualquier operadora)',
+  'INTERNET': 'Recibo de internet (cualquier proveedor)',
+};

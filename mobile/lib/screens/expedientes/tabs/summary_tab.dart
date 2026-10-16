@@ -22,6 +22,9 @@ class SummaryTab extends StatefulWidget {
 class _SummaryTabState extends State<SummaryTab> {
   PublicLinkStatus? linkStatus;
   bool busy = false;
+  // Controles de cambios #14 y #22: documentos pendientes de entrega y servicios del inmueble.
+  int? pendingDocs;
+  String? services;
 
   ExpedienteResponse get e => widget.ctx.expediente;
 
@@ -29,6 +32,19 @@ class _SummaryTabState extends State<SummaryTab> {
   void initState() {
     super.initState();
     loadLink();
+    loadExtras();
+  }
+
+  Future<void> loadExtras() async {
+    try {
+      final docs = await api.listDocuments(e.id);
+      final data = await api.getClientData(e.id);
+      if (!mounted) return;
+      setState(() {
+        pendingDocs = docs.where((d) => d.markedPending).length;
+        services = data['availableServices'] as String?;
+      });
+    } catch (_) {}
   }
 
   Future<void> loadLink() async {
@@ -101,6 +117,9 @@ class _SummaryTabState extends State<SummaryTab> {
                   FieldView('Situación jurídica', label(legalStatusLabels, e.declaredLegalStatus), upper: true),
                   FieldView('Domicilio del inmueble', (e.propertyAddress?.isNotEmpty ?? false) ? e.propertyAddress : 'Se tomará de la escritura o el predial', upper: true),
                   if (e.propertyReference != null) FieldView('Referencia que ve el cliente', e.propertyReference, upper: true),
+                  FieldView('Servicios con los que cuenta', (services?.trim().isNotEmpty ?? false) ? services : 'Sin capturar (Datos del contrato)', upper: true),
+                  FieldView('Documentos pendientes de entrega',
+                      pendingDocs == null ? '—' : (pendingDocs == 0 ? 'Ninguno' : '$pendingDocs (no bloquean el avance)'), upper: true),
                   FieldView('Creado', formatDateTime(e.createdAt), upper: true),
                   FieldView('Última actualización', formatDateTime(e.updatedAt), upper: true),
                   if (e.decisionReason != null) FieldView('Motivo de la decisión', e.decisionReason, upper: true),
@@ -577,7 +596,8 @@ class _PrivacyCardState extends State<_PrivacyCard> {
             AppBadge(signed ? 'Firmado' : 'Pendiente de firma', tone: signed ? Tone.success : Tone.warning),
             if (signed)
               MutedText(
-                '${s['signatureMethod'] == 'PHYSICAL' ? 'En papel, en la oficina' : 'En su liga, con firma digital'} · ${formatDateTime(s['signedAt'] as String?)}',
+                '${s['signatureMethod'] == 'PHYSICAL' ? 'En papel, en la oficina' : 'En su liga, con firma digital'} · ${formatDateTime(s['signedAt'] as String?)}'
+                '${s['secondaryPurposesAccepted'] == false ? ' · finalidades secundarias y promocionales: no autorizadas' : s['secondaryPurposesAccepted'] == true ? ' · finalidades secundarias y promocionales: autorizadas' : ''}',
                 size: 12,
               ),
           ]),

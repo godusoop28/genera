@@ -81,7 +81,13 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       en la que el texto se lee derecho.
       3) Agrega en otherFields cualquier otro dato útil que veas (p. ej. sección electoral, volumen de la \
       escritura, medidas y colindancias, número de acta).
-      4) Escribe en warnings lo que el revisor debe saber (p. ej. "solo se ve el frente", "la página 3 está \
+      4) Si en el documento hay VARIOS valores posibles para un mismo campo (p. ej. una escritura con \
+      antecedentes: varias fechas, varios notarios, varias notarías o varios folios de transmisiones \
+      anteriores), en value pon el del instrumento ACTUAL (el que otorga esta escritura, no los \
+      antecedentes) y agrega en "alternatives" TODOS los valores encontrados, incluido el elegido, cada uno \
+      con "context" (a qué corresponde, p. ej. "Instrumento actual", "Escritura antecedente (primer \
+      propietario)") y su página. Si no estás seguro de cuál es el actual, baja la confianza a menos de 0.5.
+      5) Escribe en warnings lo que el revisor debe saber (p. ej. "solo se ve el frente", "la página 3 está \
       cortada", "el documento está a nombre de otra persona").
 
       Criterios de tolerancia:
@@ -107,7 +113,7 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       Responde ÚNICAMENTE con un JSON válido, sin markdown, con la forma:
       {"documentCheck": {"detectedDocumentKind": string, "matchesExpectedType": boolean, "legible": boolean, \
       "observations": string}, "fields": [{"fieldName": string, "value": string, "confidence": number, \
-      "page": number}], "otherFields": [{"label": string, "value": string, "page": number}], \
+      "page": number, "alternatives": [{"value": string, "context": string, "page": number}]}], "otherFields": [{"label": string, "value": string, "page": number}], \
       "warnings": [string]}
       detectedDocumentKind y observations en español y breves (p. ej. "credencial INE (frente)", "predial", \
       "lista de compras").
@@ -693,7 +699,7 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       String value = valueOf(fieldNode.path("value"));
       double confidence = clamp(fieldNode.path("confidence").asDouble(0.5));
       if (name != null && !name.isBlank() && value != null) {
-        fields.add(new FieldResult(name.strip(), value, confidence, page(fieldNode)));
+        fields.add(new FieldResult(name.strip(), value, confidence, page(fieldNode), alternatives(fieldNode)));
       }
     }
     Map<String, FieldResult> extras = new LinkedHashMap<>();
@@ -724,6 +730,21 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
                 truncate(check.path("detectedDocumentKind").asText(null), 200),
                 truncate(check.path("observations").asText(null), 1000));
     return new ExtractionResult(fields, assessment, warnings);
+  }
+
+  /** Control de Cambios #19: valores posibles del mismo dato (antecedentes de una escritura). */
+  private List<com.c21genera.extraction.domain.StructuredExtractionProvider.Alternative> alternatives(JsonNode fieldNode) {
+    List<com.c21genera.extraction.domain.StructuredExtractionProvider.Alternative> result = new ArrayList<>();
+    for (JsonNode alt : fieldNode.path("alternatives")) {
+      String value = valueOf(alt.path("value"));
+      if (value != null && result.size() < 6) {
+        String context = alt.path("context").asText(null);
+        result.add(
+            new com.c21genera.extraction.domain.StructuredExtractionProvider.Alternative(
+                truncate(value, 300), context == null ? null : truncate(context, 200), page(alt)));
+      }
+    }
+    return result;
   }
 
   // ---------------------------------------------------------------------

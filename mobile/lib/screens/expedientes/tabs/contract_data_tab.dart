@@ -8,6 +8,7 @@ import '../../../api/api.dart' as api;
 import '../../../api/client.dart';
 import '../../../api/models.dart';
 import '../../../detected_data.dart';
+import '../../../property_services.dart';
 import '../../../state/auth.dart';
 import '../../../ui/widgets.dart';
 import '../expediente_detail_screen.dart';
@@ -107,6 +108,12 @@ class _ContractDataTabState extends State<ContractDataTab> {
         legal = differs ? Json.from(draft!['legal'] as Map) : serverLegal;
         if (differs) reason = '${draft!['reason'] ?? ''}';
       });
+      // Control de Cambios #21: el campo empieza con el texto estándar de C21 Genera (editable).
+      if ('${data!['visitInstructions'] ?? ''}'.trim().isEmpty && context.read<AuthState>().can('EXPEDIENT_EDIT')) {
+        api.getVisitInstructions().then((text) {
+          if (mounted && '${data?['visitInstructions'] ?? ''}'.trim().isEmpty && text.isNotEmpty) setData('visitInstructions', text);
+        }).catchError((_) {});
+      }
       if (differs) showToast(context, 'Se recuperaron cambios que no habías guardado. Revísalos y guarda.');
     } catch (err) {
       if (mounted) setState(() => loadError = errorText(err));
@@ -338,7 +345,20 @@ class _ContractDataTabState extends State<ContractDataTab> {
                 padding: const EdgeInsets.only(bottom: 14),
                 child: YesNo(label: '¿Acepta recibir publicidad?', value: d['receiveAdsAuthorized'] as bool?, enabled: editable, onChanged: (v) => setData('receiveAdsAuthorized', v)),
               ),
-              field('Instrucciones para visitas', d['visitInstructions'], (v) => setData('visitInstructions', v)),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: AppTextField(
+                  key: ValueKey('visit-${_text(d['visitInstructions']).isEmpty}'),
+                  label: 'Instrucciones para visitas',
+                  value: _text(d['visitInstructions']),
+                  enabled: editable,
+                  maxLines: 5,
+                  helper: _text(d['visitInstructions']).trim().isEmpty
+                      ? 'No debe quedar vacío: si lo dejas así, el contrato llevará el texto estándar.'
+                      : 'Texto estándar de C21 Genera; ajústalo si el caso lo requiere. Así quedará en el contrato.',
+                  onChanged: (v) => setData('visitInstructions', v),
+                ),
+              ),
               field('Servicios adicionales solicitados (Anexo D)', d['additionalServicesRequested'], (v) => setData('additionalServicesRequested', v)),
             ]),
           ),
@@ -363,7 +383,7 @@ class _ContractDataTabState extends State<ContractDataTab> {
                 field('Baños', d['bathrooms'], (v) => setData('bathrooms', numOrNull(v)), number: true),
               ],
               field('Estado general de conservación', d['conservationStatus'], (v) => setData('conservationStatus', v)),
-              field('Servicios con los que cuenta', d['availableServices'], (v) => setData('availableServices', v)),
+              _ServicesField(value: d['availableServices'] as String?, enabled: editable, onChanged: (v) => setData('availableServices', v)),
               field('Características relevantes', d['relevantFeatures'], (v) => setData('relevantFeatures', v)),
             ]),
           ),
@@ -407,7 +427,8 @@ class _ContractDataTabState extends State<ContractDataTab> {
                 legalField('deed', 'notaryName', 'Nombre del notario'),
                 legalField('deed', 'notaryNumber', 'Número de notaría'),
                 legalField('deed', 'notaryPlace', 'Lugar de la notaría', hint: 'Ej. Cuernavaca, Morelos'),
-                legalField('deed', 'registryData', 'Datos registrales (opcional)', hint: 'Folio real o datos de inscripción, si ya se confirmaron'),
+                legalField('deed', 'registryData', 'Datos registrales / folio real (opcional)', hint: 'Folio real o datos de inscripción, si ya se confirmaron'),
+                legalField('deed', 'registryDate', 'Fecha de inscripción en el RPP (opcional)', date: true),
               ]),
             )
           else
@@ -503,4 +524,47 @@ class _ContractDataTabState extends State<ContractDataTab> {
           Expanded(child: Text(text, style: TextStyle(fontSize: 13.5, color: c.warningText))),
         ]),
       );
+}
+
+/// Control de Cambios #22: servicios del inmueble como casillas agrupadas, más "Otros servicios".
+class _ServicesField extends StatelessWidget {
+  const _ServicesField({required this.value, required this.onChanged, this.enabled = true});
+  final String? value;
+  final ValueChanged<String> onChanged;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final sel = parseServices(value);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('Servicios con los que cuenta', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500, color: c.fg)),
+        for (final g in propertyServiceGroups) ...[
+          const SizedBox(height: 8),
+          MutedText(g.title.toUpperCase(), size: 11),
+          for (final item in g.items)
+            CheckboxListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              value: sel.selected.contains(item),
+              title: Text(item, style: const TextStyle(fontSize: 13.5)),
+              onChanged: !enabled
+                  ? null
+                  : (checked) => onChanged(formatServices(checked == true ? [...sel.selected, item] : sel.selected.where((s) => s != item).toList(), sel.others)),
+            ),
+        ],
+        const SizedBox(height: 8),
+        AppTextField(
+          label: 'Otros servicios',
+          value: sel.others,
+          enabled: enabled,
+          hint: 'Servicios que no están en la lista',
+          onChanged: (v) => onChanged(formatServices(sel.selected, v)),
+        ),
+      ]),
+    );
+  }
 }

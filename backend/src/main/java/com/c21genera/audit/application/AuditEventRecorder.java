@@ -31,6 +31,7 @@ import com.c21genera.shared.events.ExpedienteEvents.DuplicateClientAuthorized;
 import com.c21genera.shared.events.ExpedienteEvents.ExpedienteCreated;
 import com.c21genera.shared.events.ExpedienteEvents.ExpedienteDataCorrected;
 import com.c21genera.shared.events.ExpedienteEvents.ExpedienteRequirementsChanged;
+import com.c21genera.shared.events.ExpedienteEvents.InconsistencyAuthorized;
 import com.c21genera.shared.events.ExpedienteEvents.PrivacySignatureDeferred;
 import com.c21genera.shared.events.ExpedienteEvents.PropertyAccepted;
 import com.c21genera.shared.events.ExpedienteEvents.PropertyRejected;
@@ -161,6 +162,14 @@ class AuditEventRecorder {
         "Continuó el alta con el aviso de privacidad pendiente de firma" + (event.reason() != null ? ": " + event.reason() : ""));
   }
 
+  /** Control de Cambios #17: queda en la bitácora quién autorizó, cuándo y qué inconsistencia. */
+  @ApplicationModuleListener
+  void on(InconsistencyAuthorized event) {
+    record("InconsistencyAuthorized", "DataConflict", event.conflictId(), event.actor(), "Inconsistencia autorizada: " + event.description());
+    activity(event.expedienteId(), ActivityCategory.CORRECTION, "INCONSISTENCY_AUTHORIZED", event.actor(), null, null,
+        "Autorizó la inconsistencia (confirmado con contraseña): " + event.description() + " Motivo: " + event.note());
+  }
+
   // --- Documentos -------------------------------------------------------
 
   @ApplicationModuleListener
@@ -185,6 +194,12 @@ class AuditEventRecorder {
           case EXCEPTION_REVOKED -> "Retiró la excepción de " + label + ": vuelve a ser necesario";
           case UPDATE_REQUESTED -> "Pidió al cliente una versión actualizada de " + label + note;
           case UPDATE_CANCELLED -> "Canceló la solicitud de actualización de " + label;
+          case PENDING_MARKED -> "Marcó " + label + " como pendiente; se entregará después" + note;
+          case PENDING_CLEARED -> "Quitó la marca de pendiente de " + label;
+          case PENDING_DELIVERED -> "Se entregó " + label + ", que estaba pendiente";
+          case RENAMED -> "Cambió el nombre del documento \"" + event.note() + "\" a \"" + label + "\"";
+          case ADDRESS_PROOF_KIND_CHANGED ->
+              event.note() != null ? "Indicó que el comprobante de domicilio es: " + event.note() : "Quitó el tipo de comprobante de domicilio";
         };
     record("DocumentFollowUpChanged", "Document", event.documentId(), event.actor(), event.change() + ": " + label);
     activity(event.expedienteId(), ActivityCategory.DOCUMENT, "DOCUMENT_" + event.change().name(), event.actor(), event.documentId(), label, message);
@@ -349,6 +364,45 @@ class AuditEventRecorder {
     String message = "Registró la entrega al cliente del contrato firmado versión " + event.versionNumber() + " (" + event.method() + ")";
     record("ContractDelivered", "Contract", event.contractId(), event.actor(), message);
     activity(event.expedienteId(), ActivityCategory.CONTRACT, "CONTRACT_DELIVERED", event.actor(), null, null, message);
+  }
+
+  @ApplicationModuleListener
+  void on(com.c21genera.shared.events.ContractEvents.SignedContractUploaded event) {
+    String how = "DOCUSIGN".equals(event.signatureMethod()) ? "DocuSign" : "firma física (escaneado)";
+    String message = "Subió el contrato firmado (" + how + ")" + (event.historical() ? ", de una operación anterior al sistema" : "") + ": el expediente queda con contrato firmado";
+    record("SignedContractUploaded", "Document", event.documentId(), event.actor(), message);
+    activity(event.expedienteId(), ActivityCategory.CONTRACT, "SIGNED_CONTRACT_UPLOADED", event.actor(), event.documentId(), "Contrato firmado", message);
+  }
+
+  // --- Notaría (Control de Cambios #23) ---------------------------------
+
+  @ApplicationModuleListener
+  void on(com.c21genera.shared.events.NotaryEvents.OfferAcceptanceChanged event) {
+    String message =
+        event.accepted()
+            ? "Registró la oferta aceptada: se activa la etapa de cierre" + (event.note() != null ? " (" + event.note() + ")" : "")
+            : "Quitó el registro de la oferta aceptada";
+    record("OfferAcceptanceChanged", "Expediente", event.expedienteId(), event.actor(), message);
+    activity(event.expedienteId(), ActivityCategory.EXPEDIENT, event.accepted() ? "OFFER_ACCEPTED" : "OFFER_CLEARED", event.actor(), null, null, message);
+  }
+
+  @ApplicationModuleListener
+  void on(com.c21genera.shared.events.NotaryEvents.NotaryPackageSent event) {
+    String kind = "CLOSING".equals(event.kind()) ? "de cierre" : "inicial";
+    String to = event.recipientEmail() != null ? " por correo" : " (registro; el envío se hizo por fuera)";
+    String message = "Envío " + kind + " a notaría" + to + ": " + event.summary();
+    record("NotaryPackageSent", "Expediente", event.expedienteId(), event.actor(), message);
+    activity(event.expedienteId(), ActivityCategory.DOCUMENT, "NOTARY_PACKAGE_" + event.kind(), event.actor(), null, null, message);
+  }
+
+  @ApplicationModuleListener
+  void on(com.c21genera.shared.events.NotaryEvents.ClosingDocumentChecked event) {
+    String message =
+        (event.valid() ? "Confirmó que " + event.documentName() + " está vigente y al corriente para el cierre"
+            : "Marcó que " + event.documentName() + " NO está vigente o al corriente para el cierre")
+            + (event.note() != null ? ": " + event.note() : "");
+    record("ClosingDocumentChecked", "Document", event.documentId(), event.actor(), message);
+    activity(event.expedienteId(), ActivityCategory.DOCUMENT, "CLOSING_DOCUMENT_CHECKED", event.actor(), event.documentId(), event.documentName(), message);
   }
 
   // --- Notificaciones ---------------------------------------------------

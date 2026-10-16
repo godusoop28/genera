@@ -42,13 +42,32 @@ public interface StructuredExtractionProvider {
     }
   }
 
-  /** page: página del documento (1 = primera) donde se leyó el dato; null si no se sabe. */
-  record FieldResult(String fieldName, String value, double confidence, Integer page) {
+  /**
+   * page: página del documento (1 = primera) donde se leyó el dato; null si no se sabe.
+   * alternatives: otros valores posibles del mismo dato (p. ej. fechas o notarios de los
+   * antecedentes de una escritura) para que una persona elija el correcto (Control de Cambios #19).
+   */
+  record FieldResult(String fieldName, String value, double confidence, Integer page, List<Alternative> alternatives) {
+
+    public FieldResult {
+      alternatives = alternatives == null ? List.of() : List.copyOf(alternatives);
+    }
+
+    public FieldResult(String fieldName, String value, double confidence, Integer page) {
+      this(fieldName, value, confidence, page, List.of());
+    }
 
     public FieldResult(String fieldName, String value, double confidence) {
-      this(fieldName, value, confidence, null);
+      this(fieldName, value, confidence, null, List.of());
+    }
+
+    public FieldResult withConfidence(double newConfidence) {
+      return new FieldResult(fieldName, value, newConfidence, page, alternatives);
     }
   }
+
+  /** Un valor posible y a qué corresponde en el documento ("Escritura antecedente (primer propietario)"). */
+  record Alternative(String value, String context, Integer page) {}
 
   /**
    * ¿El archivo es realmente el documento solicitado y se puede leer? null en

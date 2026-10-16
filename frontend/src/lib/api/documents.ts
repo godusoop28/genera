@@ -1,6 +1,7 @@
 import { apiClient, getBlob, uploadFiles, type UploadProgress } from "@/lib/api/client";
 import { prepareUploads } from "@/lib/upload-limits";
 import type {
+  AddressProofKind,
   DocumentResponse,
   DocumentVersionResponse,
   DownloadResponse,
@@ -21,8 +22,38 @@ export function listReviews(documentId: string) {
   return apiClient.get<ReviewHistoryResponse[]>(`/internal/documents/${documentId}/reviews`);
 }
 
-export async function uploadVersion(documentId: string, files: File[], onProgress?: (progress: UploadProgress) => void) {
-  return uploadFiles<DocumentVersionResponse>(`/internal/documents/${documentId}/versions`, "files", await prepareUploads(files), onProgress);
+export async function uploadVersion(
+  documentId: string,
+  files: File[],
+  onProgress?: (progress: UploadProgress) => void,
+  addressProofKind?: AddressProofKind | null,
+) {
+  const query = addressProofKind ? `?addressProofKind=${addressProofKind}` : "";
+  return uploadFiles<DocumentVersionResponse>(
+    `/internal/documents/${documentId}/versions${query}`,
+    "files",
+    await prepareUploads(files),
+    onProgress,
+  );
+}
+
+/** Control de Cambios #14: "Marcar como pendiente" (nota y fecha estimada opcionales). */
+export function markDocumentPending(documentId: string, note: string, dueDate: string | null) {
+  return apiClient.put<DocumentResponse>(`/internal/documents/${documentId}/pending`, { note, dueDate: dueDate || null });
+}
+
+export function clearDocumentPending(documentId: string) {
+  return apiClient.delete<DocumentResponse>(`/internal/documents/${documentId}/pending`);
+}
+
+/** Control de Cambios #18: corrige el nombre de un documento agregado a mano (el archivo no cambia). */
+export function renameDocument(documentId: string, name: string) {
+  return apiClient.put<DocumentResponse>(`/internal/documents/${documentId}/name`, { name });
+}
+
+/** Control de Cambios #13: qué comprobante de domicilio se entregó. */
+export function setAddressProofKind(documentId: string, kind: AddressProofKind | null) {
+  return apiClient.put<DocumentResponse>(`/internal/documents/${documentId}/address-proof-kind`, { kind });
 }
 
 /** "Reprocesar con IA" sin que el cliente vuelva a subir el archivo. full: también calidad y PDF. */

@@ -6,7 +6,12 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -53,6 +58,22 @@ public class ExtractedFieldObservation {
   /** Página del documento donde se leyó el dato (1 = primera); null si no se sabe. */
   private Integer sourcePage;
 
+  /**
+   * Control de Cambios #19: otros valores posibles del dato (JSON), p. ej. las fechas o notarios
+   * de los antecedentes de una escritura, para que una persona elija el del instrumento actual.
+   */
+  private String alternativesJson;
+
+  private UUID confirmedByUserId;
+
+  @Column(length = 160)
+  private String confirmedByName;
+
+  private Instant confirmedAt;
+
+  private static final ObjectMapper JSON = new ObjectMapper();
+  private static final int MAX_ALTERNATIVES = 6;
+
   protected ExtractedFieldObservation() {}
 
   public ExtractedFieldObservation(
@@ -92,9 +113,78 @@ public class ExtractedFieldObservation {
 
   /** Un humano (staff) confirma o corrige el valor detectado (ver AGENTS §40). */
   public void confirm(String confirmedValue, Instant now) {
+    confirm(confirmedValue, now, null, null);
+  }
+
+  /** Queda quién lo confirmó y cuándo ("Confirmado por ..."). */
+  public void confirm(String confirmedValue, Instant now, UUID byUserId, String byName) {
     this.confirmedValue = confirmedValue;
     this.origin = FieldOrigin.STAFF_EDITED;
     this.updatedAt = now;
+    this.confirmedByUserId = byUserId;
+    this.confirmedByName = byName;
+    this.confirmedAt = now;
+  }
+
+  /**
+   * Guarda las opciones solo si de verdad hay más de un valor distinto; el valor elegido por la IA
+   * va primero si no venía en la lista.
+   */
+  public void recordAlternatives(String chosen, List<StructuredExtractionProvider.Alternative> alternatives) {
+    if (alternatives == null || alternatives.isEmpty()) {
+      this.alternativesJson = null;
+      return;
+    }
+    Map<String, StructuredExtractionProvider.Alternative> distinct = new LinkedHashMap<>();
+    boolean chosenListed = alternatives.stream().anyMatch(a -> same(a.value(), chosen));
+    if (!chosenListed && chosen != null) {
+      distinct.put(key(chosen), new StructuredExtractionProvider.Alternative(chosen, "Valor propuesto por la IA", sourcePage));
+    }
+    for (StructuredExtractionProvider.Alternative a : alternatives) {
+      if (a.value() != null && !a.value().isBlank() && distinct.size() < MAX_ALTERNATIVES) {
+        distinct.putIfAbsent(key(a.value()), a);
+      }
+    }
+    if (distinct.size() < 2) {
+      this.alternativesJson = null;
+      return;
+    }
+    try {
+      this.alternativesJson = JSON.writeValueAsString(new ArrayList<>(distinct.values()));
+    } catch (Exception e) {
+      this.alternativesJson = null;
+    }
+  }
+
+  public List<StructuredExtractionProvider.Alternative> getAlternatives() {
+    if (alternativesJson == null || alternativesJson.isBlank()) {
+      return List.of();
+    }
+    try {
+      return List.of(JSON.readValue(alternativesJson, StructuredExtractionProvider.Alternative[].class));
+    } catch (Exception e) {
+      return List.of();
+    }
+  }
+
+  private static boolean same(String a, String b) {
+    return a != null && b != null && key(a).equals(key(b));
+  }
+
+  private static String key(String value) {
+    return value.strip().toUpperCase(java.util.Locale.ROOT).replaceAll("\\s+", " ");
+  }
+
+  public UUID getConfirmedByUserId() {
+    return confirmedByUserId;
+  }
+
+  public String getConfirmedByName() {
+    return confirmedByName;
+  }
+
+  public Instant getConfirmedAt() {
+    return confirmedAt;
   }
 
   public UUID getId() {

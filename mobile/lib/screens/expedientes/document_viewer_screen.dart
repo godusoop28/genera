@@ -8,7 +8,9 @@ import '../../ui/widgets.dart';
 
 /// Visor de documentos sin descarga (Control de Cambios #6): el servidor manda cada página como
 /// imagen con marca de agua de quien consulta; el archivo original nunca llega al teléfono.
-/// Descargar el original solo aparece para quien tiene el permiso (administrador).
+/// Descargar o imprimir el original solo aparece para quien tiene el permiso (administrador y
+/// directivos, Control de Cambios #16); el asesor solo consulta. Zoom con botones o pellizcando, y
+/// una X para cerrar.
 class DocumentViewerScreen extends StatefulWidget {
   const DocumentViewerScreen({super.key, required this.versionId, required this.title});
   final String versionId;
@@ -26,6 +28,24 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
   final Map<int, Uint8List> pages = {};
   final Set<int> loading = {};
   final controller = PageController();
+  final Map<int, TransformationController> zooms = {};
+
+  TransformationController _zoomOf(int index) => zooms.putIfAbsent(index, TransformationController.new);
+
+  /// Botones +/−: acerca o aleja la página actual (el pellizco sigue funcionando igual).
+  void _zoom(double factor) {
+    final t = _zoomOf(page);
+    final current = t.value.getMaxScaleOnAxis();
+    final next = (current * factor).clamp(1.0, 5.0);
+    final size = context.size ?? const Size(400, 600);
+    final center = Offset(size.width / 2, size.height / 2);
+    final scale = next / current;
+    t.value = t.value.clone()
+      ..translateByDouble(center.dx, center.dy, 0, 1)
+      ..scaleByDouble(scale, scale, 1, 1)
+      ..translateByDouble(-center.dx, -center.dy, 0, 1);
+    if (next == 1.0) t.value = Matrix4.identity();
+  }
 
   @override
   void initState() {
@@ -45,6 +65,9 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
   @override
   void dispose() {
     controller.dispose();
+    for (final z in zooms.values) {
+      z.dispose();
+    }
     super.dispose();
   }
 
@@ -80,9 +103,14 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
     final total = pageCount;
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
+        leading: IconButton(tooltip: 'Cerrar el visor', icon: const Icon(Icons.close), onPressed: () => Navigator.of(context).maybePop()),
         title: Text(widget.title, overflow: TextOverflow.ellipsis),
         actions: [
+          IconButton(tooltip: 'Alejar', icon: const Icon(Icons.zoom_out), onPressed: () => _zoom(1 / 1.5)),
+          IconButton(tooltip: 'Acercar', icon: const Icon(Icons.zoom_in), onPressed: () => _zoom(1.5)),
           if (canDownload) IconButton(tooltip: 'Descargar original', icon: const Icon(Icons.download_outlined), onPressed: _download),
+          if (canDownload) IconButton(tooltip: 'Imprimir', icon: const Icon(Icons.print_outlined), onPressed: _download),
         ],
       ),
       body: Column(children: [
@@ -116,7 +144,7 @@ class _DocumentViewerScreenState extends State<DocumentViewerScreen> {
                       itemBuilder: (_, i) {
                         final bytes = pages[i];
                         if (bytes == null) return const Center(child: CircularProgressIndicator());
-                        return InteractiveViewer(maxScale: 5, child: Center(child: Image.memory(bytes, gaplessPlayback: true)));
+                        return InteractiveViewer(transformationController: _zoomOf(i), maxScale: 5, child: Center(child: Image.memory(bytes, gaplessPlayback: true)));
                       },
                     ),
         ),

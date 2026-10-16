@@ -9,7 +9,8 @@ import { ReasonModal } from "@/components/ui/ReasonModal";
 import { Select } from "@/components/ui/Select";
 import { Toggle } from "@/components/ui/Toggle";
 import { useToast } from "@/components/ui/Toast";
-import { acceptProperty, correctExpediente, rejectProperty, signReception, type ExpedienteConfiguration } from "@/lib/api/expedientes";
+import { listDocuments } from "@/lib/api/documents";
+import { acceptProperty, correctExpediente, getClientData, rejectProperty, signReception, type ExpedienteConfiguration } from "@/lib/api/expedientes";
 import { generatePublicLink, getPublicLinkStatus, revokePublicLink } from "@/lib/api/public-link";
 import type { PublicLinkStatusResponse } from "@/lib/api/types";
 import { errorText } from "@/lib/errors";
@@ -37,6 +38,18 @@ export function SummaryTab({ expediente, participants, reload, freshPublicLink: 
   const [editing, setEditing] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Controles de cambios #14 y #22: cuántos documentos están pendientes de entrega y qué servicios tiene.
+  const [pendingDocs, setPendingDocs] = useState<number | null>(null);
+  const [services, setServices] = useState<string | null>(null);
+
+  useEffect(() => {
+    listDocuments(expediente.id)
+      .then((docs) => setPendingDocs(docs.filter((d) => d.markedPending).length))
+      .catch(() => setPendingDocs(null));
+    getClientData(expediente.id)
+      .then((d) => setServices(d.availableServices ?? null))
+      .catch(() => setServices(null));
+  }, [expediente.id, expediente.updatedAt]);
 
   const loadLink = useCallback(() => {
     getPublicLinkStatus(expediente.id)
@@ -106,6 +119,11 @@ export function SummaryTab({ expediente, participants, reload, freshPublicLink: 
           <Field label="Situación jurídica" value={legalStatusLabels[expediente.declaredLegalStatus]} />
           <Field label="Domicilio del inmueble" value={expediente.propertyAddress || "Se tomará de la escritura o el predial"} />
           {expediente.propertyReference ? <Field label="Referencia que ve el cliente" value={expediente.propertyReference} /> : null}
+          <Field label="Servicios con los que cuenta" value={services?.trim() ? services : "Sin capturar (pestaña Datos del contrato)"} />
+          <Field
+            label="Documentos pendientes de entrega"
+            value={pendingDocs === null ? "—" : pendingDocs === 0 ? "Ninguno" : `${pendingDocs} (no bloquean el avance)`}
+          />
           <Field label="Creado" value={formatDateTime(expediente.createdAt)} />
           <Field label="Última actualización" value={formatDateTime(expediente.updatedAt)} />
           {expediente.decisionReason ? <Field label="Motivo de la decisión" value={expediente.decisionReason} /> : null}

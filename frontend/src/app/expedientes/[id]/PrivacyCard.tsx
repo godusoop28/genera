@@ -87,7 +87,11 @@ export function PrivacyCard({ expediente, reload }: { expediente: ExpedienteResp
             <Badge tone="success">Firmado</Badge>
             <span className="text-muted">
               {status.signatureMethod === "PHYSICAL" ? "En papel, en la oficina" : "En su liga, con firma digital"} · {formatDateTime(status.signedAt)}
-              {status.secondaryPurposesAccepted === false ? " · no aceptó las finalidades secundarias" : ""}
+              {status.secondaryPurposesAccepted === false
+                ? " · finalidades secundarias y promocionales: no autorizadas"
+                : status.secondaryPurposesAccepted
+                  ? " · finalidades secundarias y promocionales: autorizadas"
+                  : ""}
             </span>
           </>
         ) : (

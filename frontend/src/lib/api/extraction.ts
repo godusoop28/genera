@@ -1,5 +1,10 @@
 import { apiClient } from "@/lib/api/client";
-import type { DataConflictResponse, ExpedienteObservationResponse, ExtractedFieldObservationResponse } from "@/lib/api/types";
+import type {
+  CondominiumAreaComparison,
+  DataConflictResponse,
+  ExpedienteObservationResponse,
+  ExtractedFieldObservationResponse,
+} from "@/lib/api/types";
 
 export function getExtractedFields(documentId: string) {
   return apiClient.get<ExtractedFieldObservationResponse[]>(`/internal/documents/${documentId}/extracted-fields`);
@@ -32,6 +37,15 @@ export function runConsistencyCheck(expedienteId: string) {
   return apiClient.post<DataConflictResponse[]>(`/internal/expedientes/${expedienteId}/consistency-check`);
 }
 
-export function resolveConflict(conflictId: string, note: string) {
-  return apiClient.post<DataConflictResponse>(`/internal/data-conflicts/${conflictId}/resolve`, { note });
+/**
+ * Control de Cambios #17: solo un directivo o administrador autoriza una inconsistencia, y lo
+ * confirma con su contraseña.
+ */
+export function resolveConflict(conflictId: string, note: string, password: string) {
+  return apiClient.post<DataConflictResponse>(`/internal/data-conflicts/${conflictId}/resolve`, { note, password });
+}
+
+/** Control de Cambios #15: m² de terreno e indivisos del Régimen de condominio vs. Escritura y Predial. */
+export function getCondominiumAreas(expedienteId: string) {
+  return apiClient.get<CondominiumAreaComparison[]>(`/internal/expedientes/${expedienteId}/condominium-areas`);
 }

@@ -35,5 +35,7 @@ public enum DocumentTypeCode {
   INCORPORATION_DEED,
   /** Aviso de privacidad firmado en papel en la oficina (Control de Cambios #2). */
   PRIVACY_NOTICE,
+  /** Contrato firmado fuera del sistema (DocuSign o en papel), Control de Cambios #20. */
+  SIGNED_CONTRACT,
   OTHER
 }

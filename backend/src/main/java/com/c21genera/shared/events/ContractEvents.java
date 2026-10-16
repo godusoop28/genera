@@ -20,5 +20,8 @@ public final class ContractEvents {
   /** Todas las partes firmaron: expedientes avanza a CONTRACT_SIGNED y closing abre el seguimiento posterior a la firma. */
   public record ContractFullySigned(UUID expedienteId, UUID contractId, int versionNumber, String documentSha256) {}
 
+  /** Control de Cambios #20: se subió el contrato firmado fuera del sistema (DOCUSIGN o PHYSICAL). */
+  public record SignedContractUploaded(UUID expedienteId, UUID documentId, String signatureMethod, boolean historical, Actor actor) {}
+
   public record ContractDelivered(UUID expedienteId, UUID contractId, int versionNumber, String method, Actor actor) {}
 }

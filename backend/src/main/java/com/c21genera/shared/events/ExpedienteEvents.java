@@ -39,4 +39,10 @@ public final class ExpedienteEvents {
   public record PrivacySignatureDeferred(UUID expedienteId, String reason, Actor actor) {}
 
   public record PropertyRejected(UUID expedienteId, UUID decidedByUserId, String reason, Actor actor) {}
+
+  /**
+   * Control de Cambios #17: un directivo autorizó (con su contraseña) una inconsistencia entre
+   * documentos. audit lo registra en la bitácora del expediente.
+   */
+  public record InconsistencyAuthorized(UUID expedienteId, UUID conflictId, String description, String note, Actor actor) {}
 }

@@ -12,6 +12,7 @@ import '../../../ui/file_pick.dart';
 import '../../../ui/widgets.dart';
 import '../document_viewer_screen.dart';
 import '../expediente_detail_screen.dart';
+import 'notary_stages.dart';
 
 const _inProgress = ['UPLOADED', 'PROCESSING'];
 
@@ -21,6 +22,8 @@ String _documentName(DocumentResponse d) => d.customName ?? documentTypeLabel(d.
 final _statusFilters = <String, ({String label, bool Function(DocumentResponse) matches})>{
   'ALL': (label: 'Todos', matches: (_) => true),
   'MISSING': (label: 'Faltantes', matches: (d) => d.required && d.status == 'PENDING'),
+  // Control de Cambios #14: los que el asesor marcó "Pendiente" (se entregan después).
+  'MARKED_PENDING': (label: 'Pendientes de entrega', matches: (d) => d.markedPending),
   'TO_REVIEW': (label: 'Por revisar', matches: (d) => d.status == 'UPLOADED' || d.status == 'READY_FOR_REVIEW'),
   'RETURNED': (label: 'Devueltos o rechazados', matches: (d) => d.status == 'RETURNED' || d.status == 'REJECTED'),
 };
@@ -86,6 +89,7 @@ class _DocumentsTabState extends State<DocumentsTab> {
     final names = {for (final p in ctx.participants) p.id: p.fullName};
     final visible = (docs ?? []).where((d) => d.required || d.currentVersionNumber > 0 || d.status == 'NOT_APPLICABLE' || showOptional).toList();
     final pendingCount = visible.where(_isPending).length;
+    final markedPendingCount = (docs ?? []).where((d) => d.markedPending).length;
     final requiredCount = visible.where((d) => d.required).length;
     final withFiles = (docs ?? []).where((d) => d.currentVersionNumber > 0 && d.status != 'NOT_APPLICABLE').toList();
     final processing = (docs ?? []).any((d) => d.pipelineStatus != null && _inProgress.contains(d.pipelineStatus));
@@ -107,7 +111,7 @@ class _DocumentsTabState extends State<DocumentsTab> {
         AppCard(
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             CardHeader(
-              title: 'Documentos',
+              title: 'Etapa 1 · Documentos para comercialización',
               description: docs == null
                   ? 'Cargando requisitos…'
                   : pendingCount > 0
@@ -116,6 +120,16 @@ class _DocumentsTabState extends State<DocumentsTab> {
                           ? 'Todos los documentos obligatorios están resueltos.'
                           : 'Este expediente todavía no tiene documentos obligatorios registrados.',
             ),
+            const MutedText('Lo necesario para publicar y promover el inmueble; no tienen que estar al corriente.', size: 12),
+            const SizedBox(height: 8),
+            if (markedPendingCount > 0) ...[
+              Notice(
+                tone: Tone.info,
+                icon: Icons.schedule,
+                text: '${markedPendingCount == 1 ? '1 documento está pendiente' : '$markedPendingCount documentos están pendientes'} de entrega (marcados por el asesor; no bloquean el avance).',
+              ),
+              const SizedBox(height: 8),
+            ],
             if (processing)
               Container(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -199,20 +213,8 @@ class _DocumentsTabState extends State<DocumentsTab> {
                 onTap: () => setState(() => showOptional = !showOptional)),
           ]),
         ),
-        if (auth.can('DOCUMENT_EMAIL_SEND'))
-          AppCard(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const CardHeader(title: 'Envío a notaría', description: 'Arma el correo con los documentos aceptados para que lo revises y lo envíes tú desde tu correo.'),
-              Btn('Vista previa de envío', icon: Icons.mail_outline, small: true, onPressed: () async {
-                try {
-                  final preview = await api.getDocumentsEmailPreview(ctx.expediente.id);
-                  if (context.mounted) _showEmailPreview(context, preview);
-                } catch (err) {
-                  if (context.mounted) showToast(context, errorText(err));
-                }
-              }),
-            ]),
-          ),
+        // Control de Cambios #23: etapas 2 (envío inicial a notaría) y 3 (cierre).
+        NotaryStages(key: ValueKey((docs ?? []).map((d) => '${d.id}:${d.currentVersionNumber}:${d.status}').join('|')), expedienteId: ctx.expediente.id, names: names),
       ],
     );
   }
@@ -257,36 +259,6 @@ class _DocumentsTabState extends State<DocumentsTab> {
       ],
     );
   }
-
-  void _showEmailPreview(BuildContext context, EmailPreview p) => showAppSheet(
-        context,
-        title: 'Vista previa de envío a notaría',
-        builder: (ctx, _) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const MutedText('Esto no envía nada. Descarga los documentos y envíalos tú desde tu correo.', size: 12),
-          const SizedBox(height: 12),
-          Text.rich(TextSpan(children: [const TextSpan(text: 'Asunto: ', style: TextStyle(fontWeight: FontWeight.w600)), TextSpan(text: p.subject)])),
-          const SizedBox(height: 10),
-          SelectableText(p.body),
-          const SizedBox(height: 12),
-          for (final a in p.attachments)
-            Container(
-              margin: const EdgeInsets.only(bottom: 6),
-              padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
-              decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: ctx.c.border)),
-              child: Row(children: [
-                Expanded(child: Text(a.fileName, style: const TextStyle(fontSize: 13))),
-                if (a.downloadUrl != null)
-                  TextButton(onPressed: () => openUrl(ctx, a.downloadUrl!), child: Text('Descargar', style: TextStyle(color: ctx.c.goldText)))
-                else
-                  const Padding(padding: EdgeInsets.only(right: 8), child: MutedText('Solo el administrador lo descarga', size: 11)),
-              ]),
-            ),
-          if (p.documentTypesWithoutFile.isNotEmpty)
-            Notice(tone: Tone.warning, text: 'Sin archivo para adjuntar todavía: ${p.documentTypesWithoutFile.join(', ')}.'),
-          const SizedBox(height: 10),
-          Btn('Copiar asunto y texto', icon: Icons.copy, variant: BtnVariant.secondary, onPressed: () => copyText(ctx, '${p.subject}\n\n${p.body}', 'Correo copiado.')),
-        ]),
-      );
 }
 
 class _DocumentRow extends StatefulWidget {
@@ -428,6 +400,53 @@ class _DocumentRowState extends State<_DocumentRow> {
     ));
   }
 
+  /// Control de Cambios #18: corrige el nombre de un documento agregado a mano (el archivo no cambia).
+  Future<void> rename() async {
+    var name = doc.customName ?? '';
+    var busy = false;
+    await showAppSheet(
+      context,
+      title: 'Editar nombre',
+      builder: (ctx, setSheet) => AppTextField(label: 'Nombre del documento', value: name, autofocus: true, maxLength: 120, onChanged: (v) => setSheet(() => name = v)),
+      footer: (ctx, setSheet) => [
+        Btn('Cancelar', variant: BtnVariant.ghost, onPressed: () => Navigator.pop(ctx)),
+        Btn('Guardar', loading: busy, onPressed: name.trim().length < 3
+            ? null
+            : () async {
+                setSheet(() => busy = true);
+                await act(() => api.renameDocument(doc.id, name.trim()), 'Nombre actualizado.');
+                if (ctx.mounted) Navigator.pop(ctx);
+              }),
+      ],
+    );
+  }
+
+  /// Control de Cambios #14: "Marcar como pendiente" con nota y fecha estimada opcionales.
+  Future<void> markPending() async {
+    var note = '';
+    String? due;
+    var busy = false;
+    await showAppSheet(
+      context,
+      title: 'Marcar como pendiente: ${_documentName(doc)}',
+      builder: (ctx, setSheet) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const MutedText('Todavía no está listo pero se entregará después. No bloquea el avance del expediente y, al subirse, pasa a entregado.', size: 12),
+        const SizedBox(height: 12),
+        AppTextField(label: 'Nota (opcional)', maxLines: 2, hint: 'Ej. El cliente lo tramita en el municipio.', onChanged: (v) => note = v),
+        const SizedBox(height: 12),
+        DateField(label: 'Fecha estimada de entrega (opcional)', value: due, first: DateTime.now().toIso8601String(), onChanged: (v) => setSheet(() => due = v)),
+      ]),
+      footer: (ctx, setSheet) => [
+        Btn('Cancelar', variant: BtnVariant.ghost, onPressed: () => Navigator.pop(ctx)),
+        Btn('Marcar pendiente', icon: Icons.schedule, loading: busy, onPressed: () async {
+          setSheet(() => busy = true);
+          await act(() => api.markDocumentPending(doc.id, note.trim(), due), 'Marcado como pendiente de entrega (no bloquea el expediente).');
+          if (ctx.mounted) Navigator.pop(ctx);
+        }),
+      ],
+    );
+  }
+
   Future<void> toggleVersions() async {
     if (versions != null) return setState(() => versions = null);
     try {
@@ -534,10 +553,28 @@ class _DocumentRowState extends State<_DocumentRow> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: c.border)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text.rich(TextSpan(children: [
-          TextSpan(text: docLabel, style: TextStyle(fontWeight: FontWeight.w500, color: c.fg)),
-          if (widget.participantName != null) TextSpan(text: ' — ${widget.participantName}', style: TextStyle(color: c.muted)),
-        ]), style: const TextStyle(fontSize: 14)),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            child: Text.rich(TextSpan(children: [
+              TextSpan(text: docLabel, style: TextStyle(fontWeight: FontWeight.w500, color: c.fg)),
+              if (widget.participantName != null) TextSpan(text: ' — ${widget.participantName}', style: TextStyle(color: c.muted)),
+            ]), style: const TextStyle(fontSize: 14)),
+          ),
+          if (doc.customName != null && canUpload)
+            IconButton(tooltip: 'Editar nombre', visualDensity: VisualDensity.compact, icon: Icon(Icons.edit_outlined, size: 18, color: c.goldText), onPressed: rename),
+        ]),
+        if (doc.type == 'PROOF_OF_ADDRESS') ...[
+          const SizedBox(height: 4),
+          const MutedText('Se acepta: recibo de luz, estado de cuenta bancario, recibo de Telmex, de telefonía o de internet.', size: 12),
+          const SizedBox(height: 6),
+          AppSelect<String>(
+            label: 'Tipo de comprobante entregado',
+            value: doc.addressProofKind ?? '',
+            options: [(value: '', label: 'Sin indicar'), for (final e in addressProofKindLabels.entries) (value: e.key, label: e.value)],
+            enabled: canUpload || auth.can('DOCUMENT_ACCEPT'),
+            onChanged: (v) => act(() => api.setAddressProofKind(doc.id, v.isEmpty ? null : v), 'Tipo de comprobante guardado.'),
+          ),
+        ],
         const SizedBox(height: 2),
         MutedText(
           '${doc.required ? (doc.deferred && doc.status == 'PENDING' ? 'Obligatorio · el cliente lo sube después${doc.deferralReason != null ? ' (razón: ${doc.deferralReason})' : ''}' : 'Obligatorio') : 'Opcional / no aplica en este caso'}'
@@ -548,7 +585,8 @@ class _DocumentRowState extends State<_DocumentRow> {
         Wrap(spacing: 6, runSpacing: 4, children: [
           if (doc.pipelineStatus != null && doc.pipelineStatus != 'ACCEPTED')
             AppBadge(label(pipelineStatusLabels, doc.pipelineStatus), tone: pipelineStatusTone[doc.pipelineStatus] ?? Tone.neutral, icon: inProgress ? Icons.hourglass_top : null),
-          if (doc.required && doc.deferred && doc.status == 'PENDING' && doc.exceptionAt == null) const AppBadge('Para después'),
+          if (doc.required && doc.deferred && doc.status == 'PENDING' && doc.exceptionAt == null && !doc.markedPending) const AppBadge('Para después'),
+          if (doc.markedPending) const AppBadge('Pendiente de entrega', tone: Tone.info),
           if (doc.exceptionAt != null && doc.status != 'ACCEPTED') const AppBadge('Excepción aprobada', tone: Tone.info),
           if (doc.updateRequestedAt != null) const AppBadge('Requiere actualización', tone: Tone.warning),
           AppBadge(label(documentStatusLabels, doc.status), tone: documentStatusTone[doc.status] ?? Tone.neutral),
@@ -596,6 +634,15 @@ class _DocumentRowState extends State<_DocumentRow> {
             tone: Tone.neutral,
             text:
                 'Excepción aprobada el ${formatDateTime(doc.exceptionAt)}: ${doc.exceptionNote ?? ''}. No bloquea la aprobación ni el contrato; el cliente puede entregarlo después desde su liga.',
+          ),
+        ],
+        if (doc.markedPending) ...[
+          const SizedBox(height: 10),
+          Notice(
+            tone: Tone.info,
+            text: 'Pendiente de entrega desde el ${formatDateTime(doc.pendingAt)}'
+                '${doc.pendingDueDate != null ? ' · entrega estimada: ${formatDate(doc.pendingDueDate)}' : ''}'
+                '${doc.pendingNote != null ? ' · ${doc.pendingNote}' : ''}. No bloquea el avance; al subirse el archivo queda como entregado.',
           ),
         ],
         if (doc.updateRequestedAt != null) ...[
@@ -655,6 +702,10 @@ class _DocumentRowState extends State<_DocumentRow> {
             }),
           if (auth.can('DOCUMENT_MARK_NOT_APPLICABLE') && doc.status == 'NOT_APPLICABLE')
             Btn('Volver a solicitar', small: true, variant: BtnVariant.ghost, onPressed: () => act(() => api.requestAgain(doc.id), 'El documento se volvió a solicitar.')),
+          if ((canUpload || auth.can('DOCUMENT_ACCEPT')) && !doc.markedPending && !resolved)
+            Btn('Marcar como pendiente…', icon: Icons.schedule, small: true, variant: BtnVariant.ghost, onPressed: markPending),
+          if ((canUpload || auth.can('DOCUMENT_ACCEPT')) && doc.markedPending)
+            Btn('Quitar pendiente', small: true, variant: BtnVariant.ghost, onPressed: () => act(() => api.clearDocumentPending(doc.id), 'Se quitó la marca de pendiente.')),
           if (auth.can('DOCUMENT_EXCEPTION') && doc.required && doc.exceptionAt == null && !resolved)
             Btn('Aprobar excepción…', small: true, variant: BtnVariant.ghost, onPressed: () async {
               final note = await askReason(
@@ -824,6 +875,7 @@ class _FieldRowState extends State<_FieldRow> {
     final f = widget.field;
     final confirmed = f.confirmedValue != null;
     final badge = _confidenceBadge(confirmed ? 1 : f.confidence);
+    final choosing = f.alternatives.length > 1 && !confirmed;
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(border: Border(top: BorderSide(color: c.border))),
@@ -858,9 +910,48 @@ class _FieldRowState extends State<_FieldRow> {
           ])
         else
           SelectableText(f.confirmedValue ?? f.detectedValue ?? '—', style: TextStyle(fontSize: 14, color: c.fg)),
+        // Control de Cambios #19: la escritura trae varios valores (antecedentes); una persona elige el del instrumento actual.
+        if (choosing)
+          Notice(
+            tone: Tone.warning,
+            icon: Icons.warning_amber_rounded,
+            title: 'Se encontraron varios valores. ¿Cuál corresponde a este instrumento?',
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              for (final a in f.alternatives)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Row(children: [
+                    Expanded(
+                      child: Text.rich(TextSpan(children: [
+                        TextSpan(text: a.value, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        if (a.context != null) TextSpan(text: ' — ${a.context}', style: TextStyle(fontSize: 12, color: c.muted)),
+                        if (a.page != null) TextSpan(text: ' · pág. ${a.page}', style: TextStyle(fontSize: 12, color: c.muted)),
+                      ])),
+                    ),
+                    if (auth.can('EXTRACTED_DATA_EDIT'))
+                      Btn('Es este', small: true, variant: BtnVariant.secondary, loading: saving, onPressed: () async {
+                        setState(() => saving = true);
+                        try {
+                          widget.onEdited(await api.confirmField(f.id, a.value));
+                          if (mounted) showToast(this.context, 'Valor elegido: queda registrado con tu nombre.');
+                        } catch (err) {
+                          if (context.mounted) showToast(context, errorText(err));
+                        } finally {
+                          if (mounted) setState(() => saving = false);
+                        }
+                      }),
+                  ]),
+                ),
+            ]),
+          ),
+        if (confirmed && f.confirmedByName != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text('Confirmado por ${f.confirmedByName}${f.confirmedAt != null ? ' · ${formatDateTime(f.confirmedAt)}' : ''}', style: TextStyle(fontSize: 12, color: c.successText)),
+          ),
         const SizedBox(height: 4),
         Row(children: [
-          AppBadge(confirmed ? 'confirmado por el staff' : badge.text, tone: confirmed ? Tone.success : badge.tone),
+          AppBadge(confirmed ? 'confirmado por el staff' : (choosing ? 'elegir valor' : badge.text), tone: confirmed ? Tone.success : (choosing ? Tone.warning : badge.tone)),
           const Spacer(),
           if (auth.can('EXTRACTED_DATA_EDIT') && !editing)
             IconButton(tooltip: 'Editar dato', visualDensity: VisualDensity.compact, icon: Icon(Icons.edit_outlined, size: 16, color: c.muted), onPressed: () => setState(() => editing = true)),

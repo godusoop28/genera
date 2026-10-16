@@ -5,7 +5,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { SaveStatus } from "@/components/ui/SaveStatus";
 import { useToast } from "@/components/ui/Toast";
-import { getContractReadiness } from "@/lib/api/contracts";
+import { getContractReadiness, getVisitInstructions } from "@/lib/api/contracts";
 import { getClientData, getLegalDetails, updateClientData, updateLegalDetails } from "@/lib/api/expedientes";
 import { autofillExpediente, getExpedienteExtractedFields } from "@/lib/api/extraction";
 import type { ContractReadinessResponse, LegalDetails, ManualClientDataResponse } from "@/lib/api/types";
@@ -14,6 +14,7 @@ import { internalDraftTransport, sessionDraftStore } from "@/lib/use-server-draf
 import { errorText } from "@/lib/errors";
 import { buildDetectedData, legalValue, type Detected, type DetectedData, type LegalKey } from "@/lib/detected-data";
 import { useCan } from "@/lib/permissions";
+import { formatServices, parseServices, PROPERTY_SERVICE_GROUPS } from "@/lib/property-services";
 import { CheckCircle2, CircleAlert, Save, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ExpedienteContext } from "./page";
@@ -103,8 +104,17 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
           draft = null;
         }
         const differs = draft && (JSON.stringify({ data: draft.data, legal: draft.legal }) !== savedSnapshot.current || draft.reason.trim());
-        setData(differs && draft ? draft.data : serverData);
+        const initialData = differs && draft ? draft.data : serverData;
+        setData(initialData);
         setLegal(differs && draft ? draft.legal : serverLegal);
+        // Control de Cambios #21: el campo empieza con el texto estándar de C21 Genera (editable).
+        if (!initialData.visitInstructions?.trim() && can("EXPEDIENT_EDIT")) {
+          getVisitInstructions()
+            .then(({ text }) => {
+              if (active) setData((current) => (current && !current.visitInstructions?.trim() ? { ...current, visitInstructions: text } : current));
+            })
+            .catch(() => undefined);
+        }
         if (differs && draft) {
           setReason(draft.reason);
           showToast("Se recuperaron cambios que no habías guardado. Revísalos y guarda.");
@@ -312,7 +322,26 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
             onChange={(v) => setData2({ marketingDataAuthorized: v })}
           />
           <YesNo disabled={!editable} label="¿Acepta recibir publicidad?" value={data.receiveAdsAuthorized} onChange={(v) => setData2({ receiveAdsAuthorized: v })} />
-          <Field disabled={!editable} label="Instrucciones para visitas" value={data.visitInstructions} onChange={(v) => setData2({ visitInstructions: v })} span />
+          <div className="sm:col-span-2">
+            <label className="mb-1.5 block text-sm font-medium text-obsessed" htmlFor="visit-instructions">
+              Instrucciones para visitas
+            </label>
+            <textarea
+              id="visit-instructions"
+              disabled={!editable}
+              value={data.visitInstructions ?? ""}
+              onChange={(e) => setData2({ visitInstructions: e.target.value })}
+              rows={4}
+              className="w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm text-obsessed outline-none focus:border-gold disabled:opacity-70"
+            />
+            {data.visitInstructions?.trim() ? (
+              <p className="mt-1 text-xs text-muted">Texto estándar de C21 Genera; ajústalo si el caso lo requiere. Así quedará en el contrato.</p>
+            ) : (
+              <p className="mt-1 flex items-center gap-1.5 text-xs text-warning-text">
+                <CircleAlert className="h-3.5 w-3.5" aria-hidden /> Este campo no debe quedar vacío: si lo dejas así, el contrato llevará el texto estándar.
+              </p>
+            )}
+          </div>
           <Field disabled={!editable}
             label="Servicios adicionales solicitados (Anexo D)"
             value={data.additionalServicesRequested}
@@ -355,7 +384,7 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
             </>
           ) : null}
           <Field disabled={!editable} label="Estado general de conservación" value={data.conservationStatus} onChange={(v) => setData2({ conservationStatus: v })} />
-          <Field disabled={!editable} label="Servicios con los que cuenta" value={data.availableServices} onChange={(v) => setData2({ availableServices: v })} span />
+          <ServicesField disabled={!editable} value={data.availableServices} onChange={(v) => setData2({ availableServices: v })} />
           <Field disabled={!editable} label="Características relevantes" value={data.relevantFeatures} onChange={(v) => setData2({ relevantFeatures: v })} />
         </div>
       </Card>
@@ -415,7 +444,8 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
             <Field disabled={!editable} label="Nombre del notario" value={legal.deed?.notaryName} detected={detected?.legal["deed.notaryName"]} onChange={(v) => setSection("deed", { notaryName: v })} />
             <Field disabled={!editable} label="Número de notaría" value={legal.deed?.notaryNumber} detected={detected?.legal["deed.notaryNumber"]} onChange={(v) => setSection("deed", { notaryNumber: v })} />
             <Field disabled={!editable} label="Lugar de la notaría" value={legal.deed?.notaryPlace} detected={detected?.legal["deed.notaryPlace"]} onChange={(v) => setSection("deed", { notaryPlace: v })} hint="Ej. Cuernavaca, Morelos" />
-            <Field disabled={!editable} label="Datos registrales (opcional)" value={legal.deed?.registryData} detected={detected?.legal["deed.registryData"]} onChange={(v) => setSection("deed", { registryData: v })} hint="Folio real o datos de inscripción, si ya se confirmaron" />
+            <Field disabled={!editable} label="Datos registrales / folio real (opcional)" value={legal.deed?.registryData} detected={detected?.legal["deed.registryData"]} onChange={(v) => setSection("deed", { registryData: v })} hint="Folio real o datos de inscripción, si ya se confirmaron" />
+            <Field disabled={!editable} label="Fecha de inscripción en el RPP (opcional)" type="date" value={legal.deed?.registryDate} detected={detected?.legal["deed.registryDate"]} onChange={(v) => setSection("deed", { registryDate: v || null })} />
           </div>
         </Card>
       ) : (
@@ -571,5 +601,51 @@ function YesNo({
         ))}
       </div>
     </div>
+  );
+}
+
+/** Control de Cambios #22: servicios del inmueble como casillas agrupadas, más "Otros servicios". */
+function ServicesField({ value, onChange, disabled }: { value: string | null; onChange: (v: string) => void; disabled?: boolean }) {
+  const selection = parseServices(value);
+  const toggle = (item: string, checked: boolean) =>
+    onChange(
+      formatServices({
+        selected: checked ? [...selection.selected, item] : selection.selected.filter((s) => s !== item),
+        others: selection.others,
+      }),
+    );
+  return (
+    <fieldset className="sm:col-span-3" disabled={disabled}>
+      <legend className="mb-2 text-sm font-medium text-obsessed">Servicios con los que cuenta</legend>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {PROPERTY_SERVICE_GROUPS.map((group) => (
+          <div key={group.title}>
+            <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted">{group.title}</p>
+            <div className="flex flex-col gap-1.5">
+              {group.items.map((item) => (
+                <label key={item} className="flex items-start gap-2 text-sm text-obsessed">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-c21-dark-gold)]"
+                    checked={selection.selected.includes(item)}
+                    onChange={(e) => toggle(item, e.target.checked)}
+                  />
+                  {item}
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <label className="mt-3 block text-sm">
+        <span className="mb-1.5 block font-medium text-obsessed">Otros servicios</span>
+        <input
+          value={selection.others}
+          onChange={(e) => onChange(formatServices({ selected: selection.selected, others: e.target.value }))}
+          placeholder="Servicios que no están en la lista"
+          className="min-h-10 w-full rounded-xl border border-border bg-card px-3.5 text-obsessed outline-none focus:border-gold disabled:opacity-70"
+        />
+      </label>
+    </fieldset>
   );
 }

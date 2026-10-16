@@ -121,6 +121,51 @@ public class InternalDocumentController {
     return toResponse(documentService.cancelUpdateRequest(documentId, user.toActor()));
   }
 
+  public record PendingRequest(String note, java.time.LocalDate dueDate) {}
+
+  /** Control de Cambios #14: "Marcar como pendiente" (no bloquea; al subirse pasa a "Entregado"). */
+  @PutMapping("/api/v1/internal/documents/{documentId}/pending")
+  @PreAuthorize("hasAnyAuthority('DOCUMENT_UPLOAD', 'DOCUMENT_ACCEPT')")
+  public DocumentResponse markPending(
+      @PathVariable UUID documentId, @RequestBody(required = false) PendingRequest request, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = CurrentUser.from(jwt);
+    requireDocument(documentId, jwt);
+    return toResponse(
+        documentService.markPending(
+            documentId, request == null ? null : request.note(), request == null ? null : request.dueDate(), user.toActor()));
+  }
+
+  @DeleteMapping("/api/v1/internal/documents/{documentId}/pending")
+  @PreAuthorize("hasAnyAuthority('DOCUMENT_UPLOAD', 'DOCUMENT_ACCEPT')")
+  public DocumentResponse clearPending(@PathVariable UUID documentId, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = CurrentUser.from(jwt);
+    requireDocument(documentId, jwt);
+    return toResponse(documentService.clearPending(documentId, user.toActor()));
+  }
+
+  public record RenameRequest(String name) {}
+
+  /** Control de Cambios #18: corregir el nombre de un documento agregado a mano (el archivo no cambia). */
+  @PutMapping("/api/v1/internal/documents/{documentId}/name")
+  @PreAuthorize("hasAnyAuthority('EXPEDIENT_EDIT', 'DOCUMENT_UPLOAD')")
+  public DocumentResponse rename(@PathVariable UUID documentId, @RequestBody RenameRequest request, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = CurrentUser.from(jwt);
+    requireDocument(documentId, jwt);
+    return toResponse(documentService.rename(documentId, request == null ? null : request.name(), user.toActor()));
+  }
+
+  public record AddressProofKindRequest(String kind) {}
+
+  /** Control de Cambios #13: qué comprobante de domicilio se entregó. */
+  @PutMapping("/api/v1/internal/documents/{documentId}/address-proof-kind")
+  @PreAuthorize("hasAnyAuthority('EXPEDIENT_EDIT', 'DOCUMENT_UPLOAD', 'DOCUMENT_ACCEPT')")
+  public DocumentResponse changeAddressProofKind(
+      @PathVariable UUID documentId, @RequestBody AddressProofKindRequest request, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = CurrentUser.from(jwt);
+    requireDocument(documentId, jwt);
+    return toResponse(documentService.changeAddressProofKind(documentId, request == null ? null : request.kind(), user.toActor()));
+  }
+
   /** canDownload: si quien consulta puede además descargar o imprimir el original. */
   public record ViewerResponse(int pageCount, boolean canDownload) {}
 
@@ -175,11 +220,15 @@ public class InternalDocumentController {
   @PreAuthorize("hasAuthority('DOCUMENT_UPLOAD')")
   @ResponseStatus(HttpStatus.ACCEPTED)
   public DocumentVersionResponse upload(
-      @PathVariable UUID documentId, @RequestParam("files") List<MultipartFile> files, @AuthenticationPrincipal Jwt jwt) {
+      @PathVariable UUID documentId,
+      @RequestParam("files") List<MultipartFile> files,
+      @RequestParam(value = "addressProofKind", required = false) String addressProofKind,
+      @AuthenticationPrincipal Jwt jwt) {
     CurrentUser user = CurrentUser.from(jwt);
     requireDocument(documentId, jwt);
     List<UploadedFileContent> contents = files.stream().map(InternalDocumentController::readFile).toList();
-    return DocumentVersionResponse.from(documentService.uploadVersion(documentId, contents, UploadedVia.INTERNAL, user.toActor()));
+    return DocumentVersionResponse.from(
+        documentService.uploadVersion(documentId, contents, UploadedVia.INTERNAL, user.toActor(), addressProofKind));
   }
 
   private static UploadedFileContent readFile(MultipartFile file) {

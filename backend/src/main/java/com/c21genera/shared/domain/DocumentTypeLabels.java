@@ -40,6 +40,7 @@ public final class DocumentTypeLabels {
       case PRIVATE_CONTRACT -> "Contrato privado de compraventa ratificado";
       case INCORPORATION_DEED -> "Acta constitutiva";
       case PRIVACY_NOTICE -> "Aviso de privacidad firmado";
+      case SIGNED_CONTRACT -> "Contrato firmado";
       case OTHER -> "Otro documento";
     };
   }
@@ -55,7 +56,12 @@ public final class DocumentTypeLabels {
       case CURP -> "Constancia de la Clave Única de Registro de Población (CURP)";
       case TAX_STATUS_CERTIFICATE -> "Constancia de Situación Fiscal emitida por el SAT, con RFC, nombre o razón social y régimen fiscal";
       case DEED -> "Escritura pública (testimonio notarial) de un inmueble, con número de escritura, notario, propietario y descripción del inmueble";
-      case PROOF_OF_ADDRESS -> "Comprobante de domicilio (recibo de servicio) con nombre y dirección";
+      // Control de Cambios #13: solo estos cinco se aceptan; cualquier otro (agua, predial, gas...) no corresponde.
+      case PROOF_OF_ADDRESS ->
+          "Comprobante de domicilio con nombre y dirección. SOLO se aceptan: recibo de luz / energía eléctrica (CFE u otro"
+              + " proveedor), estado de cuenta bancario, recibo de Telmex, recibo de telefonía (cualquier operadora) o recibo de"
+              + " internet (cualquier proveedor). Cualquier otro documento (recibo de agua, de gas, predial, constancia,"
+              + " identificación, etc.) NO corresponde";
       case LIEN_CERTIFICATE -> "Certificado de libertad o existencia de gravámenes del Registro Público de la Propiedad";
       case PROPERTY_TAX -> "Recibo o boleta de pago del impuesto predial, con clave catastral, propietario y ubicación del inmueble";
       case POWER_OF_ATTORNEY -> "Poder notarial otorgado ante notario público, con poderdante y apoderado";
@@ -75,6 +81,7 @@ public final class DocumentTypeLabels {
       case PRIVATE_CONTRACT -> "Contrato privado de compraventa de un inmueble, con ratificación de firmas ante notario o autoridad";
       case INCORPORATION_DEED -> "Acta constitutiva de una sociedad mercantil, otorgada ante notario o corredor público";
       case PRIVACY_NOTICE -> "Aviso de privacidad de CENTURY 21 Genera firmado a mano por el titular";
+      case SIGNED_CONTRACT -> "Contrato de prestación de servicios de intermediación firmado (PDF de DocuSign o escaneo del contrato firmado a mano)";
       case OTHER -> "Cualquier documento";
     };
   }

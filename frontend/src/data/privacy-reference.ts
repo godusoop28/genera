@@ -61,6 +61,13 @@ export const PRIVACY_CONSENT_TEXT =
 export const PRIVACY_SECONDARY_OPT_OUT_TEXT =
   "No autorizo finalidades secundarias o promocionales.";
 
+/**
+ * Control de Cambios #12: en la liga la casilla es afirmativa y se marca sola al aceptar el aviso;
+ * el titular puede desmarcarla. (El aviso impreso conserva la casilla de negativa.)
+ */
+export const PRIVACY_SECONDARY_CONSENT_TEXT =
+  "Autorizo el uso de mis datos para actividades secundarias y promocionales.";
+
 export const PRIVACY_RECEIVED_DOCUMENTS_CHECKLIST = [
   "INE",
   "Escritura",

@@ -12,4 +12,12 @@ public interface NotificationsApi {
 
   /** kind: nombre legible del aviso (p. ej. "Documento devuelto"), se muestra en el historial. */
   void notify(UUID expedienteId, String kind, String recipientEmail, String subject, String body);
+
+  /**
+   * Igual, con archivos adjuntos ya guardados (storageKey + nombre del adjunto). Control de Cambios
+   * #23: paquete de documentos que se envía a la notaría con la versión elegida de cada uno.
+   */
+  void notifyWithFiles(UUID expedienteId, String kind, String recipientEmail, String subject, String body, java.util.List<FileAttachment> files);
+
+  record FileAttachment(String storageKey, String filename) {}
 }
