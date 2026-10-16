@@ -7,7 +7,7 @@ import { SaveStatus } from "@/components/ui/SaveStatus";
 import { useToast } from "@/components/ui/Toast";
 import { getContractReadiness } from "@/lib/api/contracts";
 import { getClientData, getLegalDetails, updateClientData, updateLegalDetails } from "@/lib/api/expedientes";
-import { getExpedienteExtractedFields } from "@/lib/api/extraction";
+import { autofillExpediente, getExpedienteExtractedFields } from "@/lib/api/extraction";
 import type { ContractReadinessResponse, LegalDetails, ManualClientDataResponse } from "@/lib/api/types";
 import { DraftSync, type DraftSaveState } from "@/lib/draft-sync";
 import { internalDraftTransport, sessionDraftStore } from "@/lib/use-server-draft";
@@ -82,8 +82,17 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
       },
     });
     syncRef.current = sync;
-    loadSide();
-    Promise.all([getClientData(expediente.id), getLegalDetails(expediente.id), sync.restore()])
+    // Control de Cambios #7: antes de mostrar el formulario, lo validado en los documentos se llena solo.
+    const autofill =
+      can("EXPEDIENT_EDIT") || can("CONTRACT_PREPARE") || can("EXTRACTED_DATA_EDIT")
+        ? autofillExpediente(expediente.id).catch(() => ({ filled: 0 }))
+        : Promise.resolve({ filled: 0 });
+    autofill
+      .then(({ filled }) => {
+        if (active && filled > 0) showToast(`Se llenaron ${filled} dato(s) con lo ya validado en los documentos. Solo captura lo que falte.`);
+        loadSide();
+        return Promise.all([getClientData(expediente.id), getLegalDetails(expediente.id), sync.restore()]);
+      })
       .then(([serverData, serverLegal, payload]) => {
         if (!active) return;
         savedSnapshot.current = JSON.stringify({ data: serverData, legal: serverLegal });
@@ -106,6 +115,7 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
       active = false;
       void sync.flush().finally(() => sync.dispose());
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- can() depende de la sesión, no cambia aquí
   }, [draftKey, expediente.id, loadSide, showToast]);
 
   // Cada cambio se autoguarda como borrador; si vuelve a quedar igual a lo guardado, el borrador se borra.
@@ -247,6 +257,22 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
               </div>
             </div>
           )}
+        </Card>
+      ) : null}
+
+      {readiness && (readiness.inconsistencies?.length ?? 0) > 0 ? (
+        <Card>
+          <CardHeader
+            title="Revisa estas inconsistencias antes de generar el contrato"
+            description="Los datos con diferencias entre documentos no se llenan solos: resuélvelas en la pestaña Consistencia o captura el dato correcto aquí."
+          />
+          <ul className="flex flex-col gap-1 text-sm">
+            {readiness.inconsistencies.map((item) => (
+              <li key={item} className="flex items-start gap-1.5 text-warning-text">
+                <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /> {item}
+              </li>
+            ))}
+          </ul>
         </Card>
       ) : null}
 

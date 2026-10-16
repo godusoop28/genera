@@ -17,6 +17,7 @@ import {
   declareCivilStatus,
   getClientData,
   getPublicExpediente,
+  getPublicPrivacyStatus,
   listPublicDocuments,
   reportNotRecognized,
   listPublicParticipants,
@@ -91,6 +92,7 @@ export function PublicPortal({ token }: { token: string }) {
   const [invalid, setInvalid] = useState(false);
   const [notRecognized, setNotRecognized] = useState(false);
   const [connectionError, setConnectionError] = useState(false);
+  const [privacySigned, setPrivacySigned] = useState<boolean | null>(null);
 
   const loadExpediente = useCallback(
     () =>
@@ -117,6 +119,12 @@ export function PublicPortal({ token }: { token: string }) {
   useEffect(() => {
     loadExpediente();
   }, [loadExpediente]);
+
+  useEffect(() => {
+    getPublicPrivacyStatus(token)
+      .then((r) => setPrivacySigned(r.signed))
+      .catch(() => undefined);
+  }, [token]);
 
   useEffect(() => {
     if (!connectionError) return;
@@ -228,6 +236,18 @@ export function PublicPortal({ token }: { token: string }) {
           <Stepper steps={steps} currentStep={shownStep} maxReachedStep={maxReached} onStepClick={goTo} />
         </div>
 
+        {expediente.status !== "DRAFT" && expediente.status !== "WAITING_PRIVACY" && privacySigned === false && shownStep !== 2 && shownStep !== 1 ? (
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-warning-text/30 bg-warning-bg p-4 text-sm text-warning-text">
+            <p className="flex items-start gap-2">
+              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" aria-hidden />
+              Falta que firmes tu aviso de privacidad. Puedes hacerlo aquí o en nuestra oficina.
+            </p>
+            <Button variant="secondary" size="sm" onClick={() => goTo(2)}>
+              Firmar aviso de privacidad
+            </Button>
+          </div>
+        ) : null}
+
         <div className="mt-8">
           {shownStep === 1 ? (
             <ConfirmStep
@@ -237,7 +257,15 @@ export function PublicPortal({ token }: { token: string }) {
               onNotRecognized={() => setNotRecognized(true)}
             />
           ) : null}
-          {shownStep === 2 ? <PrivacyStep token={token} onContinue={() => goTo(3)} /> : null}
+          {shownStep === 2 ? (
+            <PrivacyStep
+              token={token}
+              onContinue={() => {
+                setPrivacySigned(true);
+                goTo(privacySigned === false ? initialStepFor(expediente.status) : 3);
+              }}
+            />
+          ) : null}
           {shownStep === 3 ? (
             <ClientDataStep
               token={token}

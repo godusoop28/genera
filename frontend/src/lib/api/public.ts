@@ -20,6 +20,11 @@ export function getPublicExpediente(token: string) {
   return apiClient.get<PublicExpedienteResponse>(`/public/expedientes/${token}`);
 }
 
+/** Control de Cambios #2: si el alta siguió sin firmar el aviso, la liga se lo recuerda al cliente. */
+export function getPublicPrivacyStatus(token: string) {
+  return apiClient.get<{ signed: boolean }>(`/public/expedientes/${token}/privacy-status`);
+}
+
 export function getPrivacyNotice(token: string) {
   return apiClient.get<PrivacyNoticeResponse>(`/public/expedientes/${token}/privacy-notice`);
 }

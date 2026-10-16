@@ -7,6 +7,7 @@ import '../../../api/client.dart';
 import '../../../api/models.dart';
 import '../../../labels.dart';
 import '../../../state/auth.dart';
+import '../../../ui/file_pick.dart';
 import '../../../ui/widgets.dart';
 import '../expediente_detail_screen.dart';
 
@@ -112,6 +113,7 @@ class _SummaryTabState extends State<SummaryTab> {
             ],
           ),
         ),
+        _PrivacyCard(ctx: widget.ctx),
         if (auth.can('PUBLIC_LINK_GENERATE')) _DocumentTimingCard(ctx: widget.ctx),
         AppCard(
           child: Column(
@@ -482,6 +484,114 @@ class _DocumentTimingCardState extends State<_DocumentTimingCard> {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// Control de Cambios #2: el aviso de privacidad no bloquea el alta; se ve si está pendiente o
+/// firmado, se puede seguir sin él y cargar el aviso firmado en papel. (Imprimirlo: desde la web.)
+class _PrivacyCard extends StatefulWidget {
+  const _PrivacyCard({required this.ctx});
+  final ExpedienteCtx ctx;
+
+  @override
+  State<_PrivacyCard> createState() => _PrivacyCardState();
+}
+
+class _PrivacyCardState extends State<_PrivacyCard> {
+  Json? status;
+  bool busy = false;
+
+  ExpedienteResponse get e => widget.ctx.expediente;
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    try {
+      final s = await api.getPrivacyStatus(e.id);
+      if (mounted) setState(() => status = s);
+    } catch (_) {}
+  }
+
+  Future<void> act(Future<void> Function() action, String success) async {
+    setState(() => busy = true);
+    try {
+      await action();
+      if (mounted) showToast(context, success);
+      await load();
+      await widget.ctx.reload();
+    } catch (err) {
+      if (mounted) showToast(context, errorText(err));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> uploadSigned() async {
+    var secondary = true;
+    final ok = await showAppSheet<bool>(
+      context,
+      title: 'Cargar aviso firmado en papel',
+      builder: (ctx, setSheet) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const MutedText('Sube el escaneo o la foto del aviso impreso con la firma del titular. Se guarda en los documentos del expediente.', size: 12),
+        const SizedBox(height: 8),
+        CheckboxListTile(
+          contentPadding: EdgeInsets.zero,
+          value: secondary,
+          onChanged: (v) => setSheet(() => secondary = v ?? false),
+          title: const Text('Aceptó las finalidades secundarias (no marcó la casilla para negarse).', style: TextStyle(fontSize: 13)),
+        ),
+      ]),
+      footer: (ctx, _) => [
+        Btn('Cancelar', variant: BtnVariant.ghost, onPressed: () => Navigator.pop(ctx, false)),
+        Btn('Elegir archivo', icon: Icons.upload_outlined, onPressed: () => Navigator.pop(ctx, true)),
+      ],
+    );
+    if (ok != true || !mounted) return;
+    final files = await pickUploadFiles(context);
+    if (files == null) return;
+    await act(() => api.uploadPhysicalPrivacySignature(e.id, files, secondary), 'Aviso firmado cargado: quedó registrado en el expediente.');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthState>();
+    final s = status;
+    final signed = s?['status'] == 'SIGNED';
+    final canEdit = auth.can('EXPEDIENT_EDIT') || auth.can('DOCUMENT_UPLOAD');
+    final beforeDocuments = e.status == 'DRAFT' || e.status == 'WAITING_PRIVACY';
+    return AppCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const CardHeader(
+          title: 'Aviso de privacidad',
+          description: 'No detiene el alta: el titular puede firmarlo en su liga o en papel en la oficina. Se necesita firmado antes del contrato.',
+        ),
+        if (s == null)
+          const MutedText('Cargando…', size: 12)
+        else
+          Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            AppBadge(signed ? 'Firmado' : 'Pendiente de firma', tone: signed ? Tone.success : Tone.warning),
+            if (signed)
+              MutedText(
+                '${s['signatureMethod'] == 'PHYSICAL' ? 'En papel, en la oficina' : 'En su liga, con firma digital'} · ${formatDateTime(s['signedAt'] as String?)}',
+                size: 12,
+              ),
+          ]),
+        if (canEdit) ...[
+          const SizedBox(height: 12),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            if (beforeDocuments)
+              Btn('Continuar sin firmar', icon: Icons.fast_forward_outlined, small: true, loading: busy, onPressed: () => act(() => api.deferPrivacySignature(e.id), 'El expediente sigue al paso de documentos. El aviso queda pendiente de firma.')),
+            Btn(signed ? 'Cargar otro aviso firmado' : 'Cargar aviso firmado', icon: Icons.upload_outlined, small: true, variant: BtnVariant.secondary, onPressed: busy ? null : uploadSigned),
+          ]),
+          const SizedBox(height: 6),
+          const MutedText('Para imprimirlo y firmarlo en la oficina, usa "Imprimir para firma" en la versión web.', size: 11),
+        ],
+      ]),
     );
   }
 }

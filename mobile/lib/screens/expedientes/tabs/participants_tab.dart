@@ -46,6 +46,9 @@ class ParticipantsTab extends StatefulWidget {
   State<ParticipantsTab> createState() => _ParticipantsTabState();
 }
 
+/// Expedientes ya completados con sus documentos en esta sesión: reload() vuelve a montar la pestaña.
+final _autofilled = <String>{};
+
 class _ParticipantsTabState extends State<ParticipantsTab> {
   List<RequirementResponse> requirements = [];
   DetectedData? detected;
@@ -59,6 +62,15 @@ class _ParticipantsTabState extends State<ParticipantsTab> {
     final ownerId = ctx.participants.where((p) => p.role == 'OWNER').firstOrNull?.id;
     api.getRequirements(e.id).then((r) => mounted ? setState(() => requirements = r) : null).catchError((_) => null);
     api.getExpedienteExtractedFields(e.id).then((obs) => mounted ? setState(() => detected = buildDetectedData(obs, ownerId)) : null).catchError((_) => null);
+    // Control de Cambios #7 y #9: lo validado (nacionalidad por INE, CURP, RFC...) se registra solo.
+    if (context.read<AuthState>().can('EXPEDIENT_EDIT') && e.correctable && _autofilled.add(e.id)) {
+      api.autofillExpediente(e.id).then((filled) async {
+        if (filled > 0 && mounted) {
+          showToast(context, 'Se registraron $filled dato(s) leídos y validados en los documentos.');
+          await ctx.reload();
+        }
+      }).catchError((_) {});
+    }
   }
 
   Future<void> edit(Participant? existing, String role) async {

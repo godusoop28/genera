@@ -16,6 +16,14 @@ export function confirmField(observationId: string, confirmedValue: string) {
   });
 }
 
+/**
+ * Lleva al expediente lo ya validado en los documentos (Control de Cambios #7), solo donde está
+ * vacío. Devuelve cuántos datos llenó.
+ */
+export function autofillExpediente(expedienteId: string) {
+  return apiClient.post<{ filled: number }>(`/internal/expedientes/${expedienteId}/autofill`);
+}
+
 export function getDataConflicts(expedienteId: string) {
   return apiClient.get<DataConflictResponse[]>(`/internal/expedientes/${expedienteId}/data-conflicts`);
 }

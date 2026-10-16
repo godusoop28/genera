@@ -298,6 +298,15 @@ void main() {
     await _close(tester);
   });
 
+  testWidgets('flujo: el aviso de privacidad pendiente no bloquea y se puede cargar firmado', (tester) async {
+    await _open(tester, '/expedientes/exp-1');
+    await tester.scrollUntilVisible(find.text('Pendiente de firma'), 300, scrollable: find.byType(Scrollable).last);
+    await settle(tester, 1);
+    expect(find.text('Pendiente de firma'), findsOneWidget);
+    expect(find.text('Cargar aviso firmado'), findsOneWidget);
+    await _close(tester);
+  });
+
   testWidgets('flujo: registrar un lead', (tester) async {
     await _open(tester, '/leads');
     await tester.tap(find.text('Registrar lead'));

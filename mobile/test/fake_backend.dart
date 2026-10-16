@@ -228,6 +228,8 @@ final List<({String method, String path, Object? body})> sentRequests = [];
   if (method == 'POST' && p == '/internal/expedientes/exp-1/documents') {
     return (201, {..._doc('d-extra', 'OTHER', 'PENDING', withFile: false), 'customName': (body as Map?)?['name']});
   }
+  if (p == '/internal/expedientes/exp-1/privacy') return (200, {'status': 'PENDING'});
+  if (p == '/internal/expedientes/exp-1/autofill') return (200, {'filled': 0});
   if (p == '/internal/expedientes/exp-1/documents') return (200, _documents);
   // Visor sin descarga (Control de Cambios #6).
   if (RegExp(r'^/internal/document-versions/[^/]+/view$').hasMatch(p)) return (200, {'pageCount': 2, 'canDownload': false});

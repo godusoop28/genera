@@ -135,6 +135,14 @@ Future<List<int>> getViewerPage(String versionId, int pageNumber) => _c.getBytes
 
 // --- Datos leídos y consistencia ---------------------------------------------
 
+/// Lleva al expediente lo ya validado en los documentos, solo donde está vacío (Control de Cambios #7).
+Future<int> autofillExpediente(String expedienteId) async => (_j(await _c.post('/internal/expedientes/$expedienteId/autofill'))['filled'] as num?)?.toInt() ?? 0;
+/// Control de Cambios #2: estado del aviso de privacidad (SIGNED / PENDING) y cómo se firmó.
+Future<Json> getPrivacyStatus(String expedienteId) async => _j(await _c.get('/internal/expedientes/$expedienteId/privacy'));
+Future<void> deferPrivacySignature(String expedienteId) =>
+    _c.post('/internal/expedientes/$expedienteId/privacy/defer', {'reason': 'Alta presencial: el aviso se firma después'});
+Future<void> uploadPhysicalPrivacySignature(String expedienteId, List<UploadFile> files, bool secondaryPurposesAccepted) =>
+    _c.upload('/internal/expedientes/$expedienteId/privacy/physical-signature?secondaryPurposesAccepted=$secondaryPurposesAccepted', 'files', files);
 Future<List<ExtractedField>> getExtractedFields(String documentId) async => _l(await _c.get('/internal/documents/$documentId/extracted-fields'), ExtractedField.fromJson);
 Future<List<ExpedienteObservation>> getExpedienteExtractedFields(String expedienteId) async =>
     _l(await _c.get('/internal/expedientes/$expedienteId/extracted-fields'), ExpedienteObservation.fromJson);

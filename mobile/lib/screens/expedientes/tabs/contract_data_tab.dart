@@ -60,8 +60,21 @@ class _ContractDataTabState extends State<ContractDataTab> {
   @override
   void initState() {
     super.initState();
+    // Control de Cambios #7: antes de mostrar el formulario, lo validado en los documentos se llena solo.
+    _autofillThenLoad();
+  }
+
+  Future<void> _autofillThenLoad() async {
+    final auth = context.read<AuthState>();
+    if (auth.can('EXPEDIENT_EDIT') || auth.can('CONTRACT_PREPARE') || auth.can('EXTRACTED_DATA_EDIT')) {
+      try {
+        final filled = await api.autofillExpediente(e.id);
+        if (mounted && filled > 0) showToast(context, 'Se llenaron $filled dato(s) con lo ya validado en los documentos. Solo captura lo que falte.');
+      } catch (_) {}
+    }
+    if (!mounted) return;
     loadSide();
-    load();
+    await load();
   }
 
   @override

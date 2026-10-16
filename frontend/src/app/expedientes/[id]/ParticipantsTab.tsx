@@ -8,7 +8,7 @@ import { Modal } from "@/components/ui/Modal";
 import { ReasonModal } from "@/components/ui/ReasonModal";
 import { useToast } from "@/components/ui/Toast";
 import { addParticipant, getRequirements, removeParticipant, updateParticipant } from "@/lib/api/expedientes";
-import { getExpedienteExtractedFields } from "@/lib/api/extraction";
+import { autofillExpediente, getExpedienteExtractedFields } from "@/lib/api/extraction";
 import type { BackendParticipantRole, ParticipantDetails, ParticipantRequest, ParticipantResponse, RequirementResponse } from "@/lib/api/types";
 import { buildDetectedData, type Detected, type DetectedData } from "@/lib/detected-data";
 import { documentTypeLabel } from "@/lib/document-type-labels";
@@ -49,6 +49,9 @@ function isForeignId(p: ParticipantResponse, detectedType: string | undefined): 
   return Boolean(type) && type !== "INE";
 }
 
+/** Expedientes ya completados con sus documentos en esta sesión: reload() vuelve a montar la pestaña. */
+const autofilled = new Set<string>();
+
 export function ParticipantsTab({ expediente, participants, reload }: ExpedienteContext) {
   const { showToast } = useToast();
   const can = useCan();
@@ -58,6 +61,21 @@ export function ParticipantsTab({ expediente, participants, reload }: Expediente
   const [removing, setRemoving] = useState<ParticipantResponse | null>(null);
   const [detected, setDetected] = useState<DetectedData | null>(null);
   const ownerId = participants.find((p) => p.role === "OWNER")?.id ?? null;
+
+  // Control de Cambios #7 y #9: lo ya validado en los documentos (nacionalidad por INE, CURP, RFC...)
+  // se registra solo, sin volver a capturarlo.
+  useEffect(() => {
+    if (!editable || autofilled.has(expediente.id)) return;
+    autofilled.add(expediente.id);
+    autofillExpediente(expediente.id)
+      .then(({ filled }) => {
+        if (filled > 0) {
+          showToast(`Se registraron ${filled} dato(s) leídos y validados en los documentos.`);
+          void reload();
+        }
+      })
+      .catch(() => undefined);
+  }, [editable, expediente.id, reload, showToast]);
 
   useEffect(() => {
     getRequirements(expediente.id).then(setRequirements).catch(() => undefined);
