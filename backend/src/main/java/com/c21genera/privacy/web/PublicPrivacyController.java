@@ -52,6 +52,15 @@ public class PublicPrivacyController {
     return ConsentResponse.from(consent);
   }
 
+  public record PublicPrivacyStatus(boolean signed) {}
+
+  /** Control de Cambios #2: si el alta siguió sin firmar, la liga le recuerda al cliente firmarlo. */
+  @GetMapping("/privacy-status")
+  public PublicPrivacyStatus status(@PathVariable String token) {
+    UUID expedienteId = resolve(token);
+    return new PublicPrivacyStatus(privacyConsentService.consentOf(expedienteId).map(c -> c.mainPurposesAccepted()).orElse(false));
+  }
+
   private UUID resolve(String token) {
     return tokenApi.resolve(token).orElseThrow(PublicLinkRevokedException::new);
   }

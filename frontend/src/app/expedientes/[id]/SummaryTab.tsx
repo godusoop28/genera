@@ -27,6 +27,7 @@ import { useCan } from "@/lib/permissions";
 import { Copy, FileSignature, Link2, Pencil, ShieldOff, ThumbsDown, ThumbsUp } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { DocumentTimingCard } from "./DocumentTimingCard";
+import { PrivacyCard } from "./PrivacyCard";
 import type { ExpedienteContext } from "./page";
 
 export function SummaryTab({ expediente, participants, reload, freshPublicLink: newLink, setFreshPublicLink: setNewLink }: ExpedienteContext) {
@@ -115,6 +116,8 @@ export function SummaryTab({ expediente, participants, reload, freshPublicLink: 
           </Button>
         ) : null}
       </Card>
+
+      <PrivacyCard expediente={expediente} reload={reload} />
 
       {can("PUBLIC_LINK_GENERATE") ? <DocumentTimingCard expediente={expediente} participants={participants} /> : null}
 

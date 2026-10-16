@@ -13,5 +13,16 @@ public interface PrivacyApi {
 
   boolean activeContractTemplateExists();
 
-  record ConsentView(boolean mainPurposesAccepted, boolean secondaryPurposesAccepted, java.time.Instant acceptedAt) {}
+  /** signatureMethod: DIGITAL (en la liga) o PHYSICAL (en papel, escaneo en signedDocumentId). */
+  record ConsentView(
+      boolean mainPurposesAccepted,
+      boolean secondaryPurposesAccepted,
+      java.time.Instant acceptedAt,
+      String signatureMethod,
+      java.util.UUID signedDocumentId) {
+
+    public ConsentView(boolean mainPurposesAccepted, boolean secondaryPurposesAccepted, java.time.Instant acceptedAt) {
+      this(mainPurposesAccepted, secondaryPurposesAccepted, acceptedAt, "DIGITAL", null);
+    }
+  }
 }

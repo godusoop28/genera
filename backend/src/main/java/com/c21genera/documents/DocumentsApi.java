@@ -102,6 +102,15 @@ public interface DocumentsApi {
     }
   }
 
+  /** Archivo recibido por otro módulo para guardarlo como documento (se lee en flujo, sin copiarlo a memoria). */
+  record IncomingFile(long size, String originalFilename, org.springframework.core.io.InputStreamSource source) {}
+
+  /**
+   * Guarda el aviso de privacidad firmado en papel como documento del expediente (mismo
+   * almacenamiento, visor y versiones que los demás). Devuelve el id del documento.
+   */
+  UUID attachSignedPrivacyNotice(UUID expedienteId, List<IncomingFile> files, com.c21genera.shared.events.Actor actor);
+
   /** Versión vigente de un documento: los datos leídos de versiones anteriores ya no cuentan. */
   Optional<UUID> currentVersionIdOf(UUID documentId);
 }

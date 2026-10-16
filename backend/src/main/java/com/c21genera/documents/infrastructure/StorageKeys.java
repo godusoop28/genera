@@ -32,6 +32,7 @@ public final class StorageKeys {
           MORTGAGE,
           LEASE_AGREEMENT,
           PRIVATE_CONTRACT -> "property";
+      case PRIVACY_NOTICE -> "privacy";
       case OTHER -> "misc";
     };
   }

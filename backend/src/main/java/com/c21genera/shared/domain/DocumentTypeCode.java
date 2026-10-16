@@ -33,5 +33,7 @@ public enum DocumentTypeCode {
   PRIVATE_CONTRACT,
   /** Acta constitutiva de una persona moral. */
   INCORPORATION_DEED,
+  /** Aviso de privacidad firmado en papel en la oficina (Control de Cambios #2). */
+  PRIVACY_NOTICE,
   OTHER
 }

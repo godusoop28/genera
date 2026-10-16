@@ -2,6 +2,7 @@ package com.c21genera.expedientes;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -40,6 +41,26 @@ public interface ExpedienteLifecycleApi {
    * pisa datos ya capturados. Idempotente.
    */
   void completePropertyDataFromDocuments(UUID expedienteId, String propertyAddress, PropertyLegalStatus legalStatus);
+
+  /**
+   * Datos ya leídos y cotejados en los documentos (Control de Cambios #7). legal: "seccion.campo"
+   * de {@link LegalDetails} (fechas AAAA-MM-DD); participants: por participante, el nombre del
+   * campo de sus datos (nationality, idDocumentType, idDocumentNumber, idDocumentIssuer,
+   * birthDate, rfc, curp, address). source: de qué documentos salió, para el historial.
+   */
+  record DocumentFill(
+      Map<String, String> legal,
+      BigDecimal landAreaM2,
+      BigDecimal builtAreaM2,
+      Map<UUID, Map<String, String>> participants,
+      String source) {}
+
+  /**
+   * Llena con lo leído en los documentos SOLO lo que sigue vacío: nunca pisa un dato capturado o
+   * corregido por una persona. Queda en el historial de cambios. Idempotente y nunca falla por un
+   * dato mal formado (se omite). Devuelve cuántos datos llenó.
+   */
+  int completeFromDocuments(UUID expedienteId, DocumentFill fill);
 
   /** WAITING_PRIVACY -> WAITING_DOCUMENTS. Idempotente. */
   void recordPrivacyAccepted(UUID expedienteId);

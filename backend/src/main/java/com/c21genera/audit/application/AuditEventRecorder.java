@@ -31,6 +31,7 @@ import com.c21genera.shared.events.ExpedienteEvents.DuplicateClientAuthorized;
 import com.c21genera.shared.events.ExpedienteEvents.ExpedienteCreated;
 import com.c21genera.shared.events.ExpedienteEvents.ExpedienteDataCorrected;
 import com.c21genera.shared.events.ExpedienteEvents.ExpedienteRequirementsChanged;
+import com.c21genera.shared.events.ExpedienteEvents.PrivacySignatureDeferred;
 import com.c21genera.shared.events.ExpedienteEvents.PropertyAccepted;
 import com.c21genera.shared.events.ExpedienteEvents.PropertyRejected;
 import com.c21genera.shared.events.NotificationEvents.NotificationDelivered;
@@ -142,9 +143,22 @@ class AuditEventRecorder {
 
   @ApplicationModuleListener
   void on(PrivacyAccepted event) {
+    if (event.physical()) {
+      record("PrivacyAccepted", "Expediente", event.expedienteId(), event.actor(), "Aviso de privacidad firmado en papel (escaneo cargado)");
+      activity(event.expedienteId(), ActivityCategory.PRIVACY, "PRIVACY_SIGNED_PHYSICAL", event.actor(), null, null,
+          "Cargó el aviso de privacidad firmado a mano por el titular" + (event.secondaryPurposesAccepted() ? "" : " (sin aceptar las finalidades secundarias)"));
+      return;
+    }
     record("PrivacyAccepted", "Expediente", event.expedienteId(), Actor.client(), "Aviso de privacidad aceptado por el cliente");
     activity(event.expedienteId(), ActivityCategory.PRIVACY, "PRIVACY_ACCEPTED", Actor.client(), null, null,
         event.mainPurposesAccepted() ? "Aceptó y firmó el aviso de privacidad" : "Registró su respuesta al aviso de privacidad sin aceptar la finalidad principal");
+  }
+
+  @ApplicationModuleListener
+  void on(PrivacySignatureDeferred event) {
+    record("PrivacySignatureDeferred", "Expediente", event.expedienteId(), event.actor(), "Alta sin aviso de privacidad firmado (pendiente de firma)");
+    activity(event.expedienteId(), ActivityCategory.PRIVACY, "PRIVACY_DEFERRED", event.actor(), null, null,
+        "Continuó el alta con el aviso de privacidad pendiente de firma" + (event.reason() != null ? ": " + event.reason() : ""));
   }
 
   // --- Documentos -------------------------------------------------------

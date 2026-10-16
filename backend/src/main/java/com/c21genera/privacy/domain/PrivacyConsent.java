@@ -43,7 +43,42 @@ public class PrivacyConsent {
 
   private String signatureSha256;
 
+  /** DIGITAL (en la liga) o PHYSICAL (en papel en la oficina; el escaneo es signedDocumentId). */
+  @jakarta.persistence.Column(nullable = false, length = 16)
+  private String signatureMethod = "DIGITAL";
+
+  /** Quién del staff cargó el aviso firmado en papel. */
+  private UUID recordedByUserId;
+
+  private UUID signedDocumentId;
+
   protected PrivacyConsent() {}
+
+  /** Firmado a mano en la oficina: el staff cargó el escaneo como documento del expediente. */
+  public void markPhysical(UUID recordedByUserId, UUID signedDocumentId) {
+    this.signatureMethod = "PHYSICAL";
+    this.recordedByUserId = recordedByUserId;
+    this.signedDocumentId = signedDocumentId;
+  }
+
+  /** Volvió a firmar en su liga: el registro vigente es el digital. */
+  public void markDigital() {
+    this.signatureMethod = "DIGITAL";
+    this.recordedByUserId = null;
+    this.signedDocumentId = null;
+  }
+
+  public String getSignatureMethod() {
+    return signatureMethod;
+  }
+
+  public UUID getRecordedByUserId() {
+    return recordedByUserId;
+  }
+
+  public UUID getSignedDocumentId() {
+    return signedDocumentId;
+  }
 
   public PrivacyConsent(
       UUID expedienteId,

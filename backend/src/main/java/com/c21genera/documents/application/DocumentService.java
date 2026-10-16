@@ -560,6 +560,24 @@ public class DocumentService implements DocumentsApi {
     return document;
   }
 
+  static final String PRIVACY_NOTICE_REQUIREMENT = "aviso-privacidad-firmado";
+
+  @Override
+  public UUID attachSignedPrivacyNotice(UUID expedienteId, List<IncomingFile> files, Actor actor) {
+    Document document =
+        documentRepository.findByExpedienteId(expedienteId).stream()
+            .filter(d -> PRIVACY_NOTICE_REQUIREMENT.equals(d.getRequirementCode()))
+            .findFirst()
+            .orElseGet(() -> documentRepository.save(new Document(expedienteId, PRIVACY_NOTICE_REQUIREMENT, DocumentTypeCode.PRIVACY_NOTICE, null, false)));
+    documentRepository.flush();
+    uploadVersion(
+        document.getId(),
+        files.stream().map(f -> new UploadedFileContent(f.size(), f.originalFilename(), f.source())).toList(),
+        UploadedVia.INTERNAL,
+        actor);
+    return document.getId();
+  }
+
   static final int MIN_NOTE_LENGTH = 10;
   static final int MAX_NOTE_LENGTH = 1000;
   static final int MAX_CUSTOM_NAME_LENGTH = 120;

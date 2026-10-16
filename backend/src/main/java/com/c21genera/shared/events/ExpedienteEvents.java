@@ -35,5 +35,8 @@ public final class ExpedienteEvents {
 
   public record PropertyAccepted(UUID expedienteId, UUID decidedByUserId, Actor actor) {}
 
+  /** El alta siguió sin el aviso de privacidad firmado: se firmará después (Control de Cambios #2). */
+  public record PrivacySignatureDeferred(UUID expedienteId, String reason, Actor actor) {}
+
   public record PropertyRejected(UUID expedienteId, UUID decidedByUserId, String reason, Actor actor) {}
 }

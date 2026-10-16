@@ -4,29 +4,28 @@ import com.c21genera.expedientes.AccreditationType;
 import com.c21genera.expedientes.CivilStatus;
 import com.c21genera.expedientes.ExpedienteLifecycleApi;
 import com.c21genera.expedientes.ExpedienteStatus;
-import com.c21genera.expedientes.ExpedienteSummary;
 import com.c21genera.expedientes.ExpedienteSummary.ParticipantView;
+import com.c21genera.expedientes.ExpedienteSummary;
+import com.c21genera.expedientes.IdDocumentType;
 import com.c21genera.expedientes.LegalDetails;
 import com.c21genera.expedientes.MaritalRegime;
 import com.c21genera.expedientes.PersonType;
 import com.c21genera.expedientes.PropertyCaseType;
 import com.c21genera.expedientes.PropertyLegalStatus;
 import com.c21genera.expedientes.SignerCharacter;
+import com.c21genera.expedientes.domain.ClientNameKey;
 import com.c21genera.expedientes.domain.DocumentRequirementPolicy;
 import com.c21genera.expedientes.domain.Expediente;
 import com.c21genera.expedientes.domain.ExpedienteChange;
 import com.c21genera.expedientes.domain.ExpedienteParticipant;
-import com.c21genera.expedientes.domain.ManualClientData;
 import com.c21genera.expedientes.domain.ManualClientData.ManualClientDataUpdate;
+import com.c21genera.expedientes.domain.ManualClientData;
 import com.c21genera.expedientes.domain.ParticipantRole;
-import java.util.Collection;
-import com.c21genera.shared.domain.ConflictException;
-import com.c21genera.expedientes.domain.ClientNameKey;
-import com.c21genera.shared.events.ExpedienteEvents.DuplicateClientAuthorized;
 import com.c21genera.expedientes.infrastructure.ExpedienteChangeRepository;
 import com.c21genera.expedientes.infrastructure.ExpedienteParticipantRepository;
 import com.c21genera.expedientes.infrastructure.ExpedienteRepository;
 import com.c21genera.expedientes.infrastructure.ManualClientDataRepository;
+import com.c21genera.shared.domain.ConflictException;
 import com.c21genera.shared.domain.NotFoundException;
 import com.c21genera.shared.domain.RequiredDocumentSpec;
 import com.c21genera.shared.domain.ReviewDecision;
@@ -37,9 +36,11 @@ import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsUploaded;
 import com.c21genera.shared.events.DocumentEvents.DocumentReviewed;
 import com.c21genera.shared.events.DocumentEvents.ReceptionSigned;
 import com.c21genera.shared.events.DocumentEvents.RequiredDocumentsReopened;
+import com.c21genera.shared.events.ExpedienteEvents.DuplicateClientAuthorized;
 import com.c21genera.shared.events.ExpedienteEvents.ExpedienteCreated;
 import com.c21genera.shared.events.ExpedienteEvents.ExpedienteDataCorrected;
 import com.c21genera.shared.events.ExpedienteEvents.ExpedienteRequirementsChanged;
+import com.c21genera.shared.events.ExpedienteEvents.PrivacySignatureDeferred;
 import com.c21genera.shared.events.ExpedienteEvents.PropertyAccepted;
 import com.c21genera.shared.events.ExpedienteEvents.PropertyRejected;
 import com.c21genera.shared.events.PrivacyEvents.PrivacyAccepted;
@@ -47,10 +48,13 @@ import com.c21genera.shared.events.PublicAccessEvents.PublicLinkGenerated;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.Year;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -357,6 +361,139 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
             fillStatus ? legalStatus : current.declaredLegalStatus(),
             fillAddress ? propertyAddress.strip() : current.propertyAddress()));
     recordChanges(expediente, "Datos del expediente", before, configurationSnapshot(expediente), Actor.system(), "Tomado de los documentos del inmueble");
+  }
+
+  private static final String AUTOFILL_REASON = "Leído por la IA en los documentos del expediente";
+
+  @Override
+  public int completeFromDocuments(UUID expedienteId, DocumentFill fill) {
+    Expediente expediente = get(expedienteId);
+    // Con el contrato ya enviado a firma no se cambia nada por cuenta propia: invalidaría ese contrato.
+    if (!expediente.isCorrectable() || fill == null || expediente.getStatus().ordinal() >= ExpedienteStatus.READY_FOR_SIGNATURE.ordinal()) {
+      return 0;
+    }
+    String reason = fill.source() == null || fill.source().isBlank() ? AUTOFILL_REASON : AUTOFILL_REASON + " (" + fill.source() + ")";
+    int filled = 0;
+
+    // Datos legales: se completa campo por campo sobre el JSON guardado; un valor que no se
+    // puede leer como el tipo del campo (p. ej. una fecha mal formada) se omite.
+    if (fill.legal() != null && !fill.legal().isEmpty()) {
+      LegalDetails current = readLegalDetails(expediente.getLegalDetailsJson());
+      com.fasterxml.jackson.databind.node.ObjectNode tree = objectMapper.valueToTree(current == null ? LegalDetails.empty() : current);
+      LegalDetails result = current;
+      for (Map.Entry<String, String> entry : fill.legal().entrySet()) {
+        String[] path = entry.getKey().split("\\.", 2);
+        String value = blankToNull(entry.getValue());
+        if (path.length != 2 || value == null) {
+          continue;
+        }
+        JsonNode section = tree.get(path[0]);
+        if (section != null && !section.isNull() && section.hasNonNull(path[1]) && !section.get(path[1]).asText().isBlank()) {
+          continue;
+        }
+        com.fasterxml.jackson.databind.node.ObjectNode candidate = tree.deepCopy();
+        com.fasterxml.jackson.databind.node.ObjectNode target =
+            section == null || section.isNull() ? candidate.putObject(path[0]) : (com.fasterxml.jackson.databind.node.ObjectNode) candidate.get(path[0]);
+        target.put(path[1], value);
+        try {
+          result = objectMapper.treeToValue(candidate, LegalDetails.class);
+          tree = candidate;
+          filled++;
+        } catch (Exception e) {
+          // Dato con otro formato: se deja para que lo capture una persona.
+        }
+      }
+      if (result != current) {
+        Map<String, String> before = flatten(current);
+        expediente.replaceLegalDetailsJson(writeLegalDetails(result));
+        recordChanges(expediente, "Datos legales", before, flatten(result), Actor.system(), reason);
+      }
+    }
+
+    // Superficies del Anexo A.
+    if (fill.landAreaM2() != null || fill.builtAreaM2() != null) {
+      ManualClientData data = manualDataOf(expedienteId);
+      BigDecimal land = data.getLandAreaM2() == null ? fill.landAreaM2() : null;
+      BigDecimal built = data.getBuiltAreaM2() == null ? fill.builtAreaM2() : null;
+      if (land != null || built != null) {
+        Map<String, String> before = data.snapshot();
+        data.update(
+            new ManualClientData.ManualClientDataUpdate(
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, land, built));
+        recordChanges(expediente, "Datos del cliente e inmueble", before, data.snapshot(), Actor.system(), reason);
+        filled += (land != null ? 1 : 0) + (built != null ? 1 : 0);
+      }
+    }
+
+    // Datos de cada participante.
+    if (fill.participants() != null) {
+      for (ExpedienteParticipant participant : participantsOf(expedienteId)) {
+        Map<String, String> values = fill.participants().get(participant.getId());
+        if (values == null || values.isEmpty()) {
+          continue;
+        }
+        ExpedienteParticipant.Details d = participant.details();
+        int before = filled;
+        String nationality = d.nationality();
+        IdDocumentType idType = d.idDocumentType();
+        String idNumber = d.idDocumentNumber();
+        String idIssuer = d.idDocumentIssuer();
+        LocalDate birthDate = d.birthDate();
+        String rfc = d.rfc();
+        String curp = d.curp();
+        String address = d.address();
+        if (blankToNull(nationality) == null && blankToNull(values.get("nationality")) != null) {
+          nationality = values.get("nationality").strip();
+          filled++;
+        }
+        if (idType == null && values.get("idDocumentType") != null) {
+          try {
+            idType = IdDocumentType.valueOf(values.get("idDocumentType").strip());
+            filled++;
+          } catch (IllegalArgumentException ignored) {
+            // Otro tipo de identificación: lo elige una persona.
+          }
+        }
+        if (blankToNull(idNumber) == null && blankToNull(values.get("idDocumentNumber")) != null) {
+          idNumber = values.get("idDocumentNumber").strip();
+          filled++;
+        }
+        if (blankToNull(idIssuer) == null && blankToNull(values.get("idDocumentIssuer")) != null) {
+          idIssuer = values.get("idDocumentIssuer").strip();
+          filled++;
+        }
+        if (birthDate == null && values.get("birthDate") != null) {
+          try {
+            birthDate = LocalDate.parse(values.get("birthDate").strip());
+            filled++;
+          } catch (java.time.format.DateTimeParseException ignored) {
+            // Fecha ilegible: la captura una persona.
+          }
+        }
+        if (blankToNull(rfc) == null && blankToNull(values.get("rfc")) != null) {
+          rfc = values.get("rfc").strip();
+          filled++;
+        }
+        if (blankToNull(curp) == null && blankToNull(values.get("curp")) != null) {
+          curp = values.get("curp").strip();
+          filled++;
+        }
+        if (blankToNull(address) == null && blankToNull(values.get("address")) != null) {
+          address = values.get("address").strip();
+          filled++;
+        }
+        if (filled > before) {
+          Map<String, String> snapshot = participantSnapshot(participant);
+          participant.update(
+              participant.getRole(),
+              participant.getFullName(),
+              new ExpedienteParticipant.Details(
+                  nationality, idType, idNumber, idIssuer, birthDate, d.civilStatus(), d.maritalRegime(), rfc, curp, d.email(), d.phone(), address));
+          recordChanges(expediente, "Participante: " + participant.getFullName(), snapshot, participantSnapshot(participant), Actor.system(), reason);
+        }
+      }
+    }
+    return filled;
   }
 
   public LegalDetails updateLegalDetails(UUID expedienteId, LegalDetails details, Actor actor, String reason) {
@@ -751,6 +888,23 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
    * (CONTRACT_SIGNED) se puede aceptar el inmueble; la máquina de estados
    * lo garantiza.
    */
+  /**
+   * Control de Cambios #2: el alta (p. ej. presencial) sigue sin el aviso de privacidad firmado.
+   * El expediente pasa a recibir documentos y el aviso queda "Pendiente de firma": se firma
+   * después en la liga o en papel. El contrato sí sigue pidiendo el aviso firmado.
+   */
+  public Expediente deferPrivacySignature(UUID expedienteId, String reason, Actor actor) {
+    Expediente expediente = get(expedienteId);
+    if (expediente.getStatus() != ExpedienteStatus.DRAFT && expediente.getStatus() != ExpedienteStatus.WAITING_PRIVACY) {
+      throw new UnprocessableException("PRIVACY_STEP_DONE", "Este expediente ya pasó el paso del aviso de privacidad.");
+    }
+    String cleaned = reason == null || reason.isBlank() ? null : reason.strip();
+    expediente.transitionToIfAllowed(ExpedienteStatus.WAITING_PRIVACY);
+    expediente.transitionToIfAllowed(ExpedienteStatus.WAITING_DOCUMENTS);
+    events.publishEvent(new PrivacySignatureDeferred(expedienteId, cleaned, actor));
+    return expediente;
+  }
+
   public Expediente acceptProperty(UUID expedienteId, Actor actor) {
     Expediente expediente = get(expedienteId);
     if (expediente.getStatus() != ExpedienteStatus.CONTRACT_SIGNED) {

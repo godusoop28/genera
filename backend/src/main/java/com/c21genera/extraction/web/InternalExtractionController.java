@@ -2,6 +2,7 @@ package com.c21genera.extraction.web;
 
 import com.c21genera.documents.DocumentsApi;
 import com.c21genera.extraction.application.DocumentFieldExtractionService;
+import com.c21genera.extraction.application.ExpedienteAutoFill;
 import com.c21genera.extraction.web.ExtractionDtos.ConfirmFieldRequest;
 import com.c21genera.extraction.web.ExtractionDtos.ConflictResponse;
 import com.c21genera.extraction.web.ExtractionDtos.ExpedienteObservationResponse;
@@ -27,14 +28,38 @@ import org.springframework.web.bind.annotation.RestController;
 public class InternalExtractionController {
 
   private final DocumentFieldExtractionService service;
+  private final ExpedienteAutoFill autoFill;
   private final DocumentsApi documentsApi;
   private final ExpedienteAccessPolicy accessPolicy;
 
   public InternalExtractionController(
-      DocumentFieldExtractionService service, DocumentsApi documentsApi, ExpedienteAccessPolicy accessPolicy) {
+      DocumentFieldExtractionService service, ExpedienteAutoFill autoFill, DocumentsApi documentsApi, ExpedienteAccessPolicy accessPolicy) {
     this.service = service;
+    this.autoFill = autoFill;
     this.documentsApi = documentsApi;
     this.accessPolicy = accessPolicy;
+  }
+
+  public record AutoFillResponse(int filled) {}
+
+  /**
+   * Control de Cambios #7: lleva al expediente (contrato y participantes) lo ya validado en sus
+   * documentos, sin pisar nada capturado. La pantalla del contrato lo pide al abrirse.
+   */
+  @PostMapping("/api/v1/internal/expedientes/{expedienteId}/autofill")
+  @PreAuthorize("hasAnyAuthority('EXPEDIENT_EDIT', 'CONTRACT_PREPARE', 'EXTRACTED_DATA_EDIT')")
+  public AutoFillResponse autofill(@PathVariable UUID expedienteId, @AuthenticationPrincipal Jwt jwt) {
+    requireAccess(expedienteId, jwt);
+    return new AutoFillResponse(autoFill.fill(expedienteId));
+  }
+
+  /** Una persona confirmó o corrigió un dato: ya está validado. Nunca impide guardar la confirmación. */
+  private void fillAfterReview(UUID expedienteId) {
+    try {
+      autoFill.fill(expedienteId);
+    } catch (RuntimeException ignored) {
+      // Se reintenta al abrir la pantalla del contrato.
+    }
   }
 
   @GetMapping("/api/v1/internal/documents/{documentId}/extracted-fields")
@@ -48,8 +73,11 @@ public class InternalExtractionController {
   @PreAuthorize("hasAuthority('EXTRACTED_DATA_EDIT')")
   public ObservationResponse confirm(
       @PathVariable UUID observationId, @Valid @RequestBody ConfirmFieldRequest request, @AuthenticationPrincipal Jwt jwt) {
-    requireAccess(service.getObservation(observationId).getExpedienteId(), jwt);
-    return ObservationResponse.from(service.confirm(observationId, request.confirmedValue()));
+    UUID expedienteId = service.getObservation(observationId).getExpedienteId();
+    requireAccess(expedienteId, jwt);
+    ObservationResponse response = ObservationResponse.from(service.confirm(observationId, request.confirmedValue()));
+    fillAfterReview(expedienteId);
+    return response;
   }
 
   /** Todo lo detectado en los documentos vigentes del expediente, para prellenar los datos del contrato. */
@@ -76,8 +104,11 @@ public class InternalExtractionController {
   @PreAuthorize("hasAuthority('EXTRACTED_DATA_EDIT')")
   public ConflictResponse resolve(
       @PathVariable UUID conflictId, @Valid @RequestBody ResolveConflictRequest request, @AuthenticationPrincipal Jwt jwt) {
-    CurrentUser user = requireAccess(service.getConflict(conflictId).getExpedienteId(), jwt);
-    return ConflictResponse.from(service.resolveConflict(conflictId, user.id(), request.note()));
+    UUID expedienteId = service.getConflict(conflictId).getExpedienteId();
+    CurrentUser user = requireAccess(expedienteId, jwt);
+    ConflictResponse response = ConflictResponse.from(service.resolveConflict(conflictId, user.id(), request.note()));
+    fillAfterReview(expedienteId);
+    return response;
   }
 
   private CurrentUser requireAccess(UUID expedienteId, Jwt jwt) {

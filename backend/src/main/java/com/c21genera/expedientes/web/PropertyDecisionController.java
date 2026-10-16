@@ -42,6 +42,18 @@ public class PropertyDecisionController {
     return ExpedienteResponse.from(expedienteService.acceptProperty(id, currentUser.toActor()));
   }
 
+  public record DeferPrivacyRequest(String reason) {}
+
+  /** Control de Cambios #2: el alta sigue sin el aviso firmado; se firma después. */
+  @PostMapping("/privacy/defer")
+  @PreAuthorize("hasAuthority('EXPEDIENT_EDIT')")
+  public ExpedienteResponse deferPrivacy(
+      @PathVariable UUID id, @RequestBody(required = false) DeferPrivacyRequest request, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser currentUser = CurrentUser.from(jwt);
+    accessPolicy.requireAccess(id, currentUser.id(), currentUser.permissions());
+    return ExpedienteResponse.from(expedienteService.deferPrivacySignature(id, request == null ? null : request.reason(), currentUser.toActor()));
+  }
+
   @PostMapping("/reject-property")
   public ExpedienteResponse reject(
       @PathVariable UUID id, @Valid @RequestBody RejectPropertyRequest request, @AuthenticationPrincipal Jwt jwt) {
