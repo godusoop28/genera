@@ -113,6 +113,16 @@ hace nada si la variable está vacía, y nunca corre en `prod`).
   condominio se coteja contra escritura y predial (m² de terreno e indivisos) y
   la IA devuelve las opciones cuando una escritura trae varios valores
   (antecedentes) para que una persona elija.
+- Control de Cambios #24 (17/10): cada expediente tiene un asesor asignado
+  (obligatorio al dar de alta; solo personal activo con rol asesor, directivo o
+  administrador, asesores primero) y una operación (`SALE`/`RENT`). El asesor
+  lo cambia quien tenga `EXPEDIENT_ADVISOR_ASSIGN` (administrador y directivo)
+  con `PUT /internal/expedientes/{id}/advisor`, en cualquier etapa; queda en el
+  historial (anterior, nuevo, quién y cuándo) y no invalida el contrato.
+  `EXPEDIENT_VIEW_OWN` ahora significa "asignados a mí" (V034 asignó los
+  existentes a quien los creó). El listado (`/overview`) filtra por
+  `propertyCaseType`, `operationType`, `advisorId` o `unassigned=true`, y
+  `GET /overview/portfolio` da la cartera por tipo + operación y por asesor.
 - Pipeline asíncrono (`documentprocessing`, sin Kafka/RabbitMQ: una tabla
   `background_job` con `SELECT ... FOR UPDATE SKIP LOCKED`, diseñada para
   poder migrar a un broker externo después sin cambiar el dominio):

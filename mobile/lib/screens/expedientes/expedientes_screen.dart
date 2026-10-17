@@ -20,8 +20,12 @@ const _groups = [(id: '', label: 'Todos'), (id: 'PENDING', label: 'Pendientes'),
 
 const _pageSize = 18;
 
+String _operationText(ExpedienteResponse e) => '${label(propertyTypeLabels, e.propertyCaseType)} en ${label(operationLabels, e.operationType).toLowerCase()}';
+
 class ExpedientesScreen extends StatefulWidget {
-  const ExpedientesScreen({super.key});
+  /// Control de Cambios #24: los reportes abren el listado ya filtrado (?tipo=&operacion=&asesor=).
+  const ExpedientesScreen({super.key, this.initialType, this.initialOperation, this.initialAdvisor});
+  final String? initialType, initialOperation, initialAdvisor;
 
   @override
   State<ExpedientesScreen> createState() => _ExpedientesScreenState();
@@ -30,6 +34,10 @@ class ExpedientesScreen extends StatefulWidget {
 class _ExpedientesScreenState extends State<ExpedientesScreen> {
   String query = '';
   String group = '';
+  late String propertyCaseType = propertyTypeLabels.containsKey(widget.initialType) ? widget.initialType! : '';
+  late String operationType = operationLabels.containsKey(widget.initialOperation) ? widget.initialOperation! : '';
+  late String advisorId = widget.initialAdvisor ?? '';
+  List<AdvisorOption> advisors = [];
   List<ExpedienteOverviewItem>? items;
   ExpedienteOverview? last;
   int page = 0;
@@ -48,6 +56,11 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
   void initState() {
     super.initState();
     load();
+    if (context.read<AuthState>().can('EXPEDIENT_VIEW_ALL')) {
+      api.listAssignableAdvisors().then((list) {
+        if (mounted) setState(() => advisors = list);
+      }).catchError((_) {});
+    }
     SharedPreferences.getInstance()
         .then((p) {
           if (mounted && p.getString(_viewKey) == 'list') setState(() => listView = true);
@@ -76,7 +89,7 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
     final id = ++_request;
     setState(() => loading = true);
     try {
-      final res = await api.getExpedienteOverview(q: query, group: group.isEmpty ? null : group, page: 0, size: _pageSize);
+      final res = await api.getExpedienteOverview(q: query, group: group.isEmpty ? null : group, page: 0, size: _pageSize, propertyCaseType: _portfolio.propertyCaseType, operationType: _portfolio.operationType, advisorId: _portfolio.advisorId);
       if (!mounted || id != _request) return;
       setState(() {
         last = res;
@@ -103,7 +116,7 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
       moreError = null;
     });
     try {
-      final res = await api.getExpedienteOverview(q: query, group: group.isEmpty ? null : group, page: page + 1, size: _pageSize);
+      final res = await api.getExpedienteOverview(q: query, group: group.isEmpty ? null : group, page: page + 1, size: _pageSize, propertyCaseType: _portfolio.propertyCaseType, operationType: _portfolio.operationType, advisorId: _portfolio.advisorId);
       if (!mounted || id != _request) return;
       final seen = items!.map((i) => i.expediente.id).toSet();
       setState(() {
@@ -129,7 +142,10 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
     };
   }
 
-  bool get filtering => query.trim().isNotEmpty || group.isNotEmpty;
+  ({String? propertyCaseType, String? operationType, String? advisorId}) get _portfolio =>
+      (propertyCaseType: propertyCaseType.isEmpty ? null : propertyCaseType, operationType: operationType.isEmpty ? null : operationType, advisorId: advisorId.isEmpty ? null : advisorId);
+
+  bool get filtering => query.trim().isNotEmpty || group.isNotEmpty || propertyCaseType.isNotEmpty || operationType.isNotEmpty || advisorId.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -187,6 +203,41 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
                     load();
                   },
                 ),
+                const SizedBox(height: 12),
+                AppSelect<String>(
+                  value: propertyCaseType,
+                  options: optionsOf(propertyTypeLabels, empty: 'Todos los tipos de propiedad'),
+                  onChanged: (v) {
+                    setState(() => propertyCaseType = v);
+                    load();
+                  },
+                ),
+                const SizedBox(height: 10),
+                AppSelect<String>(
+                  value: operationType,
+                  options: optionsOf(operationLabels, empty: 'Venta y renta'),
+                  onChanged: (v) {
+                    setState(() => operationType = v);
+                    load();
+                  },
+                ),
+                if (auth.can('EXPEDIENT_VIEW_ALL')) ...[
+                  const SizedBox(height: 10),
+                  AppSelect<String>(
+                    value: advisorId,
+                    options: [
+                      (value: '', label: 'Todos los asesores'),
+                      (value: api.unassignedAdvisor, label: 'Sin asesor asignado'),
+                      for (final a in advisors) (value: a.id, label: a.name),
+                      if (advisorId.isNotEmpty && advisorId != api.unassignedAdvisor && !advisors.any((a) => a.id == advisorId))
+                        (value: advisorId, label: 'Asesor seleccionado'),
+                    ],
+                    onChanged: (v) {
+                      setState(() => advisorId = v);
+                      load();
+                    },
+                  ),
+                ],
                 const SizedBox(height: 16),
                 if (error != null && items == null)
                   LoadError(title: 'No se pudieron cargar los expedientes', message: error!.message, onRetry: load)
@@ -217,6 +268,9 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
                                       setState(() {
                                         query = '';
                                         group = '';
+                                        propertyCaseType = '';
+                                        operationType = '';
+                                        advisorId = '';
                                       });
                                       load();
                                     },
@@ -366,7 +420,7 @@ class ExpedienteCard extends StatelessWidget {
                       children: [
                         Icon(Icons.home_outlined, size: 14, color: c.muted),
                         const SizedBox(width: 4),
-                        Expanded(child: MutedText('Intermediación exclusiva · ${label(propertyTypeLabels, e.propertyCaseType)}', size: 12.5)),
+                        Expanded(child: MutedText(_operationText(e), size: 12.5)),
                       ],
                     ),
                   ],
@@ -473,7 +527,7 @@ class ExpedienteRow extends StatelessWidget {
                   Text(
                     (e.propertyAddress?.isNotEmpty ?? false)
                         ? e.propertyAddress!
-                        : ((e.propertyReference?.isNotEmpty ?? false) ? e.propertyReference! : 'Intermediación exclusiva · ${label(propertyTypeLabels, e.propertyCaseType)}'),
+                        : ((e.propertyReference?.isNotEmpty ?? false) ? e.propertyReference! : _operationText(e)),
                     style: TextStyle(fontSize: 12, color: c.muted),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

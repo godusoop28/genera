@@ -21,6 +21,8 @@ export type BackendPersonType = "FISICA" | "MORAL";
 export type BackendSignerCharacter = "PROPIETARIO" | "COPROPIETARIO" | "APODERADO" | "REPRESENTANTE_LEGAL";
 export type BackendAccreditationType = "ESCRITURA_PUBLICA" | "CONTRATO_PRIVADO";
 export type BackendPropertyCaseType = "HOUSING" | "DEPARTMENT" | "RESIDENTIAL_LAND" | "COMMERCIAL";
+/** Control de Cambios #24: operación del inmueble. */
+export type BackendOperationType = "SALE" | "RENT";
 export type BackendPropertyLegalStatus = "LIBRE_GRAVAMEN" | "CON_GRAVAMEN" | "EN_REVISION";
 export type BackendParticipantRole = "OWNER" | "CO_OWNER" | "ATTORNEY" | "LEGAL_REPRESENTATIVE";
 export type BackendCivilStatus = "SOLTERO" | "CASADO" | "UNION_LIBRE" | "DIVORCIADO" | "VIUDO";
@@ -80,9 +82,13 @@ export interface ExpedienteResponse {
   accreditationType: BackendAccreditationType;
   condominiumRegime: boolean;
   propertyCaseType: BackendPropertyCaseType;
+  operationType: BackendOperationType;
   declaredLegalStatus: BackendPropertyLegalStatus;
   propertyAddress: string | null;
   propertyReference: string | null;
+  /** Control de Cambios #24: asesor responsable (null = sin asignar). */
+  assignedAdvisorId: string | null;
+  assignedAdvisorName: string | null;
   decisionReason: string | null;
   decidedByUserId: string | null;
   decidedAt: string | null;

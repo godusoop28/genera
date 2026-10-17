@@ -14,6 +14,9 @@ final _expediente = {
   'accreditationType': 'ESCRITURA_PUBLICA',
   'condominiumRegime': true,
   'propertyCaseType': 'HOUSING',
+  'operationType': 'SALE',
+  'assignedAdvisorId': 'u-2',
+  'assignedAdvisorName': 'Ana Sofía Herrera',
   'declaredLegalStatus': 'EN_REVISION',
   'propertyAddress': 'Calle Río Balsas 123, Col. Vista Hermosa, Cuernavaca, Morelos',
   'propertyReference': 'Casa en Vista Hermosa',
@@ -198,6 +201,34 @@ final List<({String method, String path, Object? body})> sentRequests = [];
   }
   if (p == '/internal/me') return (200, {'id': 'u-1', 'name': 'Administrador Demo', 'email': 'admin@demo.local', 'role': 'ADMINISTRATOR', 'permissions': ['*']});
   if (p.startsWith('/internal/drafts/')) return (204, null);
+  if (p == '/internal/expedientes/advisors') {
+    return (
+      200,
+      [
+        {'id': 'u-2', 'name': 'Ana Sofía Herrera', 'roleCode': 'ADVISOR'},
+        {'id': 'u-3', 'name': 'Carlos Méndez', 'roleCode': 'ADVISOR'},
+        {'id': 'u-1', 'name': 'Administrador Demo', 'roleCode': 'ADMINISTRATOR'},
+      ],
+    );
+  }
+  if (p == '/internal/expedientes/overview/portfolio') {
+    Map<String, int> counts(int total) => {'total': total, 'pending': total ~/ 2, 'inReview': total - total ~/ 2, 'complete': 0};
+    return (
+      200,
+      {
+        'total': counts(5),
+        'byTypeOperation': [
+          {'propertyCaseType': 'HOUSING', 'operationType': 'SALE', 'counts': counts(3)},
+          {'propertyCaseType': 'HOUSING', 'operationType': 'RENT', 'counts': counts(0)},
+          {'propertyCaseType': 'DEPARTMENT', 'operationType': 'RENT', 'counts': counts(2)},
+        ],
+        'byAdvisor': [
+          {'advisorId': 'u-2', 'name': 'Ana Sofía Herrera', 'counts': counts(4)},
+          {'advisorId': null, 'name': 'Sin asesor asignado', 'counts': counts(1)},
+        ],
+      },
+    );
+  }
   if (p == '/internal/expedientes/overview') {
     return (
       200,

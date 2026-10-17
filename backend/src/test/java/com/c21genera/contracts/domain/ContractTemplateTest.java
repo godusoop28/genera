@@ -85,7 +85,7 @@ class ContractTemplateTest {
     return new ExpedienteSummary(
         UUID.randomUUID(), "EXP-2026-000123", display, ExpedienteStatus.RECEPTION_SIGNED, personType, signer, accreditation, condominium,
         propertyType, PropertyLegalStatus.LIBRE_GRAVAMEN, "Calle Río Balsas No. Ext. 12, Col. Vista Hermosa, Cuernavaca, Morelos, C.P. 62290",
-        UUID.randomUUID(), participants, legal);
+        UUID.randomUUID(), null, participants, legal);
   }
 
   static ContractInput input(ExpedienteSummary summary, ManualClientDataView data) {

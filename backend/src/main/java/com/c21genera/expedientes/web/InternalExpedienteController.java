@@ -1,10 +1,13 @@
 package com.c21genera.expedientes.web;
 
 import com.c21genera.expedientes.LegalDetails;
+import com.c21genera.expedientes.application.AssignableAdvisors;
 import com.c21genera.expedientes.application.ExpedienteService;
 import com.c21genera.expedientes.application.ExpedienteService.ConfigurationCorrection;
 import com.c21genera.expedientes.application.ExpedienteService.CreateExpedienteCommand;
 import com.c21genera.expedientes.domain.Expediente;
+import com.c21genera.expedientes.web.ExpedienteDtos.AdvisorOptionResponse;
+import com.c21genera.expedientes.web.ExpedienteDtos.AssignAdvisorRequest;
 import com.c21genera.expedientes.web.ExpedienteDtos.ChangeResponse;
 import com.c21genera.expedientes.web.ExpedienteDtos.CorrectConfigurationRequest;
 import com.c21genera.expedientes.web.ExpedienteDtos.CreateExpedienteRequest;
@@ -48,11 +51,14 @@ public class InternalExpedienteController {
   private final ExpedienteService expedienteService;
   private final ExpedienteAccessPolicy accessPolicy;
   private final UserDirectory userDirectory;
+  private final AssignableAdvisors assignableAdvisors;
 
-  public InternalExpedienteController(ExpedienteService expedienteService, ExpedienteAccessPolicy accessPolicy, UserDirectory userDirectory) {
+  public InternalExpedienteController(
+      ExpedienteService expedienteService, ExpedienteAccessPolicy accessPolicy, UserDirectory userDirectory, AssignableAdvisors assignableAdvisors) {
     this.expedienteService = expedienteService;
     this.accessPolicy = accessPolicy;
     this.userDirectory = userDirectory;
+    this.assignableAdvisors = assignableAdvisors;
   }
 
   @PostMapping
@@ -60,6 +66,7 @@ public class InternalExpedienteController {
   @ResponseStatus(HttpStatus.CREATED)
   public ExpedienteResponse create(@Valid @RequestBody CreateExpedienteRequest request, @AuthenticationPrincipal Jwt jwt) {
     CurrentUser currentUser = CurrentUser.from(jwt);
+    UserDirectory.StaffMember advisor = assignableAdvisors.require(request.assignedAdvisorId());
     Expediente expediente =
         expedienteService.create(
             new CreateExpedienteCommand(
@@ -68,9 +75,12 @@ public class InternalExpedienteController {
                 request.accreditationType(),
                 request.condominiumRegime(),
                 request.propertyCaseType(),
+                request.operationType(),
                 request.declaredLegalStatus(),
                 request.propertyAddress(),
                 request.propertyReference(),
+                advisor.id(),
+                advisor.name(),
                 request.participants().stream().map(ExpedienteDtos.ParticipantRequest::toInput).toList(),
                 request.legalDetails(),
                 currentUser.toActor(),
@@ -88,11 +98,31 @@ public class InternalExpedienteController {
             m -> {
               Expediente e = m.expediente();
               String property = e.getPropertyAddress() != null ? e.getPropertyAddress() : e.getPropertyReference();
-              String advisor = userDirectory.contactOf(e.getCreatedByUserId()).map(UserDirectory.UserContact::name).orElse(null);
+              String advisor =
+                  e.getAssignedAdvisorName() != null
+                      ? e.getAssignedAdvisorName()
+                      : userDirectory.contactOf(e.getCreatedByUserId()).map(UserDirectory.UserContact::name).orElse(null);
               return new DuplicateMatchResponse(
                   e.getId(), e.getFolio(), e.getOwnerDisplayName(), m.matchedName(), e.getStatus(), property, advisor, e.getCreatedAt());
             })
         .toList();
+  }
+
+  /** Control de Cambios #24: asesores activos para el campo "Asesor asignado" y los filtros. */
+  @GetMapping("/advisors")
+  @PreAuthorize("hasAnyAuthority('EXPEDIENT_CREATE', 'EXPEDIENT_VIEW_ALL', 'EXPEDIENT_ADVISOR_ASSIGN')")
+  public List<AdvisorOptionResponse> advisors() {
+    return assignableAdvisors.list().stream().map(m -> new AdvisorOptionResponse(m.id(), m.name(), m.roleCode())).toList();
+  }
+
+  /** Control de Cambios #24: cambiar el asesor asignado; queda en el historial del expediente. */
+  @PutMapping("/{id}/advisor")
+  @PreAuthorize("hasAuthority('EXPEDIENT_ADVISOR_ASSIGN')")
+  public ExpedienteResponse assignAdvisor(
+      @PathVariable UUID id, @Valid @RequestBody AssignAdvisorRequest request, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = requireAccess(id, jwt);
+    UserDirectory.StaffMember advisor = assignableAdvisors.require(request.advisorId());
+    return ExpedienteResponse.from(expedienteService.reassignAdvisor(id, advisor.id(), advisor.name(), user.toActor(), request.reason()));
   }
 
   @GetMapping
@@ -131,6 +161,7 @@ public class InternalExpedienteController {
                 request.accreditationType(),
                 request.condominiumRegime(),
                 request.propertyCaseType(),
+                request.operationType(),
                 request.declaredLegalStatus(),
                 request.propertyAddress()),
             user.toActor(),

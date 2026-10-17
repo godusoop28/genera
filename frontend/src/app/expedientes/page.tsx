@@ -4,21 +4,27 @@ import { ExpedienteStatusBadge } from "@/components/expediente/ExpedienteStatusB
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Button } from "@/components/ui/Button";
 import { SearchInput } from "@/components/ui/SearchInput";
+import { Select } from "@/components/ui/Select";
 import { StateMessage } from "@/components/ui/StateMessage";
 import { ApiError } from "@/lib/api/client";
 import {
+  UNASSIGNED_ADVISOR,
   getExpedienteOverview,
+  listAssignableAdvisors,
+  type AdvisorOption,
   type DocumentProgress,
   type ExpedienteOverview,
   type ExpedienteOverviewItem,
   type ExpedienteStatusGroup,
 } from "@/lib/api/expedientes";
-import { propertyTypeLabels } from "@/lib/labels";
+import type { BackendOperationType, BackendPropertyCaseType } from "@/lib/api/types";
+import { operationLabels, propertyTypeLabels } from "@/lib/labels";
 import { useCan } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
-import { ArrowRight, Calendar, CheckCircle2, Clock, FileText, FolderOpen, Home, LayoutGrid, List, MapPin, Plus, RefreshCw } from "lucide-react";
+import { ArrowRight, Calendar, CheckCircle2, Clock, FileText, FolderOpen, Home, LayoutGrid, List, MapPin, Plus, RefreshCw, UserRound } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 // Criterio de agrupación (definido en el backend, ExpedienteOverviewController.StatusGroup):
 // cada estatus pertenece a un solo grupo, así que pendientes + en revisión + completos = total.
@@ -81,11 +87,31 @@ function errorMessage(err: unknown): { message: string; forbidden: boolean } {
   return { message: "No se pudo conectar con el servidor. Revisa tu conexión e intenta de nuevo.", forbidden: false };
 }
 
+function oneOf<T extends string>(value: string | null, options: Record<T, string>): T | null {
+  return value && value in options ? (value as T) : null;
+}
+
 export default function ExpedientesPage() {
+  // useSearchParams necesita un límite de Suspense para el prerender.
+  return (
+    <Suspense fallback={null}>
+      <ExpedientesContent />
+    </Suspense>
+  );
+}
+
+function ExpedientesContent() {
   const can = useCan();
+  const params = useSearchParams();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [group, setGroup] = useState<ExpedienteStatusGroup | null>(null);
+  // Control de Cambios #24: filtros de cartera; los reportes enlazan aquí con ?tipo=&operacion=&asesor=.
+  const [propertyCaseType, setPropertyCaseType] = useState<BackendPropertyCaseType | null>(() => oneOf(params.get("tipo"), propertyTypeLabels));
+  const [operationType, setOperationType] = useState<BackendOperationType | null>(() => oneOf(params.get("operacion"), operationLabels));
+  const [advisorId, setAdvisorId] = useState(params.get("asesor") ?? "");
+  const [advisors, setAdvisors] = useState<AdvisorOption[]>([]);
+  const seesAll = can("EXPEDIENT_VIEW_ALL");
   const [reloadToken, setReloadToken] = useState(0);
   const view = useSyncExternalStore(subscribeView, readView, () => "grid" as ViewMode);
   const [data, setData] = useState<LoadedPage | null>(null);
@@ -95,11 +121,19 @@ export default function ExpedientesPage() {
 
   // Cada combinación de búsqueda + filtro (+ "Actualizar") es una carga distinta;
   // "cargando" = la última respuesta no corresponde a lo que se pidió.
-  const key = `${debouncedQuery.trim()}|${group ?? ""}|${reloadToken}`;
+  const key = `${debouncedQuery.trim()}|${group ?? ""}|${propertyCaseType ?? ""}|${operationType ?? ""}|${advisorId}|${reloadToken}`;
+  const portfolio = { propertyCaseType, operationType, advisorId: advisorId || null };
   const currentKey = useRef(key);
   useEffect(() => {
     currentKey.current = key;
   }, [key]);
+
+  useEffect(() => {
+    if (!seesAll) return;
+    listAssignableAdvisors()
+      .then(setAdvisors)
+      .catch(() => setAdvisors([]));
+  }, [seesAll]);
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedQuery(query), 300);
@@ -108,7 +142,7 @@ export default function ExpedientesPage() {
 
   useEffect(() => {
     let cancelled = false;
-    getExpedienteOverview({ q: debouncedQuery, group, page: 0, size: PAGE_SIZE })
+    getExpedienteOverview({ q: debouncedQuery, group, page: 0, size: PAGE_SIZE, ...portfolio })
       .then((res) => {
         if (cancelled) return;
         setData({ key, items: res.page.items, counts: res.counts, page: 0, totalPages: res.page.totalPages, totalElements: res.page.totalElements });
@@ -121,6 +155,8 @@ export default function ExpedientesPage() {
     return () => {
       cancelled = true;
     };
+    // portfolio se deriva de los mismos valores que key.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, debouncedQuery, group]);
 
   const error = failure?.key === key ? failure : null;
@@ -132,7 +168,7 @@ export default function ExpedientesPage() {
     const requestedFor = data.key;
     setLoadingMore(true);
     setMoreError(null);
-    getExpedienteOverview({ q: debouncedQuery, group, page: data.page + 1, size: PAGE_SIZE })
+    getExpedienteOverview({ q: debouncedQuery, group, page: data.page + 1, size: PAGE_SIZE, ...portfolio })
       .then((res) => {
         if (currentKey.current !== requestedFor) return;
         setData((prev) => {
@@ -155,7 +191,14 @@ export default function ExpedientesPage() {
   const counts = data?.counts;
   const countFor = (id: ExpedienteStatusGroup | null) =>
     !counts ? null : id === null ? counts.total : id === "PENDING" ? counts.pending : id === "IN_REVIEW" ? counts.inReview : counts.complete;
-  const filtering = debouncedQuery.trim().length > 0 || group !== null;
+  const filtering = debouncedQuery.trim().length > 0 || group !== null || propertyCaseType !== null || operationType !== null || advisorId !== "";
+  // Si el asesor del enlace ya no está activo, igual se muestra como opción para poder quitarlo.
+  const advisorOptions = [
+    { value: "", label: "Todos los asesores" },
+    { value: UNASSIGNED_ADVISOR, label: "Sin asesor asignado" },
+    ...advisors.map((a) => ({ value: a.id, label: a.name })),
+    ...(advisorId && advisorId !== UNASSIGNED_ADVISOR && !advisors.some((a) => a.id === advisorId) ? [{ value: advisorId, label: "Asesor seleccionado" }] : []),
+  ];
   const forbidden = error?.forbidden ?? false;
 
   return (
@@ -228,6 +271,24 @@ export default function ExpedientesPage() {
             </div>
           </div>
 
+          <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3" role="group" aria-label="Filtrar cartera">
+            <Select
+              aria-label="Filtrar por tipo de propiedad"
+              value={propertyCaseType ?? ""}
+              onChange={(e) => setPropertyCaseType((e.target.value || null) as BackendPropertyCaseType | null)}
+              options={[{ value: "", label: "Todos los tipos de propiedad" }, ...Object.entries(propertyTypeLabels).map(([value, label]) => ({ value, label }))]}
+            />
+            <Select
+              aria-label="Filtrar por operación"
+              value={operationType ?? ""}
+              onChange={(e) => setOperationType((e.target.value || null) as BackendOperationType | null)}
+              options={[{ value: "", label: "Venta y renta" }, ...Object.entries(operationLabels).map(([value, label]) => ({ value, label }))]}
+            />
+            {seesAll ? (
+              <Select aria-label="Filtrar por asesor asignado" value={advisorId} onChange={(e) => setAdvisorId(e.target.value)} options={advisorOptions} />
+            ) : null}
+          </div>
+
           {error && !data ? (
             <StateMessage
               kind="error"
@@ -265,6 +326,9 @@ export default function ExpedientesPage() {
                           setQuery("");
                           setDebouncedQuery("");
                           setGroup(null);
+                          setPropertyCaseType(null);
+                          setOperationType(null);
+                          setAdvisorId("");
                         }}
                       >
                         Quitar filtros
@@ -408,7 +472,7 @@ function DocumentsProgress({ progress, compact = false }: { progress: DocumentPr
 }
 
 function operationLabel(item: ExpedienteOverviewItem) {
-  return `Intermediación exclusiva · ${propertyTypeLabels[item.expediente.propertyCaseType]}`;
+  return `${propertyTypeLabels[item.expediente.propertyCaseType]} en ${operationLabels[item.expediente.operationType].toLowerCase()}`;
 }
 
 function ExpedienteCard({ item }: { item: ExpedienteOverviewItem }) {
@@ -436,6 +500,10 @@ function ExpedienteCard({ item }: { item: ExpedienteOverviewItem }) {
       </div>
 
       <div className="mt-4 space-y-3 border-t border-border pt-4">
+        <p className="flex items-center gap-2 text-sm text-muted">
+          <UserRound className="h-4 w-4 shrink-0" aria-hidden />
+          <span className="truncate">{e.assignedAdvisorName ?? "Sin asesor asignado"}</span>
+        </p>
         <p className="flex items-start gap-2 text-sm text-muted">
           <MapPin className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span className="line-clamp-2 break-words" title={e.propertyAddress ?? e.propertyReference ?? undefined}>
@@ -495,6 +563,9 @@ function ExpedienteList({ items }: { items: ExpedienteOverviewItem[] }) {
                     {e.ownerDisplayName || "Sin nombre"}
                   </p>
                   <p className="font-mono text-xs text-muted">{e.folio}</p>
+                  <p className="truncate text-xs text-muted">
+                    {operationLabel(item)} · {e.assignedAdvisorName ?? "Sin asesor asignado"}
+                  </p>
                   <p className="truncate text-xs text-muted" title={e.propertyAddress ?? e.propertyReference ?? undefined}>
                     {e.propertyAddress || e.propertyReference || operationLabel(item)}
                   </p>

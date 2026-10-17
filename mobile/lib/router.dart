@@ -9,6 +9,7 @@ import 'screens/crm/leads_screen.dart';
 import 'screens/expedientes/expediente_detail_screen.dart';
 import 'screens/expedientes/expedientes_screen.dart';
 import 'screens/expedientes/new_expediente_screen.dart';
+import 'screens/expedientes/reports_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/splash_screen.dart';
@@ -29,9 +30,17 @@ GoRouter buildRouter(AuthState auth) => GoRouter(
       routes: [
         GoRoute(path: '/splash', builder: (_, _) => const SplashScreen()),
         GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
-        GoRoute(path: '/expedientes', builder: (_, _) => const ExpedientesScreen()),
+        GoRoute(
+          path: '/expedientes',
+          builder: (_, s) => ExpedientesScreen(
+            initialType: s.uri.queryParameters['tipo'],
+            initialOperation: s.uri.queryParameters['operacion'],
+            initialAdvisor: s.uri.queryParameters['asesor'],
+          ),
+        ),
         GoRoute(path: '/expedientes/nuevo', builder: (_, _) => const NewExpedienteScreen()),
         GoRoute(path: '/expedientes/:id', builder: (_, s) => ExpedienteDetailScreen(id: s.pathParameters['id']!)),
+        GoRoute(path: '/reportes', builder: (_, _) => const ReportsScreen()),
         GoRoute(path: '/usuarios', builder: (_, _) => const UsersScreen()),
         GoRoute(path: '/configuracion', builder: (_, _) => const SettingsScreen()),
         GoRoute(path: '/dashboard', builder: (_, _) => const DashboardScreen()),

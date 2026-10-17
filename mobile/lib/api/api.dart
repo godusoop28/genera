@@ -34,8 +34,35 @@ Future<List<PermissionResponse>> listPermissions() async => _l(await _c.get('/in
 
 // --- Expedientes ------------------------------------------------------------
 
-Future<ExpedienteOverview> getExpedienteOverview({String? q, String? group, int page = 0, int size = 18}) async => ExpedienteOverview.fromJson(
-    _j(await _c.get('/internal/expedientes/overview${_q({'page': page, 'size': size, 'sort': 'updatedAt,desc', 'q': q?.trim(), 'group': group})}')));
+/// Control de Cambios #24: advisorId [unassignedAdvisor] = expedientes sin asesor asignado.
+const unassignedAdvisor = 'none';
+
+Map<String, Object?> _portfolio(String? propertyCaseType, String? operationType, String? advisorId) => {
+  'propertyCaseType': propertyCaseType,
+  'operationType': operationType,
+  'advisorId': advisorId == unassignedAdvisor ? null : advisorId,
+  'unassigned': advisorId == unassignedAdvisor ? 'true' : null,
+};
+
+Future<ExpedienteOverview> getExpedienteOverview({
+  String? q,
+  String? group,
+  String? propertyCaseType,
+  String? operationType,
+  String? advisorId,
+  int page = 0,
+  int size = 18,
+}) async => ExpedienteOverview.fromJson(
+  _j(
+    await _c.get(
+      '/internal/expedientes/overview${_q({'page': page, 'size': size, 'sort': 'updatedAt,desc', 'q': q?.trim(), 'group': group, ..._portfolio(propertyCaseType, operationType, advisorId)})}',
+    ),
+  ),
+);
+Future<PortfolioReport> getPortfolioReport({String? propertyCaseType, String? operationType, String? advisorId}) async =>
+    PortfolioReport.fromJson(_j(await _c.get('/internal/expedientes/overview/portfolio${_q(_portfolio(propertyCaseType, operationType, advisorId))}')));
+Future<List<AdvisorOption>> listAssignableAdvisors() async => _l(await _c.get('/internal/expedientes/advisors'), AdvisorOption.fromJson);
+Future<void> assignAdvisor(String id, String advisorId, String reason) => _c.put('/internal/expedientes/$id/advisor', {'advisorId': advisorId, 'reason': reason});
 Future<List<DuplicateMatch>> checkClientDuplicates(List<String> holderNames) async =>
     _l(await _c.post('/internal/expedientes/duplicate-check', {'holderNames': holderNames}), DuplicateMatch.fromJson);
 Future<ExpedienteResponse> createExpediente(Json request) async => ExpedienteResponse.fromJson(_j(await _c.post('/internal/expedientes', request)));

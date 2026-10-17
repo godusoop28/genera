@@ -18,6 +18,8 @@ public record ExpedienteSummary(
     PropertyLegalStatus declaredLegalStatus,
     String propertyAddress,
     UUID createdByUserId,
+    // Control de Cambios #24: asesor responsable (null en expedientes sin asignar).
+    UUID assignedAdvisorId,
     List<ParticipantView> participants,
     LegalDetails legalDetails) {
 

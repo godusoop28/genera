@@ -1,6 +1,7 @@
 import { apiClient } from "@/lib/api/client";
 import type {
   BackendExpedienteStatus,
+  BackendOperationType,
   BackendAccreditationType,
   BackendCivilStatus,
   BackendPersonType,
@@ -26,6 +27,7 @@ export interface ExpedienteConfiguration {
   accreditationType: BackendAccreditationType;
   condominiumRegime: boolean;
   propertyCaseType: BackendPropertyCaseType;
+  operationType: BackendOperationType;
   declaredLegalStatus: BackendPropertyLegalStatus;
   propertyAddress: string;
 }
@@ -36,6 +38,8 @@ export interface CreateExpedienteRequest extends Omit<ExpedienteConfiguration, "
   propertyAddress?: string;
   /** Referencia corta para que el cliente reconozca su liga (no es el domicilio legal). */
   propertyReference?: string;
+  /** Control de Cambios #24: obligatorio desde el alta. */
+  assignedAdvisorId: string;
   participants: ParticipantRequest[];
   legalDetails?: LegalDetails;
   /** Solo si el cliente ya tiene otro expediente en curso y quien crea puede autorizarlo. */
@@ -64,6 +68,22 @@ export function listExpedientes(page = 0, size = 20) {
 
 export function createExpediente(request: CreateExpedienteRequest) {
   return apiClient.post<ExpedienteResponse>("/internal/expedientes", request);
+}
+
+/** Asesor activo que se puede asignar a un expediente (Control de Cambios #24). */
+export interface AdvisorOption {
+  id: string;
+  name: string;
+  roleCode: string;
+}
+
+export function listAssignableAdvisors() {
+  return apiClient.get<AdvisorOption[]>("/internal/expedientes/advisors");
+}
+
+/** Solo administrador o directivo; queda en el historial del expediente. */
+export function assignAdvisor(id: string, advisorId: string, reason: string) {
+  return apiClient.put<ExpedienteResponse>(`/internal/expedientes/${id}/advisor`, { advisorId, reason });
 }
 
 export function getExpediente(id: string) {
@@ -143,15 +163,54 @@ export interface ExpedienteOverviewItem {
   documents: DocumentProgress;
 }
 
-export interface ExpedienteOverview {
-  page: PageResponse<ExpedienteOverviewItem>;
-  /** Totales sobre todos los expedientes visibles para el usuario (no solo la página). */
-  counts: { total: number; pending: number; inReview: number; complete: number };
+export interface GroupCounts {
+  total: number;
+  pending: number;
+  inReview: number;
+  complete: number;
 }
 
-export function getExpedienteOverview(params: { q?: string; group?: ExpedienteStatusGroup | null; page?: number; size?: number }) {
+export interface ExpedienteOverview {
+  page: PageResponse<ExpedienteOverviewItem>;
+  /** Totales sobre todos los expedientes visibles para el usuario con los filtros de cartera (no solo la página). */
+  counts: GroupCounts;
+}
+
+/** Control de Cambios #24: filtros de cartera. advisorId "none" = sin asesor asignado. */
+export interface PortfolioFilters {
+  propertyCaseType?: BackendPropertyCaseType | null;
+  operationType?: BackendOperationType | null;
+  advisorId?: string | null;
+}
+
+export const UNASSIGNED_ADVISOR = "none";
+
+function setPortfolioParams(search: URLSearchParams, filters: PortfolioFilters) {
+  if (filters.propertyCaseType) search.set("propertyCaseType", filters.propertyCaseType);
+  if (filters.operationType) search.set("operationType", filters.operationType);
+  if (filters.advisorId === UNASSIGNED_ADVISOR) search.set("unassigned", "true");
+  else if (filters.advisorId) search.set("advisorId", filters.advisorId);
+}
+
+export function getExpedienteOverview(params: { q?: string; group?: ExpedienteStatusGroup | null; page?: number; size?: number } & PortfolioFilters) {
   const search = new URLSearchParams({ page: String(params.page ?? 0), size: String(params.size ?? 18), sort: "updatedAt,desc" });
   if (params.q?.trim()) search.set("q", params.q.trim());
   if (params.group) search.set("group", params.group);
+  setPortfolioParams(search, params);
   return apiClient.get<ExpedienteOverview>(`/internal/expedientes/overview?${search.toString()}`);
+}
+
+export interface PortfolioReport {
+  /** Con todos los filtros. */
+  total: GroupCounts;
+  /** Nivel 1: tipo de propiedad + operación (respeta solo el filtro de asesor). */
+  byTypeOperation: { propertyCaseType: BackendPropertyCaseType; operationType: BackendOperationType; counts: GroupCounts }[];
+  /** Nivel 2: asesor asignado (respeta solo el tipo y la operación); advisorId null = sin asignar. */
+  byAdvisor: { advisorId: string | null; name: string; counts: GroupCounts }[];
+}
+
+export function getPortfolioReport(filters: PortfolioFilters) {
+  const search = new URLSearchParams();
+  setPortfolioParams(search, filters);
+  return apiClient.get<PortfolioReport>(`/internal/expedientes/overview/portfolio?${search.toString()}`);
 }

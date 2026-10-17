@@ -7,6 +7,7 @@ import type {
   BackendDocumentStatus,
   BackendIdDocumentType,
   BackendMaritalRegime,
+  BackendOperationType,
   BackendParticipantRole,
   BackendPersonType,
   BackendPropertyCaseType,
@@ -38,6 +39,11 @@ export const propertyTypeLabels: Record<BackendPropertyCaseType, string> = {
   DEPARTMENT: "Departamento",
   RESIDENTIAL_LAND: "Terreno para casa habitación",
   COMMERCIAL: "Comercial",
+};
+
+export const operationLabels: Record<BackendOperationType, string> = {
+  SALE: "Venta",
+  RENT: "Renta",
 };
 
 export const legalStatusLabels: Record<BackendPropertyLegalStatus, string> = {

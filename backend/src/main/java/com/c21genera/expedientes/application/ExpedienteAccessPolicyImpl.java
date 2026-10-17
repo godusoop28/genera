@@ -10,7 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * EXPEDIENT_VIEW_ALL ve cualquier expediente; EXPEDIENT_VIEW_OWN solo los
- * que el propio usuario creó. Cualquier otro caso responde 404 (igual que un
+ * que tiene asignados como asesor (Control de Cambios #24). Cualquier otro caso responde 404 (igual que un
  * expediente inexistente) para no revelar que existe.
  */
 @Component
@@ -41,7 +41,7 @@ class ExpedienteAccessPolicyImpl implements ExpedienteAccessPolicy {
         .map(
             e ->
                 permissions.contains("EXPEDIENT_VIEW_ALL")
-                    || (permissions.contains("EXPEDIENT_VIEW_OWN") && userId.equals(e.getCreatedByUserId())))
+                    || (permissions.contains("EXPEDIENT_VIEW_OWN") && userId.equals(e.getAssignedAdvisorId())))
         .orElse(false);
   }
 }

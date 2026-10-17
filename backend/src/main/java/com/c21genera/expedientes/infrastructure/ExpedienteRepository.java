@@ -16,16 +16,24 @@ public interface ExpedienteRepository extends JpaRepository<Expediente, UUID>, J
 
   Optional<Expediente> findByFolio(String folio);
 
-  Page<Expediente> findByCreatedByUserId(UUID createdByUserId, Pageable pageable);
+  Page<Expediente> findByAssignedAdvisorId(UUID assignedAdvisorId, Pageable pageable);
 
   Page<Expediente> findByStatus(ExpedienteStatus status, Pageable pageable);
 
-  /** Cuántos expedientes hay en cada estatus (filas: estatus, total). */
-  @Query("SELECT e.status, COUNT(e) FROM Expediente e GROUP BY e.status")
-  List<Object[]> countAllByStatus();
+  /**
+   * Control de Cambios #24: cartera agregada (filas: tipo de propiedad, operación, asesor
+   * asignado, nombre del asesor, estatus, total).
+   */
+  @Query(
+      "SELECT e.propertyCaseType, e.operationType, e.assignedAdvisorId, e.assignedAdvisorName, e.status, COUNT(e) FROM Expediente e"
+          + " GROUP BY e.propertyCaseType, e.operationType, e.assignedAdvisorId, e.assignedAdvisorName, e.status")
+  List<Object[]> portfolioRows();
 
-  @Query("SELECT e.status, COUNT(e) FROM Expediente e WHERE e.createdByUserId = :userId GROUP BY e.status")
-  List<Object[]> countOwnByStatus(@Param("userId") UUID userId);
+  @Query(
+      "SELECT e.propertyCaseType, e.operationType, e.assignedAdvisorId, e.assignedAdvisorName, e.status, COUNT(e) FROM Expediente e"
+          + " WHERE e.assignedAdvisorId = :userId"
+          + " GROUP BY e.propertyCaseType, e.operationType, e.assignedAdvisorId, e.assignedAdvisorName, e.status")
+  List<Object[]> portfolioRowsOf(@Param("userId") UUID userId);
 
   @Query(value = "SELECT nextval('expediente_folio_seq')", nativeQuery = true)
   long nextFolioSequenceValue();

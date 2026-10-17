@@ -29,6 +29,9 @@ const propertyTypeLabels = {
   'COMMERCIAL': 'Comercial',
 };
 
+/// Control de Cambios #24.
+const operationLabels = {'SALE': 'Venta', 'RENT': 'Renta'};
+
 const legalStatusLabels = {
   'LIBRE_GRAVAMEN': 'Libre de gravamen',
   'CON_GRAVAMEN': 'Con gravamen',

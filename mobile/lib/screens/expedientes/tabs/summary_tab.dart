@@ -109,6 +109,8 @@ class _SummaryTabState extends State<SummaryTab> {
               ),
               FieldGrid(
                 children: [
+                  FieldView('Asesor asignado', e.assignedAdvisorName ?? 'Sin asesor asignado', upper: true),
+                  FieldView('Operación', label(operationLabels, e.operationType), upper: true),
                   FieldView('Tipo de cliente', label(personTypeLabels, e.personType), upper: true),
                   FieldView('Quién firma', label(signerCharacterLabels, e.signerCharacter), upper: true),
                   FieldView('Acreditación de la propiedad', label(accreditationLabels, e.accreditationType), upper: true),
@@ -125,9 +127,19 @@ class _SummaryTabState extends State<SummaryTab> {
                   if (e.decisionReason != null) FieldView('Motivo de la decisión', e.decisionReason, upper: true),
                 ],
               ),
-              if (auth.can('EXPEDIENT_EDIT') && e.correctable) ...[
+              if ((auth.can('EXPEDIENT_EDIT') && e.correctable) || auth.can('EXPEDIENT_ADVISOR_ASSIGN')) ...[
                 const SizedBox(height: 14),
-                Btn('Corregir datos', icon: Icons.edit_outlined, small: true, variant: BtnVariant.secondary, onPressed: () => _correct(context)),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (auth.can('EXPEDIENT_EDIT') && e.correctable)
+                      Btn('Corregir datos', icon: Icons.edit_outlined, small: true, variant: BtnVariant.secondary, onPressed: () => _correct(context)),
+                    // Control de Cambios #24: el administrador o directivo cambia el asesor en cualquier etapa.
+                    if (auth.can('EXPEDIENT_ADVISOR_ASSIGN'))
+                      Btn('Cambiar asesor', icon: Icons.manage_accounts_outlined, small: true, variant: BtnVariant.secondary, onPressed: () => _changeAdvisor(context)),
+                  ],
+                ),
               ],
             ],
           ),
@@ -279,6 +291,7 @@ class _SummaryTabState extends State<SummaryTab> {
       'accreditationType': e.accreditationType,
       'condominiumRegime': e.condominiumRegime,
       'propertyCaseType': e.propertyCaseType,
+      'operationType': e.operationType,
       'declaredLegalStatus': e.declaredLegalStatus,
       'propertyAddress': e.propertyAddress ?? '',
     };
@@ -318,6 +331,13 @@ class _SummaryTabState extends State<SummaryTab> {
           ),
           const SizedBox(height: 12),
           AppSelect<String>(
+            label: 'Operación',
+            value: config['operationType'] as String,
+            options: optionsOf(operationLabels),
+            onChanged: (v) => setSheet(() => config['operationType'] = v),
+          ),
+          const SizedBox(height: 12),
+          AppSelect<String>(
             label: 'Situación jurídica declarada',
             value: config['declaredLegalStatus'] as String,
             options: optionsOf(legalStatusLabels),
@@ -348,6 +368,57 @@ class _SummaryTabState extends State<SummaryTab> {
               : () async {
                   setSheet(() => saving = true);
                   await run(() => api.correctExpediente(e.id, config, reason.trim()), 'Datos corregidos y registrados en la bitácora.');
+                  if (ctx.mounted) Navigator.pop(ctx);
+                },
+        ),
+      ],
+    );
+  }
+
+  /// Control de Cambios #24: queda en el historial con el asesor anterior, el nuevo, quién y cuándo.
+  Future<void> _changeAdvisor(BuildContext context) async {
+    List<AdvisorOption> advisors;
+    try {
+      advisors = await api.listAssignableAdvisors();
+    } catch (err) {
+      if (context.mounted) showToast(context, errorText(err));
+      return;
+    }
+    if (!context.mounted) return;
+    var advisorId = e.assignedAdvisorId ?? '';
+    var reason = '';
+    var saving = false;
+    await showAppSheet(
+      context,
+      title: 'Cambiar asesor asignado',
+      builder: (ctx, setSheet) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AppSelect<String>(
+            label: 'Asesor asignado',
+            value: advisorId,
+            options: [
+              (value: '', label: 'Selecciona un asesor'),
+              for (final a in advisors) (value: a.id, label: a.roleCode == 'ADVISOR' ? a.name : '${a.name} (${label(roleLabels, a.roleCode)})'),
+            ],
+            onChanged: (v) => setSheet(() => advisorId = v),
+          ),
+          const SizedBox(height: 12),
+          AppTextField(label: 'Motivo (opcional)', maxLines: 2, maxLength: 500, hint: 'Ej. El asesor anterior dejó la zona.', onChanged: (v) => reason = v),
+          const SizedBox(height: 6),
+          const MutedText('El cambio queda en el historial del expediente con el asesor anterior, el nuevo, quién lo hizo y la fecha.', size: 12),
+        ],
+      ),
+      footer: (ctx, setSheet) => [
+        Btn('Cancelar', variant: BtnVariant.ghost, onPressed: () => Navigator.pop(ctx)),
+        Btn(
+          'Guardar',
+          loading: saving,
+          onPressed: advisorId.isEmpty || advisorId == e.assignedAdvisorId
+              ? null
+              : () async {
+                  setSheet(() => saving = true);
+                  await run(() => api.assignAdvisor(e.id, advisorId, reason.trim()), 'Asesor cambiado; quedó registrado en el historial.');
                   if (ctx.mounted) Navigator.pop(ctx);
                 },
         ),

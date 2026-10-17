@@ -10,7 +10,17 @@ import { Select } from "@/components/ui/Select";
 import { Toggle } from "@/components/ui/Toggle";
 import { useToast } from "@/components/ui/Toast";
 import { listDocuments } from "@/lib/api/documents";
-import { acceptProperty, correctExpediente, getClientData, rejectProperty, signReception, type ExpedienteConfiguration } from "@/lib/api/expedientes";
+import {
+  acceptProperty,
+  assignAdvisor,
+  correctExpediente,
+  getClientData,
+  listAssignableAdvisors,
+  rejectProperty,
+  signReception,
+  type AdvisorOption,
+  type ExpedienteConfiguration,
+} from "@/lib/api/expedientes";
 import { generatePublicLink, getPublicLinkStatus, revokePublicLink } from "@/lib/api/public-link";
 import type { PublicLinkStatusResponse } from "@/lib/api/types";
 import { errorText } from "@/lib/errors";
@@ -20,12 +30,14 @@ import {
   formatDate,
   formatDateTime,
   legalStatusLabels,
+  operationLabels,
   personTypeLabels,
   propertyTypeLabels,
+  roleLabels,
   signerCharacterLabels,
 } from "@/lib/labels";
 import { useCan } from "@/lib/permissions";
-import { Copy, FileSignature, Link2, Pencil, ShieldOff, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Copy, FileSignature, Link2, Pencil, ShieldOff, ThumbsDown, ThumbsUp, UserCog } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { DocumentTimingCard } from "./DocumentTimingCard";
 import { PrivacyCard } from "./PrivacyCard";
@@ -36,6 +48,7 @@ export function SummaryTab({ expediente, participants, reload, freshPublicLink: 
   const can = useCan();
   const [linkStatus, setLinkStatus] = useState<PublicLinkStatusResponse | null>(null);
   const [editing, setEditing] = useState(false);
+  const [changingAdvisor, setChangingAdvisor] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [busy, setBusy] = useState(false);
   // Controles de cambios #14 y #22: cuántos documentos están pendientes de entrega y qué servicios tiene.
@@ -111,6 +124,8 @@ export function SummaryTab({ expediente, participants, reload, freshPublicLink: 
           description="Cualquier corrección queda en la bitácora con quién la hizo y por qué; si ya había un contrato sin firmar, se genera una versión nueva."
         />
         <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Field label="Asesor asignado" value={expediente.assignedAdvisorName ?? "Sin asesor asignado"} />
+          <Field label="Operación" value={operationLabels[expediente.operationType]} />
           <Field label="Tipo de cliente" value={personTypeLabels[expediente.personType]} />
           <Field label="Quién firma" value={signerCharacterLabels[expediente.signerCharacter]} />
           <Field label="Acreditación de la propiedad" value={accreditationLabels[expediente.accreditationType]} />
@@ -128,11 +143,19 @@ export function SummaryTab({ expediente, participants, reload, freshPublicLink: 
           <Field label="Última actualización" value={formatDateTime(expediente.updatedAt)} />
           {expediente.decisionReason ? <Field label="Motivo de la decisión" value={expediente.decisionReason} /> : null}
         </dl>
-        {can("EXPEDIENT_EDIT") && expediente.correctable ? (
-          <Button variant="secondary" size="sm" className="mt-4" onClick={() => setEditing(true)}>
-            <Pencil className="h-4 w-4" aria-hidden /> Corregir datos
-          </Button>
-        ) : null}
+        <div className="mt-4 flex flex-wrap gap-2">
+          {can("EXPEDIENT_EDIT") && expediente.correctable ? (
+            <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
+              <Pencil className="h-4 w-4" aria-hidden /> Corregir datos
+            </Button>
+          ) : null}
+          {/* Control de Cambios #24: el administrador o directivo cambia el asesor en cualquier etapa. */}
+          {can("EXPEDIENT_ADVISOR_ASSIGN") ? (
+            <Button variant="secondary" size="sm" onClick={() => setChangingAdvisor(true)}>
+              <UserCog className="h-4 w-4" aria-hidden /> Cambiar asesor
+            </Button>
+          ) : null}
+        </div>
       </Card>
 
       <PrivacyCard expediente={expediente} reload={reload} />
@@ -239,6 +262,7 @@ export function SummaryTab({ expediente, participants, reload, freshPublicLink: 
             accreditationType: expediente.accreditationType,
             condominiumRegime: expediente.condominiumRegime,
             propertyCaseType: expediente.propertyCaseType,
+            operationType: expediente.operationType,
             declaredLegalStatus: expediente.declaredLegalStatus,
             propertyAddress: expediente.propertyAddress ?? "",
           }}
@@ -249,7 +273,94 @@ export function SummaryTab({ expediente, participants, reload, freshPublicLink: 
           }}
         />
       ) : null}
+
+      {changingAdvisor ? (
+        <AdvisorModal
+          currentId={expediente.assignedAdvisorId}
+          onClose={() => setChangingAdvisor(false)}
+          onSave={async (advisorId, reason) => {
+            await run(() => assignAdvisor(expediente.id, advisorId, reason), "Asesor cambiado; quedó registrado en el historial.");
+            setChangingAdvisor(false);
+          }}
+        />
+      ) : null}
     </div>
+  );
+}
+
+/** Control de Cambios #24: cambio de asesor asignado (queda en el historial: anterior, nuevo, quién y cuándo). */
+function AdvisorModal({
+  currentId,
+  onClose,
+  onSave,
+}: {
+  currentId: string | null;
+  onClose: () => void;
+  onSave: (advisorId: string, reason: string) => Promise<void>;
+}) {
+  const [advisors, setAdvisors] = useState<AdvisorOption[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [advisorId, setAdvisorId] = useState(currentId ?? "");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    listAssignableAdvisors()
+      .then(setAdvisors)
+      .catch(() => setFailed(true));
+  }, []);
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Cambiar asesor asignado"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button
+            disabled={busy || !advisorId || advisorId === currentId}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await onSave(advisorId, reason.trim());
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Guardar
+          </Button>
+        </>
+      }
+    >
+      {failed ? (
+        <p className="text-sm text-danger-text">No se pudo cargar la lista de asesores. Cierra y vuelve a intentarlo.</p>
+      ) : (
+        <Select
+          label="Asesor asignado"
+          value={advisorId}
+          disabled={advisors === null}
+          onChange={(e) => setAdvisorId(e.target.value)}
+          options={[
+            { value: "", label: advisors === null ? "Cargando asesores…" : "Selecciona un asesor" },
+            ...(advisors ?? []).map((a) => ({ value: a.id, label: a.roleCode === "ADVISOR" ? a.name : `${a.name} (${roleLabels[a.roleCode] ?? a.roleCode})` })),
+          ]}
+        />
+      )}
+      <label className="mb-1 mt-4 block text-sm font-medium text-obsessed">Motivo (opcional)</label>
+      <textarea
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        rows={2}
+        maxLength={500}
+        placeholder="Ej. El asesor anterior dejó la zona."
+        className="w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm outline-none focus:border-gold"
+      />
+      <p className="mt-2 text-xs text-muted">El cambio queda en el historial del expediente con el asesor anterior, el nuevo, quién lo hizo y la fecha.</p>
+    </Modal>
   );
 }
 
@@ -316,6 +427,12 @@ function CorrectionModal({
           value={config.propertyCaseType}
           onChange={(e) => set("propertyCaseType", e.target.value as ExpedienteConfiguration["propertyCaseType"])}
           options={Object.entries(propertyTypeLabels).map(([value, label]) => ({ value, label }))}
+        />
+        <Select
+          label="Operación"
+          value={config.operationType}
+          onChange={(e) => set("operationType", e.target.value as ExpedienteConfiguration["operationType"])}
+          options={Object.entries(operationLabels).map(([value, label]) => ({ value, label }))}
         />
         <Select
           label="Situación jurídica declarada"

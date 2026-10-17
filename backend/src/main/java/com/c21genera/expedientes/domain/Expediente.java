@@ -2,6 +2,7 @@ package com.c21genera.expedientes.domain;
 
 import com.c21genera.expedientes.AccreditationType;
 import com.c21genera.expedientes.ExpedienteStatus;
+import com.c21genera.expedientes.OperationType;
 import com.c21genera.expedientes.PersonType;
 import com.c21genera.expedientes.PropertyCaseType;
 import com.c21genera.expedientes.PropertyLegalStatus;
@@ -53,6 +54,10 @@ public class Expediente extends AuditableEntity {
   private PropertyCaseType propertyCaseType;
 
   @Enumerated(EnumType.STRING)
+  @Column(nullable = false, length = 16)
+  private OperationType operationType;
+
+  @Enumerated(EnumType.STRING)
   @Column(nullable = false, length = 24)
   private PropertyLegalStatus declaredLegalStatus;
 
@@ -74,6 +79,16 @@ public class Expediente extends AuditableEntity {
   @Column(nullable = false)
   private UUID createdByUserId;
 
+  /**
+   * Control de Cambios #24: asesor responsable del inmueble. Se elige al dar de alta y solo el
+   * administrador o directivo lo cambia; el nombre se guarda para listar y reportar sin consultar
+   * el módulo identity por cada expediente.
+   */
+  private UUID assignedAdvisorId;
+
+  @Column(length = 160)
+  private String assignedAdvisorName;
+
   /** Ver {@link com.c21genera.expedientes.LegalDetails}; lo serializa ExpedienteService. */
   private String legalDetailsJson;
 
@@ -87,10 +102,13 @@ public class Expediente extends AuditableEntity {
       AccreditationType accreditationType,
       boolean condominiumRegime,
       PropertyCaseType propertyCaseType,
+      OperationType operationType,
       PropertyLegalStatus declaredLegalStatus,
       String propertyAddress,
       String propertyReference,
-      UUID createdByUserId) {
+      UUID createdByUserId,
+      UUID assignedAdvisorId,
+      String assignedAdvisorName) {
     this.id = UUID.randomUUID();
     this.folio = folio;
     this.ownerDisplayName = ownerDisplayName;
@@ -100,10 +118,13 @@ public class Expediente extends AuditableEntity {
     this.accreditationType = accreditationType;
     this.condominiumRegime = condominiumRegime;
     this.propertyCaseType = propertyCaseType;
+    this.operationType = operationType;
     this.declaredLegalStatus = declaredLegalStatus;
     this.propertyAddress = propertyAddress;
     this.propertyReference = propertyReference;
     this.createdByUserId = createdByUserId;
+    this.assignedAdvisorId = assignedAdvisorId;
+    this.assignedAdvisorName = assignedAdvisorName;
   }
 
   public record Configuration(
@@ -113,6 +134,7 @@ public class Expediente extends AuditableEntity {
       AccreditationType accreditationType,
       boolean condominiumRegime,
       PropertyCaseType propertyCaseType,
+      OperationType operationType,
       PropertyLegalStatus declaredLegalStatus,
       String propertyAddress) {}
 
@@ -124,6 +146,7 @@ public class Expediente extends AuditableEntity {
         accreditationType,
         condominiumRegime,
         propertyCaseType,
+        operationType,
         declaredLegalStatus,
         propertyAddress);
   }
@@ -142,8 +165,18 @@ public class Expediente extends AuditableEntity {
     this.accreditationType = configuration.accreditationType();
     this.condominiumRegime = configuration.condominiumRegime();
     this.propertyCaseType = configuration.propertyCaseType();
+    this.operationType = configuration.operationType();
     this.declaredLegalStatus = configuration.declaredLegalStatus();
     this.propertyAddress = configuration.propertyAddress();
+  }
+
+  /**
+   * Control de Cambios #24: cambiar de asesor no toca datos del contrato, así que se permite en
+   * cualquier etapa (también con el contrato firmado o el inmueble decidido).
+   */
+  public void assignAdvisor(UUID advisorId, String advisorName) {
+    this.assignedAdvisorId = advisorId;
+    this.assignedAdvisorName = advisorName;
   }
 
   public void replaceLegalDetailsJson(String json) {
@@ -275,6 +308,10 @@ public class Expediente extends AuditableEntity {
     return propertyCaseType;
   }
 
+  public OperationType getOperationType() {
+    return operationType;
+  }
+
   public PropertyLegalStatus getDeclaredLegalStatus() {
     return declaredLegalStatus;
   }
@@ -289,6 +326,14 @@ public class Expediente extends AuditableEntity {
 
   public UUID getCreatedByUserId() {
     return createdByUserId;
+  }
+
+  public UUID getAssignedAdvisorId() {
+    return assignedAdvisorId;
+  }
+
+  public String getAssignedAdvisorName() {
+    return assignedAdvisorName;
   }
 
   public String getLegalDetailsJson() {

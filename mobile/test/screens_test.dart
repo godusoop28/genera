@@ -103,6 +103,7 @@ void main() {
     'expedientes': '/expedientes',
     'expediente_nuevo': '/expedientes/nuevo',
     'expediente_resumen': '/expedientes/exp-1',
+    'reportes': '/reportes',
     'dashboard': '/dashboard',
     'leads': '/leads',
     'lead_detalle': '/leads/lead-1',
@@ -381,8 +382,21 @@ void main() {
 
   testWidgets('flujo: crear un expediente en 3 pasos', (tester) async {
     await _open(tester, '/expedientes/nuevo');
+    // Control de Cambios #24: el asesor asignado es obligatorio desde el primer paso.
+    await tester.tap(find.text('Continuar'));
+    await settle(tester);
+    expect(find.text('Selecciona el asesor asignado al inmueble.'), findsOneWidget);
+    await tester.tap(find.text('Selecciona un asesor'));
+    await settle(tester);
+    await tester.tap(find.text('Carlos Méndez').last);
+    await settle(tester);
+    // La tarjeta del asesor empuja el nombre del propietario hacia abajo.
+    await tester.ensureVisible(find.byType(TextField, skipOffstage: false).first);
+    await settle(tester);
     await tester.enterText(find.byType(TextField).first, 'Juan Pérez López');
     await tester.tap(find.text('Continuar'));
+    await settle(tester);
+    await tester.scrollUntilVisible(find.byType(TextField), -300, scrollable: find.byType(Scrollable).first);
     await settle(tester);
     await tester.enterText(find.byType(TextField).first, 'Casa en Vista Hermosa');
     await tester.tap(find.text('Continuar'));
@@ -393,6 +407,8 @@ void main() {
     final req = sentRequests.firstWhere((r) => r.path == '/internal/expedientes');
     final body = req.body as Map;
     expect(body['propertyReference'], 'Casa en Vista Hermosa');
+    expect(body['assignedAdvisorId'], 'u-3');
+    expect(body['operationType'], 'SALE');
     expect((body['participants'] as List).first, {'role': 'OWNER', 'fullName': 'Juan Pérez López'});
     expect(sentRequests.any((r) => r.method == 'DELETE' && r.path == '/internal/drafts/nuevo-expediente'), isTrue, reason: 'borra el borrador');
     await _close(tester);

@@ -234,7 +234,7 @@ class NotificationTriggers {
   }
 
   private void toAdvisor(ExpedienteSummary e, String kind, String subject, String body) {
-    UUID advisorId = e.createdByUserId();
+    UUID advisorId = e.assignedAdvisorId() != null ? e.assignedAdvisorId() : e.createdByUserId();
     String email = users.contactOf(advisorId).filter(u -> u.active()).map(u -> u.email()).orElse(null);
     notifications.notify(e.id(), kind + " (asesor)", email, subject, body);
   }

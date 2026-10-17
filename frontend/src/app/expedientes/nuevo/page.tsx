@@ -12,11 +12,12 @@ import { Toggle } from "@/components/ui/Toggle";
 import { useToast } from "@/components/ui/Toast";
 import { ApiError } from "@/lib/api/client";
 import { addCustomDocument } from "@/lib/api/documents";
-import { checkClientDuplicates, createExpediente, type DuplicateMatchResponse } from "@/lib/api/expedientes";
+import { checkClientDuplicates, createExpediente, listAssignableAdvisors, type AdvisorOption, type DuplicateMatchResponse } from "@/lib/api/expedientes";
 import { backendStatusLabels } from "@/lib/api/status-labels";
 import { formatDate } from "@/lib/labels";
-import type { BackendAccreditationType, BackendPersonType, BackendPropertyCaseType, ParticipantRequest } from "@/lib/api/types";
-import { accreditationLabels, propertyTypeLabels } from "@/lib/labels";
+import type { BackendAccreditationType, BackendOperationType, BackendPersonType, BackendPropertyCaseType, ParticipantRequest } from "@/lib/api/types";
+import { useAuth } from "@/context/AuthProvider";
+import { accreditationLabels, operationLabels, propertyTypeLabels, roleLabels } from "@/lib/labels";
 import { useCan } from "@/lib/permissions";
 import Link from "next/link";
 import { previewRequirements, type PreviewItem } from "@/lib/requirements-preview";
@@ -60,6 +61,9 @@ interface NewExpedienteDraft {
   attorney: ParticipantRequest;
   accreditationType: BackendAccreditationType;
   propertyCaseType: BackendPropertyCaseType;
+  /** Control de Cambios #24. */
+  operationType?: BackendOperationType;
+  assignedAdvisorId?: string;
   condominiumRegime: boolean;
   propertyReference?: string;
   /** Documentos que no están en el listado, con el nombre capturado (Control de Cambios #1). */
@@ -102,6 +106,7 @@ export default function NuevoExpedientePage() {
 function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft | null; serverDraft: ServerDraft<NewExpedienteDraft> }) {
   const { showToast } = useToast();
   const can = useCan();
+  const { user } = useAuth();
   const canAuthorizeDuplicates = can("EXPEDIENT_DUPLICATE_AUTHORIZE");
   const router = useRouter();
   const { update: updateDraft } = serverDraft;
@@ -116,6 +121,11 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
   const [attorney, setAttorney] = useState<ParticipantRequest>(draft?.attorney ?? person("ATTORNEY"));
   const [accreditationType, setAccreditationType] = useState<BackendAccreditationType>(draft?.accreditationType ?? "ESCRITURA_PUBLICA");
   const [propertyCaseType, setPropertyCaseType] = useState<BackendPropertyCaseType>(draft?.propertyCaseType ?? "HOUSING");
+  const [operationType, setOperationType] = useState<BackendOperationType>(draft?.operationType ?? "SALE");
+  // Control de Cambios #24: asesor responsable, obligatorio desde el inicio del alta.
+  const [assignedAdvisorId, setAssignedAdvisorId] = useState(draft?.assignedAdvisorId ?? "");
+  const [advisors, setAdvisors] = useState<AdvisorOption[] | null>(null);
+  const [advisorsError, setAdvisorsError] = useState(false);
   const [condominiumRegime, setCondominiumRegime] = useState(draft?.condominiumRegime ?? false);
   const [propertyReference, setPropertyReference] = useState(draft?.propertyReference ?? "");
   const [extraDocuments, setExtraDocuments] = useState<string[]>(draft?.extraDocuments ?? []);
@@ -138,6 +148,21 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
   const firstRender = useRef(true);
 
   useEffect(() => {
+    let cancelled = false;
+    listAssignableAdvisors()
+      .then((list) => {
+        if (cancelled) return;
+        setAdvisors(list);
+        // Si quien da de alta es asesor, se propone a sí mismo; un asesor dado de baja se descarta.
+        setAssignedAdvisorId((current) => (current && list.some((a) => a.id === current) ? current : list.some((a) => a.id === user?.id && a.roleCode === "ADVISOR") ? user!.id : ""));
+      })
+      .catch(() => !cancelled && setAdvisorsError(true));
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  useEffect(() => {
     if (firstRender.current) {
       firstRender.current = false;
       return;
@@ -150,6 +175,8 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
       attorney,
       accreditationType,
       propertyCaseType,
+      operationType,
+      assignedAdvisorId,
       condominiumRegime,
       propertyReference,
       extraDocuments,
@@ -164,6 +191,8 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
     attorney,
     accreditationType,
     propertyCaseType,
+    operationType,
+    assignedAdvisorId,
     condominiumRegime,
     propertyReference,
     extraDocuments,
@@ -185,7 +214,8 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
   const conditionalPreview = preview.filter((i) => i.kind === "conditional");
   const optionalPreview = preview.filter((i) => i.kind === "optional");
 
-  const clientValid = participants.every((p) => p.fullName.trim().length > 0);
+  const advisorValid = assignedAdvisorId.length > 0;
+  const clientValid = advisorValid && participants.every((p) => p.fullName.trim().length > 0);
   const propertyValid = propertyReference.trim().length > 0;
   const showError = (key: string, value: string) => (showErrors || touched.has(key)) && !value.trim();
   // Cada mensaje nombra el dato concreto que falta (antes todos decían "Captura el nombre completo").
@@ -200,7 +230,11 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
         ? ["el nombre del apoderado"]
         : []),
   ];
-  const missingNamesText = missingNames.length > 0 ? `Falta capturar ${missingNames.join(", ")}.` : "";
+  const missingNamesText = !advisorValid
+    ? "Selecciona el asesor asignado al inmueble."
+    : missingNames.length > 0
+      ? `Falta capturar ${missingNames.join(", ")}.`
+      : "";
   const setOwner = (index: number, value: ParticipantRequest) => setOwners((prev) => prev.map((o, i) => (i === index ? value : o)));
 
   const goTo = (next: StepId) => {
@@ -292,6 +326,8 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
         accreditationType,
         condominiumRegime,
         propertyCaseType,
+        operationType,
+        assignedAdvisorId,
         propertyReference: propertyReference.trim(),
         // Solo el nombre: estado civil, contacto, domicilio y situación jurídica
         // se piden al cliente en su liga o se leen de sus documentos.
@@ -310,7 +346,8 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
           ? `Expediente ${result.folio} creado. No se pudo agregar: ${failed.join(", ")}; agrégalo desde la pestaña Documentos.`
           : `Expediente ${result.folio} creado.`,
       );
-      router.push(`/expedientes/${result.id}`);
+      // Un asesor solo ve los expedientes que tiene asignados (Control de Cambios #24).
+      router.push(can("EXPEDIENT_VIEW_ALL") || result.assignedAdvisorId === user?.id ? `/expedientes/${result.id}` : "/expedientes");
     } catch (err) {
       // Lo capturado se conserva: el usuario puede reintentar sin volver a escribir nada.
       setError(err instanceof ApiError ? `No se pudo crear el expediente: ${err.message}` : "No se pudo conectar con el servidor. Lo capturado sigue aquí; intenta de nuevo.");
@@ -360,6 +397,30 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
 
           {step === 1 ? (
             <>
+              <Card className="animate-fade-in">
+                <CardHeader title="Asesor asignado" description="Quién es responsable de este inmueble. Solo el administrador o un directivo podrá cambiarlo después." />
+                {advisorsError ? (
+                  <p className="text-sm text-danger-text">No se pudo cargar la lista de asesores. Recarga la página para intentarlo de nuevo.</p>
+                ) : (
+                  <Select
+                    label="Asesor asignado"
+                    value={assignedAdvisorId}
+                    onChange={(e) => setAssignedAdvisorId(e.target.value)}
+                    onBlur={() => touch("advisor")}
+                    disabled={advisors === null}
+                    required
+                    aria-invalid={(showErrors || touched.has("advisor")) && !advisorValid}
+                    options={[
+                      { value: "", label: advisors === null ? "Cargando asesores…" : "Selecciona un asesor" },
+                      ...(advisors ?? []).map((a) => ({ value: a.id, label: a.roleCode === "ADVISOR" ? a.name : `${a.name} (${roleLabels[a.roleCode] ?? a.roleCode})` })),
+                    ]}
+                  />
+                )}
+                {(showErrors || touched.has("advisor")) && !advisorValid ? (
+                  <p className="mt-1.5 text-sm text-danger-text">Selecciona el asesor asignado.</p>
+                ) : null}
+              </Card>
+
               <Card className="animate-fade-in">
                 <CardHeader title="¿Quién es el cliente?" description="Define qué documentos y qué datos pide el contrato." />
                 <div role="radiogroup" aria-label="Tipo de cliente" className="grid gap-3 sm:grid-cols-2">
@@ -551,6 +612,12 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
                   options={Object.entries(propertyTypeLabels).map(([value, label]) => ({ value, label }))}
                 />
                 <Select
+                  label="Operación"
+                  value={operationType}
+                  onChange={(e) => setOperationType(e.target.value as BackendOperationType)}
+                  options={Object.entries(operationLabels).map(([value, label]) => ({ value, label }))}
+                />
+                <Select
                   label="¿Con qué documento se acredita la propiedad?"
                   value={accreditationType}
                   onChange={(e) => setAccreditationType(e.target.value as BackendAccreditationType)}
@@ -585,6 +652,7 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
             <Card className="animate-fade-in">
               <CardHeader title="Revisa antes de crear" description="Puedes volver a cualquier paso; lo capturado se conserva." />
               <ReviewSection title="Cliente" onEdit={() => goTo(1)}>
+                <ReviewRow label="Asesor asignado" value={advisors?.find((a) => a.id === assignedAdvisorId)?.name ?? "—"} />
                 <ReviewRow label="Tipo de cliente" value={isMoral ? "Persona moral (empresa)" : "Persona física"} />
                 {!isMoral ? <ReviewRow label="Firma" value={signedByAttorney ? "Mediante apoderado" : "Los propietarios"} /> : null}
                 {participants.map((p, i) => (
@@ -617,6 +685,7 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
               <ReviewSection title="Inmueble" onEdit={() => goTo(2)}>
                 <ReviewRow label="Referencia para el cliente" value={propertyReference.trim() || "—"} />
                 <ReviewRow label="Tipo de inmueble" value={propertyTypeLabels[propertyCaseType]} />
+                <ReviewRow label="Operación" value={operationLabels[operationType]} />
                 <ReviewRow label="Acreditación" value={accreditationLabels[accreditationType]} />
                 <ReviewRow label="Régimen de condominio" value={condominiumRegime ? "Sí" : "No"} />
               </ReviewSection>

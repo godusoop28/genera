@@ -8,6 +8,7 @@ import com.c21genera.expedientes.ExpedienteSummary.ParticipantView;
 import com.c21genera.expedientes.ExpedienteSummary;
 import com.c21genera.expedientes.IdDocumentType;
 import com.c21genera.expedientes.LegalDetails;
+import com.c21genera.expedientes.OperationType;
 import com.c21genera.expedientes.MaritalRegime;
 import com.c21genera.expedientes.PersonType;
 import com.c21genera.expedientes.PropertyCaseType;
@@ -108,9 +109,13 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
       AccreditationType accreditationType,
       boolean condominiumRegime,
       PropertyCaseType propertyCaseType,
+      OperationType operationType,
       PropertyLegalStatus declaredLegalStatus,
       String propertyAddress,
       String propertyReference,
+      // Control de Cambios #24: obligatorio; el controlador ya verificó que es un asesor activo.
+      UUID assignedAdvisorId,
+      String assignedAdvisorName,
       List<ParticipantInput> participants,
       LegalDetails legalDetails,
       Actor actor,
@@ -189,10 +194,13 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
             command.accreditationType(),
             command.condominiumRegime(),
             command.propertyCaseType(),
+            command.operationType() != null ? command.operationType() : OperationType.SALE,
             command.declaredLegalStatus() != null ? command.declaredLegalStatus() : PropertyLegalStatus.EN_REVISION,
             blankToNull(command.propertyAddress()),
             blankToNull(command.propertyReference()),
-            command.actor().userId());
+            command.actor().userId(),
+            command.assignedAdvisorId(),
+            command.assignedAdvisorName());
     if (command.legalDetails() != null) {
       expediente.replaceLegalDetailsJson(writeLegalDetails(command.legalDetails()));
     }
@@ -225,21 +233,29 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
     return expedienteRepository.findAll(pageable);
   }
 
+  /** Control de Cambios #24: el asesor ve los expedientes que tiene asignados. */
   @Transactional(readOnly = true)
   public Page<Expediente> listOwn(UUID userId, Pageable pageable) {
-    return expedienteRepository.findByCreatedByUserId(userId, pageable);
+    return expedienteRepository.findByAssignedAdvisorId(userId, pageable);
   }
 
   /**
-   * Listado con búsqueda (folio, titular o domicilio) y filtro por estatus.
-   * ownerUserId null = todos los expedientes; si no, solo los que creó ese usuario.
+   * Control de Cambios #24: filtros de cartera (tipo de propiedad, operación y asesor asignado).
+   * unassigned = solo los expedientes sin asesor.
+   */
+  public record PortfolioFilter(PropertyCaseType propertyCaseType, OperationType operationType, UUID advisorId, boolean unassigned) {
+
+    public static final PortfolioFilter NONE = new PortfolioFilter(null, null, null, false);
+  }
+
+  /**
+   * Listado con búsqueda (folio, titular o domicilio), filtro por estatus y
+   * filtros de cartera. ownerUserId null = todos los expedientes; si no, solo
+   * los asignados a ese asesor.
    */
   @Transactional(readOnly = true)
-  public Page<Expediente> search(UUID ownerUserId, String query, Set<ExpedienteStatus> statuses, Pageable pageable) {
-    Specification<Expediente> spec = (root, q, cb) -> cb.conjunction();
-    if (ownerUserId != null) {
-      spec = spec.and((root, q, cb) -> cb.equal(root.get("createdByUserId"), ownerUserId));
-    }
+  public Page<Expediente> search(UUID ownerUserId, String query, Set<ExpedienteStatus> statuses, PortfolioFilter filter, Pageable pageable) {
+    Specification<Expediente> spec = visibleWith(ownerUserId, filter);
     if (statuses != null && !statuses.isEmpty()) {
       spec = spec.and((root, q, cb) -> root.get("status").in(statuses));
     }
@@ -258,15 +274,64 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
     return expedienteRepository.findAll(spec, pageable);
   }
 
-  /** Total de expedientes por estatus (los mismos que puede ver el usuario: todos, o solo los suyos). */
+  /** Total de expedientes por estatus (los que puede ver el usuario, con los filtros de cartera). */
   @Transactional(readOnly = true)
-  public Map<ExpedienteStatus, Long> countByStatus(UUID ownerUserId) {
-    List<Object[]> rows = ownerUserId == null ? expedienteRepository.countAllByStatus() : expedienteRepository.countOwnByStatus(ownerUserId);
+  public Map<ExpedienteStatus, Long> countByStatus(UUID ownerUserId, PortfolioFilter filter) {
     Map<ExpedienteStatus, Long> counts = new EnumMap<>(ExpedienteStatus.class);
-    for (Object[] row : rows) {
-      counts.put((ExpedienteStatus) row[0], ((Number) row[1]).longValue());
+    for (Object[] row : portfolioRows(ownerUserId)) {
+      if (matches(row, filter)) {
+        counts.merge((ExpedienteStatus) row[4], ((Number) row[5]).longValue(), Long::sum);
+      }
     }
     return counts;
+  }
+
+  /**
+   * Control de Cambios #24: cartera agregada para los reportes (filas: tipo de propiedad,
+   * operación, asesor asignado, nombre del asesor, estatus, total).
+   */
+  @Transactional(readOnly = true)
+  public List<Object[]> portfolioRows(UUID ownerUserId) {
+    return ownerUserId == null ? expedienteRepository.portfolioRows() : expedienteRepository.portfolioRowsOf(ownerUserId);
+  }
+
+  /** ¿Una fila de {@link #portfolioRows} cumple el filtro? */
+  public static boolean matches(Object[] row, PortfolioFilter filter) {
+    if (filter == null) {
+      return true;
+    }
+    if (filter.propertyCaseType() != null && filter.propertyCaseType() != row[0]) {
+      return false;
+    }
+    if (filter.operationType() != null && filter.operationType() != row[1]) {
+      return false;
+    }
+    if (filter.unassigned()) {
+      return row[2] == null;
+    }
+    return filter.advisorId() == null || filter.advisorId().equals(row[2]);
+  }
+
+  private static Specification<Expediente> visibleWith(UUID ownerUserId, PortfolioFilter filter) {
+    Specification<Expediente> spec = (root, q, cb) -> cb.conjunction();
+    if (ownerUserId != null) {
+      spec = spec.and((root, q, cb) -> cb.equal(root.get("assignedAdvisorId"), ownerUserId));
+    }
+    if (filter == null) {
+      return spec;
+    }
+    if (filter.propertyCaseType() != null) {
+      spec = spec.and((root, q, cb) -> cb.equal(root.get("propertyCaseType"), filter.propertyCaseType()));
+    }
+    if (filter.operationType() != null) {
+      spec = spec.and((root, q, cb) -> cb.equal(root.get("operationType"), filter.operationType()));
+    }
+    if (filter.unassigned()) {
+      spec = spec.and((root, q, cb) -> cb.isNull(root.get("assignedAdvisorId")));
+    } else if (filter.advisorId() != null) {
+      spec = spec.and((root, q, cb) -> cb.equal(root.get("assignedAdvisorId"), filter.advisorId()));
+    }
+    return spec;
   }
 
   @Transactional(readOnly = true)
@@ -306,6 +371,8 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
       AccreditationType accreditationType,
       boolean condominiumRegime,
       PropertyCaseType propertyCaseType,
+      // null = conserva la operación actual.
+      OperationType operationType,
       PropertyLegalStatus declaredLegalStatus,
       String propertyAddress) {}
 
@@ -325,10 +392,30 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
             correction.accreditationType(),
             correction.condominiumRegime(),
             correction.propertyCaseType(),
+            correction.operationType() != null ? correction.operationType() : expediente.getOperationType(),
             correction.declaredLegalStatus(),
             blankToNull(correction.propertyAddress())));
     recordChanges(expediente, "Datos del expediente", before, configurationSnapshot(expediente), actor, reason);
     publishRequirements(expediente);
+    return expediente;
+  }
+
+  /**
+   * Control de Cambios #24: el administrador o directivo cambia el asesor asignado. Queda en el
+   * historial del expediente (anterior, nuevo, quién y cuándo); no genera nueva versión del
+   * contrato porque el asesor no forma parte de él.
+   */
+  public Expediente reassignAdvisor(UUID expedienteId, UUID advisorId, String advisorName, Actor actor, String reason) {
+    Expediente expediente = get(expedienteId);
+    if (advisorId.equals(expediente.getAssignedAdvisorId())) {
+      return expediente;
+    }
+    String previous = expediente.getAssignedAdvisorName();
+    expediente.assignAdvisor(advisorId, advisorName);
+    changeRepository.save(
+        new ExpedienteChange(
+            expediente.getId(), clock.instant(), actor, "Asesor asignado", "Asesor asignado", emptyToNull(previous), advisorName, emptyToNull(reason)));
+    events.publishEvent(new ExpedienteDataCorrected(expediente.getId(), actor, "Asesor asignado", List.of("Asesor asignado"), emptyToNull(reason), false));
     return expediente;
   }
 
@@ -358,6 +445,7 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
             current.accreditationType(),
             current.condominiumRegime(),
             current.propertyCaseType(),
+            current.operationType(),
             fillStatus ? legalStatus : current.declaredLegalStatus(),
             fillAddress ? propertyAddress.strip() : current.propertyAddress()));
     recordChanges(expediente, "Datos del expediente", before, configurationSnapshot(expediente), Actor.system(), "Tomado de los documentos del inmueble");
@@ -726,6 +814,7 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
         e.getDeclaredLegalStatus(),
         e.getPropertyAddress(),
         e.getCreatedByUserId(),
+        e.getAssignedAdvisorId(),
         participants,
         readLegalDetails(e.getLegalDetailsJson()));
   }
@@ -1028,6 +1117,7 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
             current.accreditationType(),
             current.condominiumRegime(),
             current.propertyCaseType(),
+            current.operationType(),
             current.declaredLegalStatus(),
             current.propertyAddress()));
   }
@@ -1116,6 +1206,7 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
         e.getAccreditationType() == AccreditationType.ESCRITURA_PUBLICA ? "Escritura pública" : "Contrato privado");
     values.put("Régimen de condominio", e.isCondominiumRegime() ? "Sí" : "No");
     values.put("Tipo de inmueble", propertyLabel(e.getPropertyCaseType()));
+    values.put("Operación", e.getOperationType() == OperationType.RENT ? "Renta" : "Venta");
     values.put("Situación jurídica declarada", e.getDeclaredLegalStatus().name());
     values.put("Domicilio del inmueble", e.getPropertyAddress());
     return values;

@@ -92,6 +92,12 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
   String attorney = '';
   String accreditationType = 'ESCRITURA_PUBLICA';
   String propertyCaseType = 'HOUSING';
+  String operationType = 'SALE';
+
+  /// Control de Cambios #24: asesor responsable, obligatorio desde el inicio del alta.
+  String assignedAdvisorId = '';
+  List<AdvisorOption>? advisors;
+  bool advisorsFailed = false;
   bool condominiumRegime = false;
   String propertyReference = '';
 
@@ -111,7 +117,24 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
   @override
   void initState() {
     super.initState();
-    restore();
+    restore().then((_) => loadAdvisors());
+  }
+
+  Future<void> loadAdvisors() async {
+    try {
+      final list = await api.listAssignableAdvisors();
+      if (!mounted) return;
+      final me = context.read<AuthState>().user?.id;
+      setState(() {
+        advisors = list;
+        // Si quien da de alta es asesor, se propone a sí mismo; un asesor dado de baja se descarta.
+        if (!list.any((a) => a.id == assignedAdvisorId)) {
+          assignedAdvisorId = list.any((a) => a.id == me && a.roleCode == 'ADVISOR') ? me! : '';
+        }
+      });
+    } catch (_) {
+      if (mounted) setState(() => advisorsFailed = true);
+    }
   }
 
   @override
@@ -135,6 +158,8 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
         attorney = '${(d['attorney'] as Map?)?['fullName'] ?? ''}';
         accreditationType = d['accreditationType'] as String? ?? accreditationType;
         propertyCaseType = d['propertyCaseType'] as String? ?? propertyCaseType;
+        operationType = d['operationType'] as String? ?? operationType;
+        assignedAdvisorId = d['assignedAdvisorId'] as String? ?? '';
         condominiumRegime = d['condominiumRegime'] == true;
         propertyReference = d['propertyReference'] as String? ?? '';
         extraDocuments = [for (final n in (d['extraDocuments'] as List? ?? [])) '$n'];
@@ -165,6 +190,8 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
       'attorney': person('ATTORNEY', attorney),
       'accreditationType': accreditationType,
       'propertyCaseType': propertyCaseType,
+      'operationType': operationType,
+      'assignedAdvisorId': assignedAdvisorId,
       'condominiumRegime': condominiumRegime,
       'propertyReference': propertyReference,
       'extraDocuments': extraDocuments,
@@ -186,10 +213,12 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
     return signedByAttorney ? [...holders, (role: 'ATTORNEY', fullName: attorney)] : holders;
   }
 
-  bool get clientValid => participants.every((p) => p.fullName.trim().isNotEmpty);
+  bool get advisorValid => assignedAdvisorId.isNotEmpty;
+  bool get clientValid => advisorValid && participants.every((p) => p.fullName.trim().isNotEmpty);
   bool get propertyValid => propertyReference.trim().isNotEmpty;
 
   String get missingNamesText {
+    if (!advisorValid) return 'Selecciona el asesor asignado al inmueble.';
     final missing = [
       for (var i = 0; i < (isMoral ? 1 : owners.length); i++)
         if (owners[i].trim().isEmpty) isMoral ? 'la razón social de la empresa' : (i == 0 ? 'el nombre del propietario principal' : 'el nombre del copropietario ${i + 1}'),
@@ -274,6 +303,8 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
         'accreditationType': accreditationType,
         'condominiumRegime': condominiumRegime,
         'propertyCaseType': propertyCaseType,
+        'operationType': operationType,
+        'assignedAdvisorId': assignedAdvisorId,
         'propertyReference': propertyReference.trim(),
         // Solo el nombre: lo demás se pide al cliente en su liga o se lee de sus documentos.
         'participants': [
@@ -302,7 +333,9 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
             ? 'Expediente ${result.folio} creado.'
             : 'Expediente ${result.folio} creado. No se pudo agregar: ${failed.join(', ')}; agrégalo desde la pestaña Documentos.',
       );
-      context.pushReplacement('/expedientes/${result.id}');
+      // Un asesor solo ve los expedientes que tiene asignados (Control de Cambios #24).
+      final auth = context.read<AuthState>();
+      context.pushReplacement(auth.can('EXPEDIENT_VIEW_ALL') || result.assignedAdvisorId == auth.user?.id ? '/expedientes/${result.id}' : '/expedientes');
     } catch (err) {
       // Lo capturado se conserva: el usuario puede reintentar sin volver a escribir nada.
       setState(() {
@@ -472,6 +505,33 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
         );
 
     return [
+      AppCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const CardHeader(title: 'Asesor asignado', description: 'Quién es responsable de este inmueble. Solo el administrador o un directivo podrá cambiarlo después.'),
+            if (advisorsFailed)
+              Text('No se pudo cargar la lista de asesores. Sal y vuelve a entrar para intentarlo de nuevo.', style: TextStyle(color: c.dangerText, fontSize: 13))
+            else
+              AppSelect<String>(
+                label: 'Asesor asignado',
+                value: assignedAdvisorId,
+                enabled: advisors != null,
+                options: [
+                  (value: '', label: advisors == null ? 'Cargando asesores…' : 'Selecciona un asesor'),
+                  for (final a in advisors ?? const <AdvisorOption>[]) (value: a.id, label: a.roleCode == 'ADVISOR' ? a.name : '${a.name} (${label(roleLabels, a.roleCode)})'),
+                ],
+                onChanged: (v) => changed(() => assignedAdvisorId = v),
+              ),
+            if (showErrors && !advisorValid)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text('Selecciona el asesor asignado.', style: TextStyle(color: c.dangerText, fontSize: 12.5)),
+              ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 16),
       AppCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -649,6 +709,8 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
         const SizedBox(height: 14),
         AppSelect<String>(label: 'Tipo de inmueble', value: propertyCaseType, options: optionsOf(propertyTypeLabels), onChanged: (v) => changed(() => propertyCaseType = v)),
         const SizedBox(height: 14),
+        AppSelect<String>(label: 'Operación', value: operationType, options: optionsOf(operationLabels), onChanged: (v) => changed(() => operationType = v)),
+        const SizedBox(height: 14),
         AppSelect<String>(
           label: '¿Con qué documento se acredita la propiedad?',
           value: accreditationType,
@@ -713,6 +775,7 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
         children: [
           const CardHeader(title: 'Revisa antes de crear', description: 'Puedes volver a cualquier paso; lo capturado se conserva.'),
           section('Cliente', 1, [
+            FieldView('Asesor asignado', advisors?.where((a) => a.id == assignedAdvisorId).firstOrNull?.name ?? '—'),
             FieldView('Tipo de cliente', isMoral ? 'Persona moral (empresa)' : 'Persona física'),
             if (!isMoral) FieldView('Firma', signedByAttorney ? 'Mediante apoderado' : 'Los propietarios'),
             for (final p in participants) FieldView(roleTitle(p.role), p.fullName.trim().isEmpty ? '—' : p.fullName.trim()),
@@ -731,6 +794,7 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
           section('Inmueble', 2, [
             FieldView('Referencia para el cliente', propertyReference.trim().isEmpty ? '—' : propertyReference.trim()),
             FieldView('Tipo de inmueble', label(propertyTypeLabels, propertyCaseType)),
+            FieldView('Operación', label(operationLabels, operationType)),
             FieldView('Acreditación', label(accreditationLabels, accreditationType)),
             FieldView('Régimen de condominio', condominiumRegime ? 'Sí' : 'No'),
           ]),

@@ -84,17 +84,61 @@ class ExpedienteResponse {
         accreditationType = _sr(j['accreditationType']),
         condominiumRegime = _b(j['condominiumRegime']),
         propertyCaseType = _sr(j['propertyCaseType']),
+        operationType = _s(j['operationType']) ?? 'SALE',
         declaredLegalStatus = _sr(j['declaredLegalStatus']),
         propertyAddress = _s(j['propertyAddress']),
         propertyReference = _s(j['propertyReference']),
+        assignedAdvisorId = _s(j['assignedAdvisorId']),
+        assignedAdvisorName = _s(j['assignedAdvisorName']),
         decisionReason = _s(j['decisionReason']),
         correctable = _b(j['correctable']),
         createdAt = _sr(j['createdAt']),
         updatedAt = _sr(j['updatedAt']);
-  final String id, folio, ownerDisplayName, status, personType, signerCharacter, accreditationType, propertyCaseType, declaredLegalStatus;
+  final String id, folio, ownerDisplayName, status, personType, signerCharacter, accreditationType, propertyCaseType, operationType, declaredLegalStatus;
   final bool signedByAttorney, condominiumRegime, correctable;
   final String? propertyAddress, propertyReference, decisionReason;
+
+  /// Control de Cambios #24: asesor responsable (null = sin asignar).
+  final String? assignedAdvisorId, assignedAdvisorName;
   final String createdAt, updatedAt;
+}
+
+/// Asesor activo que se puede asignar a un expediente (Control de Cambios #24).
+class AdvisorOption {
+  AdvisorOption.fromJson(Json j)
+      : id = _sr(j['id']),
+        name = _sr(j['name']),
+        roleCode = _sr(j['roleCode']);
+  final String id, name, roleCode;
+}
+
+class GroupCounts {
+  GroupCounts.fromJson(Json j)
+      : total = _i(j['total']),
+        pending = _i(j['pending']),
+        inReview = _i(j['inReview']),
+        complete = _i(j['complete']);
+  final int total, pending, inReview, complete;
+}
+
+/// Control de Cambios #24: cartera por tipo de propiedad + operación (nivel 1) y por asesor (nivel 2).
+class PortfolioReport {
+  PortfolioReport.fromJson(Json j)
+      : total = GroupCounts.fromJson(Json.from((j['total'] as Map?) ?? {})),
+        byTypeOperation = [
+          for (final r in (j['byTypeOperation'] as List? ?? const []).whereType<Map>())
+            (propertyCaseType: _sr(r['propertyCaseType']), operationType: _sr(r['operationType']), counts: GroupCounts.fromJson(Json.from((r['counts'] as Map?) ?? {}))),
+        ],
+        byAdvisor = [
+          for (final r in (j['byAdvisor'] as List? ?? const []).whereType<Map>())
+            (advisorId: _s(r['advisorId']), name: _sr(r['name']), counts: GroupCounts.fromJson(Json.from((r['counts'] as Map?) ?? {}))),
+        ];
+  final GroupCounts total;
+  final List<({String propertyCaseType, String operationType, GroupCounts counts})> byTypeOperation;
+  final List<({String? advisorId, String name, GroupCounts counts})> byAdvisor;
+
+  int cell(String type, String operation) =>
+      byTypeOperation.where((r) => r.propertyCaseType == type && r.operationType == operation).fold(0, (sum, r) => sum + r.counts.total);
 }
 
 class DocumentProgress {

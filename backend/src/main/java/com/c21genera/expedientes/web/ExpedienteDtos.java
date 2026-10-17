@@ -6,6 +6,7 @@ import com.c21genera.expedientes.ExpedienteStatus;
 import com.c21genera.expedientes.IdDocumentType;
 import com.c21genera.expedientes.LegalDetails;
 import com.c21genera.expedientes.MaritalRegime;
+import com.c21genera.expedientes.OperationType;
 import com.c21genera.expedientes.PersonType;
 import com.c21genera.expedientes.PropertyCaseType;
 import com.c21genera.expedientes.PropertyLegalStatus;
@@ -78,6 +79,10 @@ public final class ExpedienteDtos {
       @NotNull AccreditationType accreditationType,
       boolean condominiumRegime,
       @NotNull PropertyCaseType propertyCaseType,
+      // Control de Cambios #24: venta o renta (si no llega, venta).
+      OperationType operationType,
+      // Control de Cambios #24: asesor responsable, obligatorio desde el alta.
+      @NotNull(message = "Selecciona el asesor asignado") UUID assignedAdvisorId,
       // Opcionales: se leen de la escritura / certificado de libertad de gravamen / predial.
       PropertyLegalStatus declaredLegalStatus,
       String propertyAddress,
@@ -100,9 +105,17 @@ public final class ExpedienteDtos {
       @NotNull AccreditationType accreditationType,
       boolean condominiumRegime,
       @NotNull PropertyCaseType propertyCaseType,
+      // null = conserva la operación actual.
+      OperationType operationType,
       @NotNull PropertyLegalStatus declaredLegalStatus,
       String propertyAddress,
       String reason) {}
+
+  /** Control de Cambios #24: cambio de asesor (administrador o directivo). */
+  public record AssignAdvisorRequest(@NotNull UUID advisorId, @Size(max = 500) String reason) {}
+
+  /** Asesor activo que se puede asignar a un expediente. */
+  public record AdvisorOptionResponse(UUID id, String name, String roleCode) {}
 
   public record ParticipantChangeRequest(@NotNull @Valid ParticipantRequest participant, String reason) {}
 
@@ -159,9 +172,12 @@ public final class ExpedienteDtos {
       AccreditationType accreditationType,
       boolean condominiumRegime,
       PropertyCaseType propertyCaseType,
+      OperationType operationType,
       PropertyLegalStatus declaredLegalStatus,
       String propertyAddress,
       String propertyReference,
+      UUID assignedAdvisorId,
+      String assignedAdvisorName,
       String decisionReason,
       UUID decidedByUserId,
       Instant decidedAt,
@@ -182,9 +198,12 @@ public final class ExpedienteDtos {
           e.getAccreditationType(),
           e.isCondominiumRegime(),
           e.getPropertyCaseType(),
+          e.getOperationType(),
           e.getDeclaredLegalStatus(),
           e.getPropertyAddress(),
           e.getPropertyReference(),
+          e.getAssignedAdvisorId(),
+          e.getAssignedAdvisorName(),
           e.getDecisionReason(),
           e.getDecidedByUserId(),
           e.getDecidedAt(),
