@@ -82,6 +82,71 @@ class Online21Client {
     }
   }
 
+  /** Página del inventario completo (cualquier estatus) para la pantalla interna; devuelve el cuerpo tal cual. */
+  JsonNode listingsPage(Map<String, String> filters, int page) {
+    String body =
+        restClient
+            .get()
+            .uri(
+                b -> {
+                  b.path("/api/propiedades");
+                  filters.forEach(b::queryParam);
+                  return b.queryParam("order[fechaModificacion]", "desc").queryParam("page", page).build();
+                })
+            .accept(MediaType.valueOf("application/ld+json"), MediaType.APPLICATION_JSON)
+            .retrieve()
+            .body(String.class);
+    return read(body);
+  }
+
+  /** Lista de propiedades de una respuesta (JSON-LD o arreglo plano). */
+  List<JsonNode> membersOf(JsonNode root) {
+    List<JsonNode> out = new ArrayList<>();
+    if (root == null) {
+      return out;
+    }
+    JsonNode list = root.isArray() ? root : root.has("hydra:member") ? root.get("hydra:member") : root.get("member");
+    if (list != null && list.isArray()) {
+      list.forEach(out::add);
+    }
+    return out;
+  }
+
+  /** POST /api/propiedades; devuelve el id que asigna 21Online. Los errores HTTP se propagan. */
+  long createProperty(Map<String, Object> payload) {
+    String body =
+        restClient.post().uri("/api/propiedades").contentType(MediaType.APPLICATION_JSON).accept(MediaType.APPLICATION_JSON).body(write(payload)).retrieve().body(String.class);
+    JsonNode node = read(body);
+    if (node == null || !node.hasNonNull("id")) {
+      throw new IllegalStateException("21Online no devolvió el id de la propiedad");
+    }
+    return node.get("id").asLong();
+  }
+
+  /** PUT /api/propiedades/{id}. Los errores HTTP se propagan. */
+  void updateProperty(long id, Map<String, Object> payload) {
+    restClient.put().uri("/api/propiedades/{id}", id).contentType(MediaType.APPLICATION_JSON).accept(MediaType.APPLICATION_JSON).body(write(payload)).retrieve().toBodilessEntity();
+  }
+
+  private String write(Object payload) {
+    try {
+      return objectMapper.writeValueAsString(payload);
+    } catch (java.io.IOException e) {
+      throw new IllegalStateException("No se pudo armar la solicitud a 21Online", e);
+    }
+  }
+
+  private JsonNode read(String body) {
+    if (body == null || body.isBlank()) {
+      return null;
+    }
+    try {
+      return objectMapper.readTree(body);
+    } catch (java.io.IOException e) {
+      throw new IllegalStateException("Respuesta de 21Online ilegible", e);
+    }
+  }
+
   private List<JsonNode> members(String body) {
     if (body == null || body.isBlank()) {
       return List.of();

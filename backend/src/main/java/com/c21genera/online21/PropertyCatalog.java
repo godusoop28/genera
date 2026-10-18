@@ -10,8 +10,8 @@ import java.util.Optional;
  * de 21Online (plus.21onlinemx.com). La usan el asistente de WhatsApp y los
  * leads para identificar propiedades y saber de qué asesor son.
  *
- * <p>No hay pantalla de propiedades en Genera (eso es el Módulo 2): aquí solo
- * se consulta. Si la integración no está configurada, {@link #available()}
+ * <p>Solo lo que puede ver un cliente; la pantalla interna de Propiedades usa
+ * {@link PropertyListings}. Si la integración no está configurada, {@link #available()}
  * es false y las búsquedas responden {@link Status#UNAVAILABLE} (nunca "no
  * existe"), para que el bot no afirme que una propiedad no está.
  */

@@ -1,0 +1,274 @@
+package com.c21genera.leads.domain;
+
+import com.c21genera.shared.jpa.AuditableEntity;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.UUID;
+
+/**
+ * Propiedad capturada en Genera y publicada en 21Online. Los códigos
+ * (operation "venta"/"renta", subtype "casa", status "enPromocion") son los
+ * de la API de 21Online para mandarlos tal cual. syncStatus: PENDING (aún no
+ * se manda, p. ej. la integración está apagada), DONE (21Online la aceptó y
+ * online21Id quedó lleno) o FAILED (rechazada o sin respuesta).
+ */
+@Entity
+@Table(name = "crm_property")
+public class CrmProperty extends AuditableEntity {
+
+  @Id
+  private UUID id;
+
+  private Long online21Id;
+
+  @Enumerated(EnumType.STRING)
+  @Column(nullable = false)
+  private SyncStatus syncStatus;
+
+  private String syncError;
+
+  @Column(nullable = false)
+  private boolean syncUncertain;
+
+  private Instant syncedAt;
+
+  @Column(nullable = false)
+  private String operation;
+
+  @Column(nullable = false)
+  private String propertyType;
+
+  @Column(nullable = false)
+  private String subtype;
+
+  private String contractType;
+
+  @Column(nullable = false)
+  private String status;
+
+  @Column(nullable = false)
+  private String headline;
+
+  private String description;
+
+  private BigDecimal salePrice;
+
+  private BigDecimal rentPrice;
+
+  @Column(nullable = false)
+  private String currency;
+
+  @Column(nullable = false)
+  private boolean hidePrice;
+
+  private String street;
+
+  private String extNumber;
+
+  @Column(nullable = false)
+  private String neighborhood;
+
+  @Column(nullable = false)
+  private String municipality;
+
+  @Column(nullable = false)
+  private String state;
+
+  private String postalCode;
+
+  @Column(nullable = false)
+  private boolean hideStreet;
+
+  @Column(nullable = false)
+  private boolean hideNumber;
+
+  private Integer bedrooms;
+
+  private BigDecimal bathrooms;
+
+  private Integer halfBathrooms;
+
+  private Integer parking;
+
+  @Column(name = "land_m2")
+  private BigDecimal landM2;
+
+  @Column(name = "built_m2")
+  private BigDecimal builtM2;
+
+  private Integer levels;
+
+  private Integer age;
+
+  private BigDecimal maintenanceFee;
+
+  private BigDecimal commission;
+
+  @Column(nullable = false)
+  private boolean publishOnline;
+
+  private UUID advisorUserId;
+
+  @Column(nullable = false)
+  private UUID createdByUserId;
+
+  protected CrmProperty() {}
+
+  public CrmProperty(UUID createdByUserId, Data data) {
+    this.id = UUID.randomUUID();
+    this.createdByUserId = createdByUserId;
+    this.syncStatus = SyncStatus.PENDING;
+    apply(data);
+  }
+
+  /** Datos editables de la propiedad (mismo orden que el formulario). */
+  public record Data(
+      String operation,
+      String propertyType,
+      String subtype,
+      String contractType,
+      String status,
+      String headline,
+      String description,
+      BigDecimal salePrice,
+      BigDecimal rentPrice,
+      String currency,
+      boolean hidePrice,
+      String street,
+      String extNumber,
+      String neighborhood,
+      String municipality,
+      String state,
+      String postalCode,
+      boolean hideStreet,
+      boolean hideNumber,
+      Integer bedrooms,
+      BigDecimal bathrooms,
+      Integer halfBathrooms,
+      Integer parking,
+      BigDecimal landM2,
+      BigDecimal builtM2,
+      Integer levels,
+      Integer age,
+      BigDecimal maintenanceFee,
+      BigDecimal commission,
+      boolean publishOnline,
+      UUID advisorUserId) {}
+
+  /** Cambia los datos; si ya estaba en 21Online, queda pendiente de mandar la actualización. */
+  public void apply(Data d) {
+    this.operation = d.operation();
+    this.propertyType = d.propertyType();
+    this.subtype = d.subtype();
+    this.contractType = d.contractType();
+    this.status = d.status();
+    this.headline = d.headline();
+    this.description = d.description();
+    this.salePrice = d.salePrice();
+    this.rentPrice = d.rentPrice();
+    this.currency = d.currency();
+    this.hidePrice = d.hidePrice();
+    this.street = d.street();
+    this.extNumber = d.extNumber();
+    this.neighborhood = d.neighborhood();
+    this.municipality = d.municipality();
+    this.state = d.state();
+    this.postalCode = d.postalCode();
+    this.hideStreet = d.hideStreet();
+    this.hideNumber = d.hideNumber();
+    this.bedrooms = d.bedrooms();
+    this.bathrooms = d.bathrooms();
+    this.halfBathrooms = d.halfBathrooms();
+    this.parking = d.parking();
+    this.landM2 = d.landM2();
+    this.builtM2 = d.builtM2();
+    this.levels = d.levels();
+    this.age = d.age();
+    this.maintenanceFee = d.maintenanceFee();
+    this.commission = d.commission();
+    this.publishOnline = d.publishOnline();
+    this.advisorUserId = d.advisorUserId();
+    this.syncStatus = SyncStatus.PENDING;
+    this.syncError = null;
+    this.syncUncertain = false;
+  }
+
+  public Data data() {
+    return new Data(
+        operation, propertyType, subtype, contractType, status, headline, description, salePrice, rentPrice, currency, hidePrice, street, extNumber,
+        neighborhood, municipality, state, postalCode, hideStreet, hideNumber, bedrooms, bathrooms, halfBathrooms, parking, landM2, builtM2, levels, age,
+        maintenanceFee, commission, publishOnline, advisorUserId);
+  }
+
+  public void markSynced(Long online21Id, Instant at) {
+    if (online21Id != null) {
+      this.online21Id = online21Id;
+    }
+    this.syncStatus = SyncStatus.DONE;
+    this.syncError = null;
+    this.syncUncertain = false;
+    this.syncedAt = at;
+  }
+
+  /** Guarda el id de 21Online sin cambiar el estado (se editó mientras se enviaba el alta). */
+  public void linkOnline21(Long online21Id) {
+    if (this.online21Id == null) {
+      this.online21Id = online21Id;
+    }
+  }
+
+  public void markFailed(String error, boolean uncertain) {
+    this.syncStatus = SyncStatus.FAILED;
+    this.syncError = error == null ? null : error.length() > 500 ? error.substring(0, 499) + "…" : error;
+    this.syncUncertain = uncertain;
+  }
+
+  /** Se deja como pendiente sin intentar (la integración está apagada). */
+  public void markWaiting(String reason) {
+    this.syncStatus = SyncStatus.PENDING;
+    this.syncError = reason;
+    this.syncUncertain = false;
+  }
+
+  public UUID getId() {
+    return id;
+  }
+
+  public Long getOnline21Id() {
+    return online21Id;
+  }
+
+  public SyncStatus getSyncStatus() {
+    return syncStatus;
+  }
+
+  public String getSyncError() {
+    return syncError;
+  }
+
+  public boolean isSyncUncertain() {
+    return syncUncertain;
+  }
+
+  public Instant getSyncedAt() {
+    return syncedAt;
+  }
+
+  public String getHeadline() {
+    return headline;
+  }
+
+  public UUID getAdvisorUserId() {
+    return advisorUserId;
+  }
+
+  public UUID getCreatedByUserId() {
+    return createdByUserId;
+  }
+}

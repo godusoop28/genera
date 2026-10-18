@@ -6,7 +6,7 @@ import { useCanSeeCrm } from "@/components/crm/CrmUi";
 import { useAuth } from "@/context/AuthProvider";
 import { useCan } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-import { BarChart3, CalendarDays, FilePlus2, Files, LayoutDashboard, LogOut, MessagesSquare, Users, UserRoundSearch, UsersRound } from "lucide-react";
+import { BarChart3, CalendarDays, FilePlus2, Files, House, LayoutDashboard, LogOut, MessagesSquare, Users, UserRoundSearch, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -20,11 +20,12 @@ const navItems = [
   { href: "/usuarios", label: "Usuarios y permisos", icon: Users, permission: "USER_MANAGE" },
 ];
 
-// CRM (Módulo 3). Las propiedades no tienen pantalla aquí: se consultan en
-// 21Online y su gestión es el Módulo 2.
+// CRM (Módulo 3). Propiedades: inventario de 21Online y alta de propiedades
+// que se publican allá.
 const crmItems: { href: string; label: string; icon: typeof Files; permission?: string; anyOf?: string[] }[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/leads", label: "Leads", icon: UserRoundSearch },
+  { href: "/propiedades", label: "Propiedades", icon: House, permission: "PROPERTY_VIEW" },
   { href: "/calendario", label: "Calendario", icon: CalendarDays, anyOf: ["CALENDAR_VIEW_ALL", "CALENDAR_VIEW_OWN"] },
   { href: "/conversaciones", label: "Conversaciones", icon: MessagesSquare, permission: "CONVERSATION_VIEW" },
   { href: "/asesores", label: "Asesores", icon: UsersRound, permission: "ADVISOR_ROUTING_MANAGE" },

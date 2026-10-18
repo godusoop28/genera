@@ -21,7 +21,7 @@ Modulith. Base de paquete: `com.c21genera`.
 | `closing` | Seguimiento genérico de cierre tras la aceptación del inmueble |
 | `notary` | Documentos por etapa (comercialización, envío inicial a notaría, cierre con oferta aceptada): paquetes enviados con la versión de cada documento y vigencia de los documentos de cierre |
 | `leads` | CRM (Módulo 3): leads, etapas, actividades, ruteo de asesores (asesor de la propiedad o ruleta ponderada) y dashboard |
-| `online21` | Consulta de solo lectura del inventario de 21Online (API REST con JWT) y registro opcional de prospectos |
+| `online21` | Integración con la API REST de 21Online (JWT): inventario para el bot, inventario completo y alta/edición de propiedades para el CRM, registro opcional de prospectos |
 | `assistant` | Asistente de WhatsApp con IA (misma lógica que el panel de Inova): WhatsApp Cloud API, OpenAI con herramientas acotadas, bandeja y simulador |
 | `shared` | Módulo abierto: eventos de integración, tipos de valor compartidos, seguridad de archivos, JPA base |
 
@@ -220,8 +220,7 @@ cd backend
 
 Misma lógica que el panel de Inova (proyecto `inovapanel`,
 `docs/CONVERSATIONAL_ASSISTANT.md`), en Java y con 21Online en lugar de
-EasyBroker. **Las propiedades no se guardan ni se administran en Genera**
-(eso es el Módulo 2): se consultan en 21Online.
+EasyBroker. El inventario vive en 21Online (ver "Propiedades del CRM" abajo).
 
 ```
 Cliente (WhatsApp) → Meta → POST /api/v1/public/whatsapp/webhook (firma HMAC)
@@ -268,6 +267,32 @@ respuesta de `GET /api/propiedades` de 21Online (el mapeo acepta JSON-LD y
 arreglo plano), qué acepta `POST /api/prospectos`
 (`ONLINE21_PUSH_PROSPECTS=false` por defecto) y el comportamiento del modelo
 de `AI_MODEL` con la Responses API (herramientas + JSON Schema estricto).
+
+### Propiedades del CRM vinculadas con 21Online (V035)
+
+Pantalla `/propiedades` (permisos `PROPERTY_VIEW` y `PROPERTY_MANAGE`;
+Administrador, Director y Asesor tienen ambos).
+
+- **Inventario:** `GET /api/v1/internal/properties/inventory` consulta en vivo
+  `GET /api/propiedades` de 21Online (cualquier estatus, 30 por página,
+  filtros de estatus/operación; la búsqueda usa `id` si es un número y
+  `match_ubicacion` si es texto). Nunca devuelve dueño ni clave catastral.
+- **Alta y edición:** `POST/PUT /api/v1/internal/properties` guarda la
+  propiedad en `crm_property` y enseguida la manda a 21Online
+  (`POST /api/propiedades`, o `PUT /api/propiedades/{id}` si ya existe allá),
+  fuera de la transacción. `pais` siempre es "México"; `usuarios` es el usuario
+  de 21Online del asesor (`crm_advisor_profile.online21_user_id`).
+- **Estados de envío:** PENDING (integración apagada; `PropertyService`
+  las manda cada 10 min en cuanto hay `ONLINE21_API_KEY`), DONE (con
+  `online21_id`) o FAILED (motivo de 21Online visible en la ficha). Las
+  FAILED solo se reintentan a mano: tras un tiempo agotado (`sync_uncertain`)
+  pudo haberse creado allá y un reintento automático la duplicaría.
+- Las fotos se suben en 21Online (su API de fotos no recibe archivos) y el
+  cierre ("cerrada") se registra allá con sus datos de cierre.
+
+Pendiente de validar con una llave real: qué valores exactos acepta 21Online
+al crear (validaciones 422 se muestran tal cual), si `match_ubicacion` busca
+como se espera y la forma de `fotos` en la respuesta.
 
 ### Calendario de turnos, guardias y rondas (V028)
 

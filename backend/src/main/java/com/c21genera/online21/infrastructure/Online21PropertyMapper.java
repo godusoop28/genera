@@ -27,6 +27,7 @@ final class Online21PropertyMapper {
           Map.entry("terreno", "Terreno"),
           Map.entry("local", "Local"),
           Map.entry("oficina", "Oficina"),
+          Map.entry("oficinas", "Oficinas"),
           Map.entry("bodega", "Bodega"),
           Map.entry("nave", "Nave industrial"),
           Map.entry("quinta", "Quinta"),
