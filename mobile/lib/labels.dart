@@ -590,3 +590,97 @@ const addressProofKindLabels = {
   'PHONE': 'Recibo de telefonía (cualquier operadora)',
   'INTERNET': 'Recibo de internet (cualquier proveedor)',
 };
+
+// --- Propiedades (códigos de la API de 21Online; igual que frontend/src/lib/crm/property-labels.ts) ---
+
+const listingOperationLabels = {'venta': 'Venta', 'renta': 'Renta'};
+const listingTypeLabels = {'habitacional': 'Habitacional', 'comercial': 'Comercial'};
+
+/// Subtipos que 21Online acepta en México por tipo (igual que PropertyService.SUBTYPES).
+const subtypesByType = {
+  'habitacional': ['casa', 'casa-duplex', 'casa-en-condominio', 'departamento', 'penthouse', 'cabana', 'terreno', 'huerta', 'quinta', 'rancho', 'hacienda', 'edificio'],
+  'comercial': ['local', 'oficinas', 'bodega', 'nave', 'fabrica', 'terreno', 'edificio', 'fraccionamiento', 'escuela', 'inmueble-productivo'],
+};
+
+const subtypeLabels = {
+  'casa': 'Casa',
+  'casa-duplex': 'Casa dúplex',
+  'casa-en-condominio': 'Casa en condominio',
+  'departamento': 'Departamento',
+  'penthouse': 'Penthouse',
+  'cabana': 'Cabaña',
+  'terreno': 'Terreno',
+  'huerta': 'Huerta',
+  'quinta': 'Quinta',
+  'rancho': 'Rancho',
+  'hacienda': 'Hacienda',
+  'edificio': 'Edificio',
+  'local': 'Local',
+  'oficinas': 'Oficinas',
+  'oficina': 'Oficina',
+  'bodega': 'Bodega',
+  'nave': 'Nave industrial',
+  'fabrica': 'Fábrica',
+  'fraccionamiento': 'Fraccionamiento',
+  'escuela': 'Escuela',
+  'inmueble-productivo': 'Inmueble productivo',
+};
+
+const listingStatusLabels = {
+  'enPromocion': 'En promoción',
+  'suspendida': 'Suspendida',
+  'cancelada': 'Cancelada',
+  'conIntencion': 'Con intención',
+  'conContratoFirmado': 'Con contrato firmado',
+  'cerrada': 'Cerrada',
+};
+
+const listingStatusTones = {
+  'enPromocion': Tone.success,
+  'suspendida': Tone.warning,
+  'cancelada': Tone.danger,
+  'conIntencion': Tone.info,
+  'conContratoFirmado': Tone.gold,
+  'cerrada': Tone.obsessed,
+};
+
+/// Estatus que se pueden poner desde Genera (el cierre se registra en 21Online).
+const editableListingStatuses = ['enPromocion', 'suspendida', 'conIntencion', 'conContratoFirmado', 'cancelada'];
+
+const syncLabels = {'PENDING': 'Pendiente de enviar', 'DONE': 'En 21Online', 'FAILED': 'No se envió', 'NOT_REQUIRED': 'Sin envío'};
+const syncTones = {'PENDING': Tone.warning, 'DONE': Tone.success, 'FAILED': Tone.danger, 'NOT_REQUIRED': Tone.neutral};
+
+const contractLabels = {'exclusiva': 'Exclusiva', 'opcion': 'Opción'};
+
+const mexicanStates = [
+  'Aguascalientes', 'Baja California', 'Baja California Sur', 'Campeche', 'Chiapas', 'Chihuahua', 'Ciudad de México', 'Coahuila', 'Colima', 'Durango',
+  'Estado de México', 'Guanajuato', 'Guerrero', 'Hidalgo', 'Jalisco', 'Michoacán', 'Morelos', 'Nayarit', 'Nuevo León', 'Oaxaca', 'Puebla', 'Querétaro',
+  'Quintana Roo', 'San Luis Potosí', 'Sinaloa', 'Sonora', 'Tabasco', 'Tamaulipas', 'Tlaxcala', 'Veracruz', 'Yucatán', 'Zacatecas',
+];
+
+
+String subtypeLabel(String? code) {
+  if (code == null || code.isEmpty) return 'Propiedad';
+  return subtypeLabels[code] ?? '${code[0].toUpperCase()}${code.substring(1).replaceAll('-', ' ')}';
+}
+
+/// Precio según la operación ("/mes" en renta), en la moneda de la propiedad.
+String listingPrice(String? operation, double? sale, double? rent, String currency) {
+  final amount = operation == 'renta' ? rent : sale;
+  if (amount == null) return 'Precio no capturado';
+  return '${_mxn0.format(amount)}${currency == 'USD' ? ' USD' : ''}${operation == 'renta' ? ' /mes' : ''}';
+}
+
+/// "3 rec. · 2.5 baños · 220 m² const. · 300 m² terreno".
+String listingFeatures({int? bedrooms, double? bathrooms, double? builtM2, double? landM2}) {
+  final n = numText;
+  return [
+    if (bedrooms != null && bedrooms > 0) '$bedrooms rec.',
+    if (bathrooms != null && bathrooms > 0) '${n(bathrooms)} ${bathrooms == 1 ? 'baño' : 'baños'}',
+    if (builtM2 != null && builtM2 > 0) '${n(builtM2)} m² const.',
+    if (landM2 != null && landM2 > 0) '${n(landM2)} m² terreno',
+  ].join(' · ');
+}
+
+/// Número sin ".0" sobrante (5.0 → "5", 2.5 → "2.5").
+String numText(num v) => v == v.roundToDouble() ? v.toInt().toString() : v.toString();

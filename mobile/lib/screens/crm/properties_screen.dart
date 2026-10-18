@@ -1,0 +1,915 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+
+import '../../api/api.dart' as api;
+import '../../api/client.dart';
+import '../../api/models.dart';
+import '../../config.dart';
+import '../../labels.dart';
+import '../../state/auth.dart';
+import '../../ui/shell.dart';
+import '../../ui/widgets.dart';
+import 'crm_ui.dart';
+
+// Propiedades del CRM vinculadas con 21Online (frontend/src/app/propiedades).
+// El inventario se consulta en vivo en 21Online; lo que se da de alta aquí se
+// publica allá y su estado de envío se ve en "Capturadas en Genera".
+
+const _noKey =
+    'La conexión con 21Online aún no está configurada (falta la llave ONLINE21_API_KEY en el servidor). Puedes capturar propiedades: quedan pendientes y se envían a 21Online en cuanto se configure.';
+
+class PropertiesScreen extends StatefulWidget {
+  const PropertiesScreen({super.key, this.initialTab});
+  final String? initialTab;
+
+  @override
+  State<PropertiesScreen> createState() => _PropertiesScreenState();
+}
+
+class _PropertiesScreenState extends State<PropertiesScreen> {
+  late String tab = widget.initialTab == 'capturadas' ? 'captured' : 'inventory';
+  String query = '';
+  String status = 'enPromocion';
+  String operation = '';
+  int page = 1;
+  InventoryPage? inventory;
+  String? inventoryError;
+  CapturedOverview? captured;
+  String? capturedError;
+  Timer? _debounce;
+  int _request = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    loadInventory();
+    loadCaptured();
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  Future<void> loadInventory() async {
+    final id = ++_request;
+    try {
+      final result = await api.listInventory(q: query, status: status, operation: operation, page: page);
+      if (mounted && id == _request) {
+        setState(() {
+          inventory = result;
+          inventoryError = null;
+        });
+      }
+    } catch (err) {
+      if (mounted && id == _request) setState(() => inventoryError = crmErrorText(err));
+    }
+  }
+
+  Future<void> loadCaptured() async {
+    try {
+      final result = await api.listCaptured();
+      if (mounted) {
+        setState(() {
+          captured = result;
+          capturedError = null;
+        });
+      }
+    } catch (err) {
+      if (mounted) setState(() => capturedError = crmErrorText(err));
+    }
+  }
+
+  Future<void> refresh() => Future.wait([loadInventory(), loadCaptured()]);
+
+  void onQuery(String v) {
+    query = v;
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      page = 1;
+      loadInventory();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthState>();
+    if (!auth.can('PROPERTY_VIEW')) {
+      return const Restricted(title: 'Propiedades', route: '/propiedades', description: 'Tu usuario no tiene permiso para consultar propiedades.');
+    }
+    final configured = captured?.configured ?? true;
+    final pending = captured?.captured.where((p) => p.syncStatus != 'DONE').length ?? 0;
+    return AppScaffold(
+      title: 'Propiedades',
+      route: '/propiedades',
+      fab: auth.can('PROPERTY_MANAGE')
+          ? FloatingActionButton.extended(
+              backgroundColor: Brand.gold,
+              foregroundColor: Brand.ink,
+              onPressed: () async {
+                await context.push('/propiedades/nueva');
+                loadCaptured();
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Nueva propiedad'),
+            )
+          : null,
+      body: PageBody(
+        onRefresh: refresh,
+        bottomPadding: 96,
+        subtitle: 'Inventario de la oficina en 21Online. Lo que des de alta aquí se publica también en 21Online.',
+        children: [
+          if (!configured) ...[const Notice(tone: Tone.warning, icon: Icons.warning_amber_outlined, text: _noKey), const SizedBox(height: 14)],
+          FilterChips<String>(
+            value: tab,
+            options: [
+              (id: 'inventory', label: 'Inventario 21Online', count: null),
+              (id: 'captured', label: 'Capturadas en Genera', count: captured?.captured.length),
+            ],
+            onChanged: (t) => setState(() => tab = t),
+          ),
+          if (pending > 0 && tab == 'inventory') ...[
+            const SizedBox(height: 8),
+            LinkText('${pending == 1 ? '1 propiedad capturada aún no está' : '$pending propiedades capturadas aún no están'} en 21Online. Revisar',
+                onTap: () => setState(() => tab = 'captured')),
+          ],
+          const SizedBox(height: 14),
+          if (tab == 'inventory') ..._inventory(configured) else ..._captured(),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _inventory(bool configured) {
+    final data = inventory;
+    if (!configured || (data != null && !data.configured)) {
+      return const [
+        StateMessage(kind: StateKind.empty, title: 'Sin conexión con 21Online', description: 'Cuando se configure la llave de 21Online aquí verás todo el inventario de la oficina.'),
+      ];
+    }
+    return [
+      AppTextField(hint: 'Buscar por número de 21Online o colonia', onChanged: onQuery, value: query),
+      const SizedBox(height: 10),
+      AppSelect<String>(
+        value: status,
+        options: [
+          (value: 'enPromocion', label: 'En promoción'),
+          (value: '', label: 'Todos los estatus'),
+          for (final s in ['suspendida', 'conIntencion', 'conContratoFirmado', 'cerrada', 'cancelada']) (value: s, label: listingStatusLabels[s]!),
+        ],
+        onChanged: (v) {
+          setState(() {
+            status = v;
+            page = 1;
+          });
+          loadInventory();
+        },
+      ),
+      const SizedBox(height: 10),
+      AppSelect<String>(
+        value: operation,
+        options: optionsOf(listingOperationLabels, empty: 'Venta y renta'),
+        onChanged: (v) {
+          setState(() {
+            operation = v;
+            page = 1;
+          });
+          loadInventory();
+        },
+      ),
+      const SizedBox(height: 14),
+      if (inventoryError != null && data == null)
+        LoadError(message: inventoryError!, onRetry: loadInventory)
+      else if (data == null)
+        const StateMessage(kind: StateKind.loading, title: 'Consultando 21Online…')
+      else if (data.error != null)
+        LoadError(message: data.error!, onRetry: loadInventory)
+      else if (data.items.isEmpty)
+        const StateMessage(kind: StateKind.noResults, title: 'Sin propiedades', description: 'Ninguna propiedad de 21Online coincide con estos filtros.')
+      else ...[
+        ...spaced(data.items.map((i) => _ListingCard(item: i)), 12),
+        const SizedBox(height: 14),
+        Row(children: [
+          Expanded(child: MutedText('Página ${data.page}${data.totalItems != null ? ' · ${data.totalItems} propiedades' : ''}', size: 12.5)),
+          IconButton(
+            tooltip: 'Página anterior',
+            onPressed: page <= 1
+                ? null
+                : () {
+                    setState(() => page--);
+                    loadInventory();
+                  },
+            icon: const Icon(Icons.chevron_left),
+          ),
+          IconButton(
+            tooltip: 'Página siguiente',
+            onPressed: !data.hasNext
+                ? null
+                : () {
+                    setState(() => page++);
+                    loadInventory();
+                  },
+            icon: const Icon(Icons.chevron_right),
+          ),
+        ]),
+      ],
+    ];
+  }
+
+  List<Widget> _captured() {
+    final data = captured;
+    if (capturedError != null && data == null) return [LoadError(message: capturedError!, onRetry: loadCaptured)];
+    if (data == null) return const [StateMessage(kind: StateKind.loading, title: 'Cargando propiedades…')];
+    if (data.captured.isEmpty) {
+      return const [
+        StateMessage(kind: StateKind.empty, title: 'Aún no hay propiedades capturadas', description: 'Las que des de alta en Genera aparecerán aquí con su estado de envío a 21Online.'),
+      ];
+    }
+    return spaced(
+      data.captured.map((p) => _CapturedCard(
+            property: p,
+            onTap: () async {
+              await context.push('/propiedades/${p.id}');
+              loadCaptured();
+            },
+          )),
+      10,
+    );
+  }
+}
+
+class ListingStatusBadge extends StatelessWidget {
+  const ListingStatusBadge(this.status, {super.key});
+  final String? status;
+
+  @override
+  Widget build(BuildContext context) =>
+      status == null ? const SizedBox.shrink() : AppBadge(label(listingStatusLabels, status), tone: listingStatusTones[status] ?? Tone.neutral);
+}
+
+class SyncBadge extends StatelessWidget {
+  const SyncBadge(this.status, {super.key});
+  final String status;
+
+  @override
+  Widget build(BuildContext context) => AppBadge(
+        label(syncLabels, status),
+        tone: syncTones[status] ?? Tone.neutral,
+        icon: status == 'DONE' ? Icons.check_circle_outline : status == 'FAILED' ? Icons.warning_amber_outlined : Icons.schedule,
+      );
+}
+
+/// Foto principal de 21Online (o un recuadro vacío si no tiene).
+class _Photo extends StatelessWidget {
+  const _Photo({required this.url, this.height = 170});
+  final String? url;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final empty = Container(
+      height: height,
+      color: c.appBg,
+      alignment: Alignment.center,
+      child: Icon(Icons.hide_image_outlined, color: c.muted),
+    );
+    if (url == null) return empty;
+    return Image.network(url!, height: height, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, _, _) => empty);
+  }
+}
+
+class _ListingCard extends StatelessWidget {
+  const _ListingCard({required this.item});
+  final InventoryItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final l = item.listing;
+    final place = [l.neighborhood, l.municipality].whereType<String>().join(', ');
+    final features = listingFeatures(bedrooms: l.bedrooms, bathrooms: l.bathrooms, builtM2: l.builtM2, landM2: l.landM2);
+    return AppCard(
+      padding: EdgeInsets.zero,
+      onTap: () => context.push('/propiedades/21online/${l.id}'),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Stack(children: [
+          _Photo(url: l.photoUrl),
+          Positioned(
+            left: 10,
+            top: 10,
+            child: Wrap(spacing: 6, children: [ListingStatusBadge(l.status), if (item.generaId != null) const AppBadge('Capturada en Genera', tone: Tone.gold)]),
+          ),
+        ]),
+        Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${l.internalKey != null ? '${l.internalKey} · ' : ''}${l.id} · ${l.subtypeLabel} en ${l.operation == 'renta' ? 'renta' : 'venta'}',
+                style: TextStyle(fontSize: 12, color: c.muted)),
+            const SizedBox(height: 4),
+            Text(l.title, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: c.fg), maxLines: 2, overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 4),
+            Text(listingPrice(l.operation, l.salePrice, l.rentPrice, l.currency), style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: c.goldText)),
+            if (place.isNotEmpty) Text(place, style: TextStyle(fontSize: 13, color: c.muted), overflow: TextOverflow.ellipsis),
+            if (features.isNotEmpty) ...[const SizedBox(height: 4), Text(features, style: TextStyle(fontSize: 12, color: c.muted))],
+            const SizedBox(height: 10),
+            AdvisorChip(advisor: item.advisor, emptyLabel: l.advisorOnline21Id != null ? 'Asesor sin vincular' : 'Sin asesor'),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+class _CapturedCard extends StatelessWidget {
+  const _CapturedCard({required this.property, required this.onTap});
+  final CapturedProperty property;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final d = property.data;
+    return AppCard(
+      onTap: onTap,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(d.headline, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: c.fg), maxLines: 2, overflow: TextOverflow.ellipsis),
+        Text('${subtypeLabel(d.subtype)} · ${d.neighborhood}, ${d.municipality} · ${timeAgo(property.createdAt)}',
+            style: TextStyle(fontSize: 12, color: c.muted), overflow: TextOverflow.ellipsis),
+        const SizedBox(height: 6),
+        Text(listingPrice(d.operation, d.salePrice, d.rentPrice, d.currency), style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.fg)),
+        const SizedBox(height: 10),
+        Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          SyncBadge(property.syncStatus),
+          if (property.online21Id != null) MutedText('Núm. ${property.online21Id}', size: 12),
+        ]),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(child: AdvisorChip(advisor: property.advisor, emptyLabel: 'Sin asesor')),
+          Text('Ver', style: TextStyle(color: c.goldText, fontWeight: FontWeight.w600)),
+          Icon(Icons.arrow_forward, size: 16, color: c.goldText),
+        ]),
+      ]),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Ficha de una propiedad de 21Online (solo consulta)
+// ---------------------------------------------------------------------------
+
+class Online21PropertyScreen extends StatefulWidget {
+  const Online21PropertyScreen({super.key, required this.online21Id});
+  final String online21Id;
+
+  @override
+  State<Online21PropertyScreen> createState() => _Online21PropertyScreenState();
+}
+
+class _Online21PropertyScreenState extends State<Online21PropertyScreen> {
+  InventoryItem? data;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    try {
+      final result = await api.getInventoryItem(widget.online21Id);
+      if (mounted) {
+        setState(() {
+          data = result;
+          error = null;
+        });
+      }
+    } catch (err) {
+      if (mounted) setState(() => error = crmErrorText(err));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final item = data;
+    if (item == null) {
+      return AppScaffold(
+        title: 'Propiedad',
+        body: PageBody(children: [
+          if (error != null) LoadError(message: error!, onRetry: load) else const StateMessage(kind: StateKind.loading, title: 'Consultando 21Online…'),
+        ]),
+      );
+    }
+    final l = item.listing;
+    final address = [
+      if (l.street != null) l.number != null ? '${l.street} ${l.number}' : l.street,
+      l.neighborhood,
+      l.municipality,
+      l.state,
+      l.postalCode,
+    ].whereType<String>().join(', ');
+    final features = listingFeatures(bedrooms: l.bedrooms, bathrooms: l.bathrooms, builtM2: l.builtM2, landM2: l.landM2);
+    return AppScaffold(
+      title: l.title,
+      body: PageBody(
+        onRefresh: load,
+        actions: [
+          if (item.generaId != null) Btn('Editar en Genera', icon: Icons.edit_outlined, variant: BtnVariant.secondary, small: true, onPressed: () => context.push('/propiedades/${item.generaId}')),
+          Btn('Abrir en 21Online', icon: Icons.open_in_new, variant: BtnVariant.secondary, small: true, onPressed: () => openUrl(context, '${AppConfig.online21BaseUrl}/propiedades/ver/${l.id}')),
+        ],
+        children: [
+          ClipRRect(borderRadius: BorderRadius.circular(14), child: _Photo(url: l.photoUrl, height: 210)),
+          const SizedBox(height: 16),
+          AppCard(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              CardHeader(
+                title: listingPrice(l.operation, l.salePrice, l.rentPrice, l.currency),
+                description: '${l.subtypeLabel} en ${l.operation == 'renta' ? 'renta' : 'venta'}${l.photoCount > 0 ? ' · ${l.photoCount} fotos' : ''}',
+                action: ListingStatusBadge(l.status),
+              ),
+              if (features.isNotEmpty) MutedText(features),
+              const SizedBox(height: 10),
+              Text(l.description ?? 'Sin descripción.', style: TextStyle(fontSize: 14, color: l.description == null ? context.c.muted : context.c.fg, height: 1.45)),
+            ]),
+          ),
+          const SizedBox(height: 16),
+          AppCard(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const CardHeader(title: 'Datos en 21Online'),
+              FieldGrid(children: [
+                FieldView('Número', l.key),
+                if (l.internalKey != null) FieldView('Clave', l.internalKey),
+                FieldView('En internet', l.publishedOnline == null ? '—' : (l.publishedOnline! ? 'Sí' : 'No')),
+                if (l.contractType != null) FieldView('Contrato', label(contractLabels, l.contractType)),
+                if (l.parking != null) FieldView('Estacionamientos', '${l.parking}'),
+                if (l.halfBathrooms != null && l.halfBathrooms! > 0) FieldView('Medios baños', '${l.halfBathrooms}'),
+                if (l.createdAt != null) FieldView('Alta', formatDateTime(l.createdAt)),
+                if (l.updatedAt != null) FieldView('Modificada', formatDateTime(l.updatedAt)),
+              ]),
+              if (address.isNotEmpty) ...[const SizedBox(height: 14), FieldView('Ubicación', address)],
+              const SizedBox(height: 14),
+              FieldView('Asesor', null,
+                  child: AdvisorChip(advisor: item.advisor, emptyLabel: l.advisorOnline21Id != null ? 'Usuario ${l.advisorOnline21Id} sin vincular' : 'Sin asesor')),
+            ]),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Ficha de una propiedad capturada en Genera (estado de envío y edición)
+// ---------------------------------------------------------------------------
+
+class CapturedPropertyScreen extends StatefulWidget {
+  const CapturedPropertyScreen({super.key, required this.id});
+  final String id;
+
+  @override
+  State<CapturedPropertyScreen> createState() => _CapturedPropertyScreenState();
+}
+
+class _CapturedPropertyScreenState extends State<CapturedPropertyScreen> {
+  CapturedProperty? data;
+  String? error;
+  bool busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    try {
+      final result = await api.getCaptured(widget.id);
+      if (mounted) {
+        setState(() {
+          data = result;
+          error = null;
+        });
+      }
+    } catch (err) {
+      if (mounted) setState(() => error = crmErrorText(err));
+    }
+  }
+
+  Future<void> retry() async {
+    setState(() => busy = true);
+    try {
+      final updated = await api.retryPropertySync(widget.id);
+      if (!mounted) return;
+      setState(() => data = updated);
+      showToast(context, updated.syncStatus == 'DONE' ? 'Propiedad enviada a 21Online' : '21Online aún no la aceptó');
+    } catch (err) {
+      if (mounted) showToast(context, crmErrorText(err));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = data;
+    if (p == null) {
+      return AppScaffold(
+        title: 'Propiedad',
+        body: PageBody(children: [
+          if (error != null) LoadError(message: error!, onRetry: load) else const StateMessage(kind: StateKind.loading, title: 'Cargando propiedad…'),
+        ]),
+      );
+    }
+    final d = p.data;
+    final address = [
+      if (d.street != null) d.extNumber != null ? '${d.street} ${d.extNumber}' : d.street,
+      d.neighborhood,
+      d.municipality,
+      d.state,
+      d.postalCode,
+    ].whereType<String>().join(', ');
+    final features = listingFeatures(bedrooms: d.bedrooms, bathrooms: d.bathrooms, builtM2: d.builtM2, landM2: d.landM2);
+    final c = context.c;
+    return AppScaffold(
+      title: d.headline,
+      actions: [
+        if (p.canEdit)
+          IconButton(
+            tooltip: 'Editar',
+            icon: const Icon(Icons.edit_outlined),
+            onPressed: () async {
+              final saved = await Navigator.of(context).push<CapturedProperty>(MaterialPageRoute(builder: (_) => PropertyFormScreen(existing: p)));
+              if (saved != null && mounted) setState(() => data = saved);
+            },
+          ),
+      ],
+      body: PageBody(
+        onRefresh: load,
+        children: [
+          AppCard(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Wrap(spacing: 10, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                SyncBadge(p.syncStatus),
+                if (p.online21Id != null)
+                  LinkText('Número ${p.online21Id} en 21Online',
+                      trailingIcon: Icons.open_in_new, onTap: () => openUrl(context, '${AppConfig.online21BaseUrl}/propiedades/ver/${p.online21Id}')),
+              ]),
+              if (p.syncStatus == 'DONE' && p.syncedAt != null) ...[const SizedBox(height: 8), MutedText('Última sincronización: ${formatDateTime(p.syncedAt)}.')],
+              if (p.syncError != null) ...[const SizedBox(height: 8), Text(p.syncError!, style: TextStyle(fontSize: 13.5, color: c.dangerText))],
+              if (p.syncUncertain) ...[
+                const SizedBox(height: 8),
+                const Notice(
+                  tone: Tone.warning,
+                  icon: Icons.warning_amber_outlined,
+                  text: 'Antes de reintentar, busca la propiedad en 21Online: pudo haberse guardado aunque no hubo respuesta, y reintentar la duplicaría.',
+                ),
+              ],
+              if (p.advisor != null && !p.advisorLinked) ...[
+                const SizedBox(height: 8),
+                MutedText('${p.advisor!.name} no tiene vinculado su usuario de 21Online (CRM → Asesores), así que 21Online la registra a nombre de la llave de la API.'),
+              ],
+              if (p.canEdit && p.syncStatus != 'DONE') ...[
+                const SizedBox(height: 12),
+                Btn(busy ? 'Enviando…' : 'Reintentar envío', icon: Icons.refresh, variant: BtnVariant.secondary, loading: busy, onPressed: busy ? null : retry),
+              ],
+            ]),
+          ),
+          const SizedBox(height: 16),
+          AppCard(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              CardHeader(
+                title: listingPrice(d.operation, d.salePrice, d.rentPrice, d.currency),
+                description: '${subtypeLabel(d.subtype)} · ${label(listingTypeLabels, d.propertyType)} · ${label(listingOperationLabels, d.operation)}',
+                action: ListingStatusBadge(d.status),
+              ),
+              if (features.isNotEmpty) MutedText(features),
+              const SizedBox(height: 10),
+              Text(d.description ?? 'Sin descripción.', style: TextStyle(fontSize: 14, color: d.description == null ? c.muted : c.fg, height: 1.45)),
+            ]),
+          ),
+          const SizedBox(height: 16),
+          AppCard(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const CardHeader(title: 'Datos'),
+              FieldView('Asesor', null, child: AdvisorChip(advisor: p.advisor, emptyLabel: 'Sin asesor')),
+              const SizedBox(height: 14),
+              FieldView('Ubicación', address),
+              const SizedBox(height: 14),
+              FieldGrid(children: [
+                FieldView('En internet', '${d.publishOnline ? 'Sí' : 'No'}${d.hidePrice ? ' · precio oculto' : ''}'),
+                if (d.contractType != null) FieldView('Contrato', label(contractLabels, d.contractType)),
+                if (d.commission != null) FieldView('Comisión', '${numText(d.commission!)}%'),
+                if (d.parking != null) FieldView('Estacionamientos', '${d.parking}'),
+                if (d.levels != null) FieldView('Niveles', '${d.levels}'),
+                if (d.age != null) FieldView('Antigüedad', '${d.age} años'),
+                if (d.maintenanceFee != null) FieldView('Mantenimiento', formatPrice(d.maintenanceFee!)),
+                FieldView('Capturó', '${p.createdBy?.name ?? '—'} · ${formatDateTime(p.createdAt)}'),
+              ]),
+            ]),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Alta y edición (se publica en 21Online al guardar)
+// ---------------------------------------------------------------------------
+
+class PropertyFormScreen extends StatefulWidget {
+  const PropertyFormScreen({super.key, this.existing});
+  final CapturedProperty? existing;
+
+  @override
+  State<PropertyFormScreen> createState() => _PropertyFormScreenState();
+}
+
+class _PropertyFormScreenState extends State<PropertyFormScreen> {
+  late final PropertyData? d = widget.existing?.data;
+  late String operation = d?.operation ?? 'venta';
+  late String propertyType = d?.propertyType ?? 'habitacional';
+  late String subtype = d?.subtype ?? 'casa';
+  late String contractType = d?.contractType ?? 'exclusiva';
+  late String status = d?.status ?? 'enPromocion';
+  late String currency = d?.currency ?? 'MXN';
+  late String state = d?.state ?? 'Morelos';
+  late String advisorUserId = d?.advisorUserId ?? '';
+  late bool hidePrice = d?.hidePrice ?? false;
+  late bool hideStreet = d?.hideStreet ?? false;
+  late bool hideNumber = d?.hideNumber ?? true;
+  late bool publishOnline = d?.publishOnline ?? true;
+  late final Map<String, String> text = {
+    'headline': d?.headline ?? '',
+    'description': d?.description ?? '',
+    'price': _t(d == null ? null : (d!.operation == 'renta' ? d!.rentPrice : d!.salePrice)),
+    'street': d?.street ?? '',
+    'extNumber': d?.extNumber ?? '',
+    'neighborhood': d?.neighborhood ?? '',
+    'municipality': d?.municipality ?? '',
+    'postalCode': d?.postalCode ?? '',
+    'bedrooms': _t(d?.bedrooms),
+    'bathrooms': _t(d?.bathrooms),
+    'halfBathrooms': _t(d?.halfBathrooms),
+    'parking': _t(d?.parking),
+    'landM2': _t(d?.landM2),
+    'builtM2': _t(d?.builtM2),
+    'levels': _t(d?.levels),
+    'age': _t(d?.age),
+    'maintenanceFee': _t(d?.maintenanceFee),
+    'commission': _t(d?.commission),
+  };
+  List<AdvisorRouting> advisors = [];
+  bool saving = false;
+  String? error;
+
+  static String _t(num? v) => v == null ? '' : numText(v);
+
+  bool get seesAll => context.read<AuthState>().can('LEAD_VIEW_ALL');
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (seesAll) api.listAdvisors().then((a) => mounted ? setState(() => advisors = a) : null).catchError((_) => null);
+    });
+  }
+
+  num? _num(String key) {
+    final cleaned = (text[key] ?? '').replaceAll(RegExp(r'[$,\s]'), '');
+    return cleaned.isEmpty ? null : num.tryParse(cleaned);
+  }
+
+  String? _opt(String key) => (text[key] ?? '').trim().isEmpty ? null : text[key]!.trim();
+
+  List<String> get missing => [
+        if ((text['headline'] ?? '').trim().isEmpty) 'encabezado',
+        if ((_num('price') ?? 0) <= 0) 'precio',
+        if ((text['neighborhood'] ?? '').trim().isEmpty) 'colonia',
+        if ((text['municipality'] ?? '').trim().isEmpty) 'municipio',
+      ];
+
+  Json _payload() {
+    final price = _num('price');
+    return {
+      'operation': operation,
+      'propertyType': propertyType,
+      'subtype': subtype,
+      'contractType': contractType.isEmpty ? null : contractType,
+      'status': status,
+      'headline': text['headline']!.trim(),
+      'description': _opt('description'),
+      'salePrice': operation == 'venta' ? price : null,
+      'rentPrice': operation == 'renta' ? price : null,
+      'currency': currency,
+      'hidePrice': hidePrice,
+      'street': _opt('street'),
+      'extNumber': _opt('extNumber'),
+      'neighborhood': text['neighborhood']!.trim(),
+      'municipality': text['municipality']!.trim(),
+      'state': state,
+      'postalCode': _opt('postalCode'),
+      'hideStreet': hideStreet,
+      'hideNumber': hideNumber,
+      'bedrooms': _num('bedrooms')?.toInt(),
+      'bathrooms': _num('bathrooms'),
+      'halfBathrooms': _num('halfBathrooms')?.toInt(),
+      'parking': _num('parking')?.toInt(),
+      'landM2': _num('landM2'),
+      'builtM2': _num('builtM2'),
+      'levels': _num('levels')?.toInt(),
+      'age': _num('age')?.toInt(),
+      'maintenanceFee': _num('maintenanceFee'),
+      'commission': _num('commission'),
+      'publishOnline': publishOnline,
+      'advisorUserId': advisorUserId.isEmpty ? null : advisorUserId,
+    };
+  }
+
+  Future<void> save() async {
+    setState(() {
+      saving = true;
+      error = null;
+    });
+    try {
+      final existing = widget.existing;
+      final saved = existing == null ? await api.createProperty(_payload()) : await api.updateProperty(existing.id, _payload());
+      if (!mounted) return;
+      if (existing == null) {
+        context.pushReplacement('/propiedades/${saved.id}');
+      } else {
+        Navigator.of(context).pop(saved);
+      }
+    } catch (err) {
+      if (mounted) {
+        setState(() {
+          saving = false;
+          error = crmErrorText(err);
+        });
+      }
+    }
+  }
+
+  Widget _field(String key, String labelText, {String? hint, TextInputType? keyboard, int maxLines = 1}) => AppTextField(
+        label: labelText,
+        hint: hint,
+        value: text[key],
+        keyboardType: keyboard,
+        maxLines: maxLines,
+        onChanged: (v) => setState(() => text[key] = v),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthState>();
+    final editing = widget.existing != null;
+    if (!auth.can('PROPERTY_MANAGE')) {
+      return const Restricted(title: 'Nueva propiedad', route: '/propiedades', description: 'Tu usuario no puede dar de alta propiedades.');
+    }
+    const numeric = TextInputType.numberWithOptions(decimal: true);
+    final isLand = subtype == 'terreno';
+    final miss = missing;
+    const gap = SizedBox(height: 12);
+    return AppScaffold(
+      title: editing ? 'Editar propiedad' : 'Nueva propiedad',
+      body: PageBody(
+        subtitle: editing ? 'Los cambios se envían a 21Online al guardar.' : 'Se guarda en Genera y se publica en 21Online en el mismo paso.',
+        children: [
+          AppCard(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const CardHeader(title: 'Operación y tipo', description: 'Se publica en 21Online con estos mismos datos.'),
+              AppSelect<String>(label: 'Operación', value: operation, options: optionsOf(listingOperationLabels), onChanged: (v) => setState(() => operation = v)),
+              gap,
+              AppSelect<String>(
+                label: 'Tipo',
+                value: propertyType,
+                options: optionsOf(listingTypeLabels),
+                onChanged: (v) => setState(() {
+                  propertyType = v;
+                  if (!subtypesByType[v]!.contains(subtype)) subtype = subtypesByType[v]!.first;
+                }),
+              ),
+              gap,
+              AppSelect<String>(
+                label: 'Subtipo',
+                value: subtype,
+                options: [for (final s in subtypesByType[propertyType]!) (value: s, label: subtypeLabel(s))],
+                onChanged: (v) => setState(() => subtype = v),
+              ),
+              gap,
+              AppSelect<String>(
+                label: 'Contrato con el propietario',
+                value: contractType,
+                options: optionsOf(contractLabels, empty: 'Sin especificar'),
+                onChanged: (v) => setState(() => contractType = v),
+              ),
+              gap,
+              AppSelect<String>(
+                label: 'Estatus en 21Online',
+                value: status,
+                options: [for (final s in editableListingStatuses) (value: s, label: listingStatusLabels[s]!)],
+                onChanged: (v) => setState(() => status = v),
+              ),
+              gap,
+              if (seesAll)
+                AppSelect<String>(
+                  label: 'Asesor responsable',
+                  value: advisorUserId,
+                  options: [
+                    (value: '', label: 'Sin asesor (a nombre de la llave de 21Online)'),
+                    for (final a in advisors) (value: a.userId, label: a.online21UserId != null ? a.name : '${a.name} · sin usuario de 21Online'),
+                  ],
+                  onChanged: (v) => setState(() => advisorUserId = v),
+                )
+              else
+                const MutedText('Quedará a tu nombre como asesor.'),
+            ]),
+          ),
+          const SizedBox(height: 16),
+          AppCard(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const CardHeader(title: 'Anuncio y precio'),
+              _field('headline', 'Encabezado del anuncio', hint: 'Ej. Casa con jardín y alberca en Burgos'),
+              gap,
+              _field('description', 'Descripción', maxLines: 5),
+              gap,
+              _field('price', operation == 'renta' ? 'Renta mensual' : 'Precio de venta', keyboard: numeric),
+              gap,
+              AppSelect<String>(
+                label: 'Moneda',
+                value: currency,
+                options: const [(value: 'MXN', label: 'Pesos (MXN)'), (value: 'USD', label: 'Dólares (USD)')],
+                onChanged: (v) => setState(() => currency = v),
+              ),
+              gap,
+              _field('commission', 'Comisión (%)', keyboard: numeric),
+              if (!isLand) ...[gap, _field('maintenanceFee', 'Cuota de mantenimiento', keyboard: numeric)],
+              gap,
+              ToggleRow(label: 'Publicar en internet', description: 'Portales y sitio de CENTURY 21 vía 21Online.', value: publishOnline, onChanged: (v) => setState(() => publishOnline = v)),
+              ToggleRow(label: 'Ocultar precio en internet', value: hidePrice, onChanged: (v) => setState(() => hidePrice = v)),
+            ]),
+          ),
+          const SizedBox(height: 16),
+          AppCard(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const CardHeader(title: 'Ubicación', description: 'Estado y municipio son obligatorios para 21Online.'),
+              _field('street', 'Calle'),
+              gap,
+              _field('extNumber', 'Número'),
+              gap,
+              _field('neighborhood', 'Colonia'),
+              gap,
+              _field('municipality', 'Municipio'),
+              gap,
+              AppSelect<String>(label: 'Estado', value: state, options: [for (final s in mexicanStates) (value: s, label: s)], onChanged: (v) => setState(() => state = v)),
+              gap,
+              _field('postalCode', 'Código postal', keyboard: TextInputType.number),
+              gap,
+              ToggleRow(label: 'Ocultar la calle en internet', value: hideStreet, onChanged: (v) => setState(() => hideStreet = v)),
+              ToggleRow(label: 'Ocultar el número en internet', value: hideNumber, onChanged: (v) => setState(() => hideNumber = v)),
+            ]),
+          ),
+          const SizedBox(height: 16),
+          AppCard(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const CardHeader(title: 'Características'),
+              _field('landM2', 'Terreno (m²)', keyboard: numeric),
+              if (!isLand) ...[
+                gap,
+                _field('builtM2', 'Construcción (m²)', keyboard: numeric),
+                gap,
+                _field('bedrooms', 'Recámaras', keyboard: TextInputType.number),
+                gap,
+                _field('bathrooms', 'Baños completos', keyboard: numeric),
+                gap,
+                _field('halfBathrooms', 'Medios baños', keyboard: TextInputType.number),
+                gap,
+                _field('parking', 'Estacionamientos', keyboard: TextInputType.number),
+                gap,
+                _field('levels', 'Niveles', keyboard: TextInputType.number),
+                gap,
+                _field('age', 'Antigüedad (años)', keyboard: TextInputType.number),
+              ],
+              const SizedBox(height: 12),
+              const MutedText('Las fotos se suben en 21Online: su API no recibe archivos de imagen.', size: 12),
+            ]),
+          ),
+          if (error != null) ...[const SizedBox(height: 16), Notice(tone: Tone.danger, text: error)],
+          const SizedBox(height: 16),
+          if (miss.isNotEmpty) ...[MutedText('Falta: ${miss.join(', ')}.'), const SizedBox(height: 8)],
+          Btn(
+            saving ? 'Guardando y enviando a 21Online…' : (editing && widget.existing!.online21Id != null ? 'Guardar y actualizar en 21Online' : 'Guardar y publicar en 21Online'),
+            expand: true,
+            loading: saving,
+            onPressed: saving || miss.isNotEmpty ? null : save,
+          ),
+        ],
+      ),
+    );
+  }
+}

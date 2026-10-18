@@ -284,3 +284,14 @@ Future<ConversationDetail> replyToConversation(String id, String text) async => 
 Future<void> resolveEscalation(String escalationId) => _c.post('/internal/conversations/escalations/$escalationId/resolve');
 Future<String?> simulateMessage(String text) async => (await _c.post('/internal/assistant/simulator', {'text': text}) as Map?)?['conversationId'] as String?;
 Future<void> resetSimulation() => _c.delete('/internal/assistant/simulator');
+
+// --- CRM: propiedades vinculadas con 21Online ----------------------------------
+
+Future<InventoryPage> listInventory({String? q, String? status, String? operation, int page = 1}) async =>
+    InventoryPage.fromJson(_j(await _c.get('/internal/properties/inventory${_q({'q': q?.trim(), 'status': status, 'operation': operation, 'page': page})}')));
+Future<InventoryItem> getInventoryItem(String online21Id) async => InventoryItem.fromJson(_j(await _c.get('/internal/properties/inventory/$online21Id')));
+Future<CapturedOverview> listCaptured() async => CapturedOverview.fromJson(_j(await _c.get('/internal/properties')));
+Future<CapturedProperty> getCaptured(String id) async => CapturedProperty.fromJson(_j(await _c.get('/internal/properties/$id')));
+Future<CapturedProperty> createProperty(Json data) async => CapturedProperty.fromJson(_j(await _c.post('/internal/properties', data)));
+Future<CapturedProperty> updateProperty(String id, Json data) async => CapturedProperty.fromJson(_j(await _c.put('/internal/properties/$id', data)));
+Future<CapturedProperty> retryPropertySync(String id) async => CapturedProperty.fromJson(_j(await _c.post('/internal/properties/$id/sync')));

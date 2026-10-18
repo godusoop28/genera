@@ -64,7 +64,7 @@ export function NotConfiguredNotice() {
 export function Features({ bedrooms, bathrooms, builtM2, landM2 }: { bedrooms: number | null; bathrooms: number | null; builtM2: number | null; landM2: number | null }) {
   const parts: Array<{ icon: typeof Home; text: string }> = [];
   if (bedrooms) parts.push({ icon: BedDouble, text: `${bedrooms} rec.` });
-  if (bathrooms) parts.push({ icon: Bath, text: `${bathrooms} baños` });
+  if (bathrooms) parts.push({ icon: Bath, text: `${bathrooms} ${bathrooms === 1 ? "baño" : "baños"}` });
   if (builtM2) parts.push({ icon: Home, text: `${builtM2} m² const.` });
   if (landM2) parts.push({ icon: Ruler, text: `${landM2} m² terreno` });
   if (parts.length === 0) return null;

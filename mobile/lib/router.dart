@@ -6,6 +6,7 @@ import 'screens/crm/conversations_screen.dart';
 import 'screens/crm/dashboard_screen.dart';
 import 'screens/crm/lead_detail_screen.dart';
 import 'screens/crm/leads_screen.dart';
+import 'screens/crm/properties_screen.dart';
 import 'screens/expedientes/expediente_detail_screen.dart';
 import 'screens/expedientes/expedientes_screen.dart';
 import 'screens/expedientes/new_expediente_screen.dart';
@@ -53,6 +54,10 @@ GoRouter buildRouter(AuthState auth) => GoRouter(
           ),
         ),
         GoRoute(path: '/leads/:id', builder: (_, s) => LeadDetailScreen(id: s.pathParameters['id']!)),
+        GoRoute(path: '/propiedades', builder: (_, s) => PropertiesScreen(initialTab: s.uri.queryParameters['vista'])),
+        GoRoute(path: '/propiedades/nueva', builder: (_, _) => const PropertyFormScreen()),
+        GoRoute(path: '/propiedades/21online/:online21Id', builder: (_, s) => Online21PropertyScreen(online21Id: s.pathParameters['online21Id']!)),
+        GoRoute(path: '/propiedades/:id', builder: (_, s) => CapturedPropertyScreen(id: s.pathParameters['id']!)),
         GoRoute(path: '/calendario', builder: (_, s) => CalendarScreen(initialAdvisor: s.uri.queryParameters['asesor'])),
         GoRoute(path: '/conversaciones', builder: (_, _) => const ConversationsScreen()),
         GoRoute(path: '/conversaciones/:id', builder: (_, s) => ConversationScreen(id: s.pathParameters['id']!)),

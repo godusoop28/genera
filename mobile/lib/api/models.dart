@@ -1075,3 +1075,138 @@ class AssistantStatus {
   final String mode;
   final bool aiConfigured, whatsappConfigured, webhookConfigured, inventoryAvailable;
 }
+
+// --- CRM: propiedades vinculadas con 21Online (leads.web.InternalPropertyController) ---
+
+class Listing {
+  Listing.fromJson(Json j)
+      : id = _i(j['id']),
+        key = _sr(j['key']),
+        internalKey = _s(j['internalKey']),
+        status = _s(j['status']),
+        operation = _s(j['operation']),
+        subtype = _s(j['subtype']),
+        subtypeLabel = _sr(j['subtypeLabel'], 'Propiedad'),
+        contractType = _s(j['contractType']),
+        title = _sr(j['title']),
+        salePrice = _dn(j['salePrice']),
+        rentPrice = _dn(j['rentPrice']),
+        currency = _sr(j['currency'], 'MXN'),
+        street = _s(j['street']),
+        number = _s(j['number']),
+        neighborhood = _s(j['neighborhood']),
+        municipality = _s(j['municipality']),
+        state = _s(j['state']),
+        postalCode = _s(j['postalCode']),
+        bedrooms = _in(j['bedrooms']),
+        bathrooms = _dn(j['bathrooms']),
+        halfBathrooms = _in(j['halfBathrooms']),
+        parking = _in(j['parking']),
+        landM2 = _dn(j['landM2']),
+        builtM2 = _dn(j['builtM2']),
+        description = _s(j['description']),
+        publishedOnline = _bn(j['publishedOnline']),
+        advisorOnline21Id = _in(j['advisorOnline21Id']),
+        photoUrl = _s(j['photoUrl']),
+        photoCount = _i(j['photoCount']),
+        createdAt = _s(j['createdAt']),
+        updatedAt = _s(j['updatedAt']);
+  final int id, photoCount;
+  final String key, subtypeLabel, title, currency;
+  final String? internalKey, status, operation, subtype, contractType, street, number, neighborhood, municipality, state, postalCode, description, photoUrl, createdAt, updatedAt;
+  final int? bedrooms, halfBathrooms, parking, advisorOnline21Id;
+  final double? salePrice, rentPrice, bathrooms, landM2, builtM2;
+  final bool? publishedOnline;
+}
+
+class InventoryItem {
+  InventoryItem.fromJson(Json j)
+      : listing = Listing.fromJson(Json.from(j['listing'] as Map)),
+        advisor = NamedRef.maybe(j['advisor']),
+        generaId = _s(j['generaId']);
+  final Listing listing;
+  final NamedRef? advisor;
+  final String? generaId;
+}
+
+class InventoryPage {
+  InventoryPage.fromJson(Json j)
+      : configured = j['configured'] != false,
+        error = _s(j['error']),
+        items = _list(j['items'], InventoryItem.fromJson),
+        page = _i(j['page'], 1),
+        totalItems = _in(j['totalItems']),
+        hasNext = _b(j['hasNext']);
+  final bool configured, hasNext;
+  final String? error;
+  final List<InventoryItem> items;
+  final int page;
+  final int? totalItems;
+}
+
+/// Datos editables de una propiedad (mismos nombres que el JSON; el formulario los reenvía al guardar).
+class PropertyData {
+  PropertyData.fromJson(Json j) : raw = Json.from(j);
+  final Json raw;
+  String get operation => _sr(raw['operation'], 'venta');
+  String get propertyType => _sr(raw['propertyType'], 'habitacional');
+  String get subtype => _sr(raw['subtype'], 'casa');
+  String? get contractType => _s(raw['contractType']);
+  String get status => _sr(raw['status'], 'enPromocion');
+  String get headline => _sr(raw['headline']);
+  String? get description => _s(raw['description']);
+  double? get salePrice => _dn(raw['salePrice']);
+  double? get rentPrice => _dn(raw['rentPrice']);
+  String get currency => _sr(raw['currency'], 'MXN');
+  bool get hidePrice => _b(raw['hidePrice']);
+  String? get street => _s(raw['street']);
+  String? get extNumber => _s(raw['extNumber']);
+  String get neighborhood => _sr(raw['neighborhood']);
+  String get municipality => _sr(raw['municipality']);
+  String get state => _sr(raw['state']);
+  String? get postalCode => _s(raw['postalCode']);
+  bool get hideStreet => _b(raw['hideStreet']);
+  bool get hideNumber => _b(raw['hideNumber']);
+  int? get bedrooms => _in(raw['bedrooms']);
+  double? get bathrooms => _dn(raw['bathrooms']);
+  int? get halfBathrooms => _in(raw['halfBathrooms']);
+  int? get parking => _in(raw['parking']);
+  double? get landM2 => _dn(raw['landM2']);
+  double? get builtM2 => _dn(raw['builtM2']);
+  int? get levels => _in(raw['levels']);
+  int? get age => _in(raw['age']);
+  double? get maintenanceFee => _dn(raw['maintenanceFee']);
+  double? get commission => _dn(raw['commission']);
+  bool get publishOnline => raw['publishOnline'] != false;
+  String? get advisorUserId => _s(raw['advisorUserId']);
+}
+
+class CapturedProperty {
+  CapturedProperty.fromJson(Json j)
+      : id = _sr(j['id']),
+        online21Id = _in(j['online21Id']),
+        syncStatus = _sr(j['syncStatus'], 'PENDING'),
+        syncError = _s(j['syncError']),
+        syncUncertain = _b(j['syncUncertain']),
+        syncedAt = _s(j['syncedAt']),
+        data = PropertyData.fromJson(Json.from((j['data'] as Map?) ?? {})),
+        advisor = NamedRef.maybe(j['advisor']),
+        advisorLinked = _b(j['advisorLinked']),
+        createdBy = NamedRef.maybe(j['createdBy']),
+        createdAt = _sr(j['createdAt']),
+        canEdit = _b(j['canEdit']);
+  final String id, syncStatus, createdAt;
+  final int? online21Id;
+  final String? syncError, syncedAt;
+  final bool syncUncertain, advisorLinked, canEdit;
+  final PropertyData data;
+  final NamedRef? advisor, createdBy;
+}
+
+class CapturedOverview {
+  CapturedOverview.fromJson(Json j)
+      : configured = j['configured'] != false,
+        captured = _list(j['captured'], CapturedProperty.fromJson);
+  final bool configured;
+  final List<CapturedProperty> captured;
+}

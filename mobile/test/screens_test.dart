@@ -16,7 +16,7 @@ import 'package:genera_mobile/main.dart';
 import 'package:genera_mobile/screens/expedientes/expedientes_screen.dart';
 import 'package:genera_mobile/state/auth.dart';
 import 'package:genera_mobile/state/settings.dart';
-import 'package:genera_mobile/ui/theme.dart';
+import 'package:genera_mobile/ui/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -107,6 +107,11 @@ void main() {
     'dashboard': '/dashboard',
     'leads': '/leads',
     'lead_detalle': '/leads/lead-1',
+    'propiedades': '/propiedades',
+    'propiedades_capturadas': '/propiedades?vista=capturadas',
+    'propiedad_21online': '/propiedades/21online/634294',
+    'propiedad_genera': '/propiedades/prop-1',
+    'propiedad_nueva': '/propiedades/nueva',
     'calendario': '/calendario',
     'conversaciones': '/conversaciones',
     'conversacion': '/conversaciones/conv-1',
@@ -363,6 +368,43 @@ void main() {
     final req = sentRequests.firstWhere((r) => r.path == '/internal/leads');
     expect((req.body as Map)['name'], 'Cliente Nuevo');
     expect((req.body as Map)['autoAssign'], isTrue);
+    await _close(tester);
+  });
+
+  testWidgets('flujo: dar de alta una propiedad la manda al backend', (tester) async {
+    await _open(tester, '/propiedades/nueva');
+    Future<void> type(String label, String value) async {
+      final field = find.descendant(of: find.widgetWithText(AppTextField, label), matching: find.byType(TextField));
+      await tester.scrollUntilVisible(field, 200, scrollable: find.byType(Scrollable).first);
+      await tester.enterText(field, value);
+      await settle(tester, 1);
+    }
+
+    await type('Encabezado del anuncio', 'Casa con jardín');
+    await type('Precio de venta', '4500000');
+    await type('Colonia', 'Burgos');
+    await type('Municipio', 'Temixco');
+    final button = find.text('Guardar y publicar en 21Online');
+    await tester.scrollUntilVisible(button, 300, scrollable: find.byType(Scrollable).first);
+    await tester.tap(button);
+    await settle(tester);
+    final req = sentRequests.lastWhere((r) => r.path == '/internal/properties');
+    final body = req.body as Map;
+    expect(body['headline'], 'Casa con jardín');
+    expect(body['salePrice'], 4500000);
+    expect(body['neighborhood'], 'Burgos');
+    expect(body['municipality'], 'Temixco');
+    expect(body['state'], 'Morelos');
+    await _close(tester);
+  });
+
+  testWidgets('flujo: reintentar el envío de una propiedad a 21Online', (tester) async {
+    await _open(tester, '/propiedades/prop-1');
+    expect(find.textContaining('Este valor no debería estar vacío'), findsOneWidget);
+    await tester.tap(find.text('Reintentar envío'));
+    await settle(tester);
+    expect(sentRequests.any((r) => r.path == '/internal/properties/prop-1/sync'), isTrue);
+    expect(find.text('En 21Online'), findsOneWidget);
     await _close(tester);
   });
 

@@ -114,6 +114,29 @@ final _leads = [
   _lead('lead-3', 'Pedro Aguilar Medina', 'APPOINTMENT', advisor: _ana),
 ];
 
+final _listing = {
+  'id': 634294, 'key': '634294--649', 'internalKey': 'GN 14', 'status': 'enPromocion', 'operation': 'venta', 'propertyType': 'habitacional',
+  'subtype': 'casa', 'subtypeLabel': 'Casa', 'contractType': 'exclusiva', 'title': 'Casa con jardín en Lomas de Cortés', 'salePrice': 5980000,
+  'rentPrice': null, 'currency': 'MXN', 'street': 'Retorno de Fátima', 'number': '47', 'neighborhood': 'Lomas de Cortés', 'municipality': 'Cuernavaca',
+  'state': 'Morelos', 'postalCode': '62240', 'bedrooms': 4, 'bathrooms': 3.5, 'halfBathrooms': 1, 'parking': 2, 'landM2': 430, 'builtM2': 330,
+  'description': 'Casa de dos niveles con jardín amplio y cocina integral.', 'publishedOnline': true, 'advisorOnline21Id': 41388, 'photoUrl': null,
+  'photoCount': 0, 'createdAt': '2026-09-01T16:00:00Z', 'updatedAt': '2026-10-10T16:00:00Z',
+};
+
+final _captured = {
+  'id': 'prop-1', 'online21Id': null, 'syncStatus': 'FAILED', 'syncError': '21Online no aceptó la propiedad: estado: Este valor no debería estar vacío.',
+  'syncUncertain': false, 'syncedAt': null,
+  'data': {
+    'operation': 'renta', 'propertyType': 'comercial', 'subtype': 'local', 'contractType': 'exclusiva', 'status': 'enPromocion',
+    'headline': 'Local comercial sobre avenida', 'description': null, 'salePrice': null, 'rentPrice': 18000, 'currency': 'MXN', 'hidePrice': false,
+    'street': 'Av. Morelos', 'extNumber': '210', 'neighborhood': 'Centro', 'municipality': 'Cuernavaca', 'state': 'Morelos', 'postalCode': null,
+    'hideStreet': false, 'hideNumber': true, 'bedrooms': null, 'bathrooms': 1, 'halfBathrooms': null, 'parking': 2, 'landM2': null, 'builtM2': 120,
+    'levels': 1, 'age': 10, 'maintenanceFee': null, 'commission': 5, 'publishOnline': true, 'advisorUserId': 'u-2',
+  },
+  'advisor': _ana, 'advisorLinked': false, 'createdBy': {'id': 'u-1', 'name': 'Administrador Demo'},
+  'createdAt': '2026-10-14T15:00:00Z', 'updatedAt': '2026-10-14T15:00:00Z', 'canEdit': true,
+};
+
 final _advisors = [
   for (final (i, name, status) in [(2, 'Ana Sofía Herrera', 'AVAILABLE'), (3, 'Carlos Méndez', 'OFF_SHIFT'), (4, 'Eva Martínez', 'ABSENT')])
     {
@@ -197,6 +220,8 @@ final List<({String method, String path, Object? body})> sentRequests = [];
     if (p.startsWith('/internal/drafts/')) return (200, {'formKey': 'x', 'payload': '{}', 'updatedAt': _now});
     if (p == '/internal/expedientes/duplicate-check') return (200, []);
     if (p.startsWith('/internal/leads/lead-1/')) return fakeBackend('GET', Uri.parse('/api/v1/internal/leads/lead-1'));
+    if (p == '/internal/properties') return (201, _captured);
+    if (p.startsWith('/internal/properties/prop-1')) return (200, {..._captured, 'syncStatus': 'DONE', 'syncError': null, 'online21Id': 700001, 'syncedAt': _now});
     return (200, {});
   }
   if (p == '/internal/me') return (200, {'id': 'u-1', 'name': 'Administrador Demo', 'email': 'admin@demo.local', 'role': 'ADMINISTRATOR', 'permissions': ['*']});
@@ -400,6 +425,12 @@ final List<({String method, String path, Object? body})> sentRequests = [];
       }
     );
   }
+  if (p == '/internal/properties/inventory') {
+    return (200, {'configured': true, 'error': null, 'items': [{'listing': _listing, 'advisor': _ana, 'generaId': null}, {'listing': {..._listing, 'id': 634331, 'key': '634331--649', 'internalKey': 'GA 08', 'status': 'suspendida', 'operation': 'renta', 'rentPrice': 15000, 'salePrice': null, 'title': 'Departamento amueblado en renta', 'advisorOnline21Id': 99}, 'advisor': null, 'generaId': 'prop-1'}], 'page': 1, 'totalItems': 2, 'hasNext': false});
+  }
+  if (p == '/internal/properties/inventory/634294') return (200, {'listing': _listing, 'advisor': _ana, 'generaId': null});
+  if (p == '/internal/properties') return (200, {'configured': true, 'captured': [_captured]});
+  if (p == '/internal/properties/prop-1') return (200, _captured);
   if (p == '/internal/crm/advisors') return (200, _advisors);
   if (p == '/internal/crm/assignment-settings') {
     return (200, {'roundMode': 'EQUAL', 'ownerOffShiftPolicy': 'RESPECT_OWNER', 'updatedByName': 'Administrador Demo', 'pendingLeads': 2, 'nextCoverage': '2026-10-15T09:00:00', 'noUpcomingCoverage': false, 'timezone': 'America/Mexico_City'});
