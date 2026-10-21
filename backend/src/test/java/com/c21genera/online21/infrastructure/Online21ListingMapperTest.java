@@ -66,6 +66,52 @@ class Online21ListingMapperTest {
   }
 
   @Test
+  void updateSendsOnlyTheFieldsThatChanged() {
+    ListingDraft before = draft("venta", new BigDecimal("4500000"), null, 41388L);
+    ListingDraft after =
+        new ListingDraft(
+            "venta", "habitacional", "casa", "exclusiva", null, "Casa con jardín", "Descripción", new BigDecimal("4200000.00"), null, null, null,
+            "S/N", "Centro", "Cuernavaca", "Morelos", "62000", false, true, false, 3, new BigDecimal("2.50"), 1, 2, new BigDecimal("300"),
+            new BigDecimal("220"), 2, 5, null, new BigDecimal("5"), true, 41388L, "genera:otro");
+
+    Map<String, Object> changes = Online21ListingMapper.changes(before, after);
+
+    // Precio cambiado, calle vaciada (se manda null); lo igual (aunque con otra escala) no se manda.
+    assertThat(changes).containsOnlyKeys("precioVenta", "calle");
+    assertThat(changes).containsEntry("precioVenta", "4200000").containsEntry("calle", null);
+  }
+
+  @Test
+  void unchangedDraftProducesNoUpdate() {
+    ListingDraft d = draft("venta", new BigDecimal("4500000"), null, 41388L);
+
+    assertThat(Online21ListingMapper.changes(d, d)).isEmpty();
+  }
+
+  @Test
+  void readsEditableDraftWithoutOwnerAndOnlyPercentCommission() throws Exception {
+    ListingDraft d =
+        Online21ListingMapper.toDraft(
+            mapper.readTree(
+                """
+                {"id":634816,"tipoOperacion":"venta","subtipoPropiedad":"local","status":"enPromocion","encabezado":"Local en el centro",
+                 "precioVenta":"750000","colonia":"Centro","municipio":"Cuernavaca","estado":"Morelos","ocultarCalleInternet":true,
+                 "comision":"50000","tipoComision":"monto","idAsesorExclusiva":43588,"idClientesVendedor":7,"claveCatastral":"X-9",
+                 "cuotaMantenimiento":"850","enInternet":true}
+                """));
+
+    assertThat(d.propertyType()).isEqualTo("comercial");
+    assertThat(d.subtype()).isEqualTo("local");
+    assertThat(d.headline()).isEqualTo("Local en el centro");
+    assertThat(d.salePrice()).isEqualByComparingTo("750000");
+    assertThat(d.hideStreet()).isTrue();
+    assertThat(d.commission()).isNull();
+    assertThat(d.maintenanceFee()).isEqualByComparingTo("850");
+    assertThat(d.advisorOnline21Id()).isEqualTo(43588L);
+    assertThat(d.toString()).doesNotContain("X-9");
+  }
+
+  @Test
   void summarizesApiPlatformViolations() throws Exception {
     String msg =
         Online21ListingMapper.violations(

@@ -7,17 +7,22 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
+import { Select } from "@/components/ui/Select";
 import { StateMessage } from "@/components/ui/StateMessage";
 import { Toggle } from "@/components/ui/Toggle";
 import { useToast } from "@/components/ui/Toast";
 import {
   getAssignmentSettings,
   listAdvisors,
+  listOnline21Users,
+  syncAdvisorsWithOnline21,
   updateAdvisor,
   updateAssignmentSettings,
   type AdvisorRouting,
   type AdvisorRoutingInput,
   type AssignmentSettings,
+  type Online21SyncResult,
+  type Online21User,
   type OwnerOffShiftPolicy,
   type RoundMode,
 } from "@/lib/api/crm";
@@ -25,7 +30,7 @@ import { BUSINESS_TIMEZONE_LABEL, advisorStatusLabels, advisorStatusTones, forma
 import { roleLabels } from "@/lib/labels";
 import { useCan } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, CalendarDays, Home, Pencil, Shuffle } from "lucide-react";
+import { AlertTriangle, CalendarDays, Home, Link2, Pencil, RefreshCw, Shuffle } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -36,6 +41,37 @@ export default function AsesoresPage() {
   const [editing, setEditing] = useState<AdvisorRouting | null>(null);
   const { showToast } = useToast();
   const canManage = can("ADVISOR_ROUTING_MANAGE");
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<Online21SyncResult | null>(null);
+  const [online21Users, setOnline21Users] = useState<Online21User[] | null>(null);
+
+  const syncOnline21 = async () => {
+    setSyncing(true);
+    try {
+      const result = await syncAdvisorsWithOnline21();
+      setSyncResult(result);
+      setOnline21Users(result.users);
+      if (!result.configured) {
+        showToast("La integración con 21Online no está configurada.");
+      } else {
+        showToast(result.linked.length ? `${result.linked.length} asesor(es) vinculados con 21Online` : "Asesores al día con 21Online");
+        advisors.reload();
+      }
+    } catch (err) {
+      showToast(errorText(err));
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const openEditor = (a: AdvisorRouting) => {
+    setEditing(a);
+    if (!online21Users) {
+      listOnline21Users()
+        .then(setOnline21Users)
+        .catch(() => setOnline21Users([]));
+    }
+  };
 
   const save = async (row: AdvisorRouting, patch: Partial<AdvisorRoutingInput>) => {
     const input: AdvisorRoutingInput = {
@@ -64,15 +100,23 @@ export default function AsesoresPage() {
       title="Asesores"
       subtitle="Quién recibe leads, su estado según el calendario, su cupo y su participación en la ronda."
       action={
-        <Link
-          href="/calendario"
-          className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-medium text-obsessed hover:bg-app-bg focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-obsessed/15"
-        >
-          <CalendarDays className="h-4 w-4" aria-hidden /> Calendario
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          {canManage ? (
+            <Button variant="secondary" onClick={syncOnline21} disabled={syncing} title="Vincula por correo a los asesores con su usuario de 21Online">
+              <RefreshCw className={cn("h-4 w-4", syncing && "animate-spin")} aria-hidden /> {syncing ? "Sincronizando…" : "Sincronizar con 21Online"}
+            </Button>
+          ) : null}
+          <Link
+            href="/calendario"
+            className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-medium text-obsessed hover:bg-app-bg focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-obsessed/15"
+          >
+            <CalendarDays className="h-4 w-4" aria-hidden /> Calendario
+          </Link>
+        </div>
       }
     >
       <div className="space-y-5">
+        {syncResult?.configured ? <SyncResultCard result={syncResult} onClose={() => setSyncResult(null)} /> : null}
         {settings.data ? <SettingsCard settings={settings.data} canManage={canManage} onSaved={(s) => settings.setData(s)} /> : null}
 
         {advisors.error && !advisors.data ? (
@@ -171,7 +215,7 @@ export default function AsesoresPage() {
                         <CalendarDays className="h-4 w-4" aria-hidden />
                       </Link>
                       {canManage ? (
-                        <Button variant="ghost" size="sm" onClick={() => setEditing(a)} aria-label={`Configurar a ${a.name}`}>
+                        <Button variant="ghost" size="sm" onClick={() => openEditor(a)} aria-label={`Configurar a ${a.name}`}>
                           <Pencil className="h-4 w-4" aria-hidden />
                         </Button>
                       ) : null}
@@ -187,6 +231,7 @@ export default function AsesoresPage() {
       {editing ? (
         <EditRoutingModal
           advisor={editing}
+          online21Users={online21Users}
           onClose={() => setEditing(null)}
           onSave={async (patch) => {
             if (await save(editing, patch)) {
@@ -197,6 +242,47 @@ export default function AsesoresPage() {
         />
       ) : null}
     </PageContainer>
+  );
+}
+
+function SyncResultCard({ result, onClose }: { result: Online21SyncResult; onClose: () => void }) {
+  return (
+    <Card>
+      <CardHeader
+        title="Sincronización con 21Online"
+        description="Se vincula por correo a quien aún no tiene usuario de 21Online; los vínculos puestos a mano no se cambian. También corre sola cada 6 horas."
+        action={
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Cerrar
+          </Button>
+        }
+      />
+      <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-3">
+        <SyncList title="Vinculados ahora" tone="text-success-text" items={result.linked} empty="Nadie nuevo." />
+        <SyncList title="Sin usuario de 21Online" tone="text-warning-text" items={result.unmatched} empty="Todos los asesores están vinculados." />
+        <SyncList title="Vínculos rotos" tone="text-danger-text" items={result.brokenLinks} empty="Ninguno." hint="El usuario ya no aparece en 21Online: elige otro en su configuración." />
+      </div>
+    </Card>
+  );
+}
+
+function SyncList({ title, tone, items, empty, hint }: { title: string; tone: string; items: string[]; empty: string; hint?: string }) {
+  return (
+    <div>
+      <p className={cn("font-semibold", tone)}>
+        {title} ({items.length})
+      </p>
+      {items.length ? (
+        <ul className="mt-1 space-y-0.5 text-obsessed">
+          {items.map((i) => (
+            <li key={i}>{i}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-1 text-muted">{empty}</p>
+      )}
+      {items.length && hint ? <p className="mt-1 text-xs text-muted">{hint}</p> : null}
+    </div>
   );
 }
 
@@ -288,7 +374,18 @@ function SettingsCard({ settings, canManage, onSaved }: { settings: AssignmentSe
   );
 }
 
-function EditRoutingModal({ advisor, onClose, onSave }: { advisor: AdvisorRouting; onClose: () => void; onSave: (patch: Partial<AdvisorRoutingInput>) => Promise<void> }) {
+function EditRoutingModal({
+  advisor,
+  online21Users,
+  onClose,
+  onSave,
+}: {
+  advisor: AdvisorRouting;
+  /** null = cargando; [] = 21Online no respondió o no está configurado (se captura el número a mano). */
+  online21Users: Online21User[] | null;
+  onClose: () => void;
+  onSave: (patch: Partial<AdvisorRoutingInput>) => Promise<void>;
+}) {
   const [weight, setWeight] = useState(String(advisor.weight));
   const [dailyLimit, setDailyLimit] = useState(advisor.dailyLimit ? String(advisor.dailyLimit) : "");
   const [online21UserId, setOnline21UserId] = useState(advisor.online21UserId ? String(advisor.online21UserId) : "");
@@ -296,6 +393,9 @@ function EditRoutingModal({ advisor, onClose, onSave }: { advisor: AdvisorRoutin
   const [saving, setSaving] = useState(false);
   const weightValue = Number(weight);
   const valid = Number.isInteger(weightValue) && weightValue >= 0 && weightValue <= 100;
+  // WhatsApp o celular registrado en 21Online (solo sugerencia: nunca se cambia solo).
+  const selected = online21Users?.find((u) => String(u.id) === online21UserId);
+  const suggestedPhone = toE164(selected?.whatsapp ?? selected?.mobilePhone ?? null);
 
   return (
     <Modal
@@ -329,14 +429,42 @@ function EditRoutingModal({ advisor, onClose, onSave }: { advisor: AdvisorRoutin
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Input label="Peso en la ronda ponderada (0–100)" type="number" min={0} max={100} value={weight} onChange={(e) => setWeight(e.target.value)} hint="Con peso 10 recibe el doble que con peso 5." />
         <Input label="Límite diario" type="number" min={1} value={dailyLimit} onChange={(e) => setDailyLimit(e.target.value)} hint="Por día de Ciudad de México. Vacío = sin límite." />
-        <Input
-          label="Usuario en 21Online"
-          inputMode="numeric"
-          value={online21UserId}
-          onChange={(e) => setOnline21UserId(e.target.value.replace(/\D/g, ""))}
-          hint="Id numérico del asesor en 21Online: así se le priorizan los leads de sus propiedades."
-        />
-        <Input label="WhatsApp para avisos" type="tel" value={whatsappPhone} onChange={(e) => setWhatsappPhone(e.target.value)} placeholder="+52 777 123 4567" hint="Recibe aquí el aviso de cada lead asignado." />
+        {online21Users && online21Users.length > 0 ? (
+          <div>
+          <Select
+            label="Usuario en 21Online"
+            value={online21UserId}
+            onChange={(e) => setOnline21UserId(e.target.value)}
+            options={[
+              { value: "", label: "Sin vincular" },
+              ...online21Users.map((u) => ({
+                value: String(u.id),
+                label: `${u.name}${u.email ? ` · ${u.email}` : ""}${u.linkedUserId && u.linkedUserId !== advisor.userId ? ` (vinculado con ${u.linkedUserName})` : ""}`,
+              })),
+              ...(online21UserId && !online21Users.some((u) => String(u.id) === online21UserId)
+                ? [{ value: online21UserId, label: `#${online21UserId} (ya no aparece en 21Online)` }]
+                : []),
+            ]}
+          />
+          <p className="mt-1 text-xs text-muted">Así se le priorizan los leads de sus propiedades y puede editarlas desde Genera.</p>
+          </div>
+        ) : (
+          <Input
+            label="Usuario en 21Online"
+            inputMode="numeric"
+            value={online21UserId}
+            onChange={(e) => setOnline21UserId(e.target.value.replace(/\D/g, ""))}
+            hint={online21Users === null ? "Consultando usuarios de 21Online…" : "Id numérico del asesor en 21Online: así se le priorizan los leads de sus propiedades."}
+          />
+        )}
+        <div>
+          <Input label="WhatsApp para avisos" type="tel" value={whatsappPhone} onChange={(e) => setWhatsappPhone(e.target.value)} placeholder="+52 777 123 4567" hint="Recibe aquí el aviso de cada lead asignado." />
+          {suggestedPhone && suggestedPhone !== whatsappPhone ? (
+            <button type="button" onClick={() => setWhatsappPhone(suggestedPhone)} className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-dark-gold hover:text-obsessed">
+              <Link2 className="h-3 w-3" aria-hidden /> Usar el de 21Online: {suggestedPhone}
+            </button>
+          ) : null}
+        </div>
         <p className="text-sm text-muted sm:col-span-2">
           Los horarios se configuran en el{" "}
           <Link href={`/calendario?asesor=${advisor.userId}`} className="font-medium text-dark-gold hover:text-obsessed">
@@ -348,4 +476,13 @@ function EditRoutingModal({ advisor, onClose, onSave }: { advisor: AdvisorRoutin
       </div>
     </Modal>
   );
+}
+
+/** 10 dígitos de México → +52…; si ya trae lada internacional se respeta. */
+function toE164(phone: string | null): string | null {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length === 10) return `+52${digits}`;
+  if (digits.length === 12 && digits.startsWith("52")) return `+${digits}`;
+  return phone.trim().startsWith("+") ? `+${digits}` : null;
 }

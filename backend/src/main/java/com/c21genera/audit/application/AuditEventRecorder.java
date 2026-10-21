@@ -28,7 +28,9 @@ import com.c21genera.shared.events.DocumentEvents.DocumentVersionUploaded;
 import com.c21genera.shared.events.DocumentEvents.ReceptionSigned;
 import com.c21genera.shared.events.DocumentEvents.RequiredDocumentsReopened;
 import com.c21genera.shared.events.ExpedienteEvents.DuplicateClientAuthorized;
+import com.c21genera.shared.events.ExpedienteEvents.ExpedienteArchived;
 import com.c21genera.shared.events.ExpedienteEvents.ExpedienteCreated;
+import com.c21genera.shared.events.ExpedienteEvents.ExpedienteUnarchived;
 import com.c21genera.shared.events.ExpedienteEvents.ExpedienteDataCorrected;
 import com.c21genera.shared.events.ExpedienteEvents.ExpedienteRequirementsChanged;
 import com.c21genera.shared.events.ExpedienteEvents.InconsistencyAuthorized;
@@ -110,6 +112,19 @@ class AuditEventRecorder {
         "Corrección en " + event.section() + ": " + fields + reason);
     activity(event.expedienteId(), ActivityCategory.CORRECTION, "DATA_CORRECTED", event.actor(), null, null,
         "Corrigió " + event.section().toLowerCase() + " (" + fields + ")" + reason);
+  }
+
+  @ApplicationModuleListener
+  void on(ExpedienteArchived event) {
+    String reason = event.reason() != null ? ". Motivo: " + event.reason() : "";
+    record("ExpedienteArchived", "Expediente", event.expedienteId(), event.actor(), "Expediente archivado" + reason);
+    activity(event.expedienteId(), ActivityCategory.EXPEDIENT, "EXPEDIENT_ARCHIVED", event.actor(), null, null, "Archivó el expediente" + reason);
+  }
+
+  @ApplicationModuleListener
+  void on(ExpedienteUnarchived event) {
+    record("ExpedienteUnarchived", "Expediente", event.expedienteId(), event.actor(), "Expediente desarchivado");
+    activity(event.expedienteId(), ActivityCategory.EXPEDIENT, "EXPEDIENT_UNARCHIVED", event.actor(), null, null, "Desarchivó el expediente");
   }
 
   @ApplicationModuleListener

@@ -8,7 +8,7 @@ Modulith. Base de paquete: `com.c21genera`.
 | Módulo | Responsabilidad |
 |---|---|
 | `identity` | Usuarios, roles, permisos, JWT (access+refresh), login interno |
-| `expedientes` | Dominio central: `Expediente`, máquina de estados, participantes, requisitos documentales |
+| `expedientes` | Dominio central: `Expediente`, máquina de estados, participantes, requisitos documentales; archivar/desarchivar (sale del listado y de los totales, revoca la liga del cliente) |
 | `publicaccess` | Ligas públicas con token opaco hasheado (clientes NUNCA tienen cuenta) |
 | `privacy` | Aviso de privacidad, plantillas legales versionadas (SHA-256), consentimiento |
 | `documents` | Documento lógico / versión física / páginas / revisión, storage S3-compatible |
@@ -22,7 +22,7 @@ Modulith. Base de paquete: `com.c21genera`.
 | `notary` | Documentos por etapa (comercialización, envío inicial a notaría, cierre con oferta aceptada): paquetes enviados con la versión de cada documento y vigencia de los documentos de cierre |
 | `propertycatalog` | Catálogo de inmuebles (Control de Cambios #26): categorías y subcategorías que el administrador mantiene; cada subcategoría define el tratamiento de documentos/contrato y su tipo en 21Online |
 | `leads` | CRM (Módulo 3): leads, etapas, actividades, ruteo de asesores (asesor de la propiedad o ruleta ponderada) y dashboard |
-| `online21` | Integración con la API REST de 21Online (JWT): inventario para el bot, inventario completo y alta/edición de propiedades para el CRM, registro opcional de prospectos |
+| `online21` | Integración con la API REST de 21Online (JWT): inventario para el bot, inventario completo y alta/edición de propiedades para el CRM (en ambos sentidos: las de 21Online se vinculan al editarlas, se traen sus cambios cada 10 min y al editar solo se mandan los campos que cambiaron; "eliminar" = cancelar, la API no borra), usuarios de 21Online para vincular asesores por correo, registro opcional de prospectos |
 | `assistant` | Asistente de WhatsApp con IA (misma lógica que el panel de Inova): WhatsApp Cloud API, OpenAI con herramientas acotadas, bandeja y simulador |
 | `shared` | Módulo abierto: eventos de integración, tipos de valor compartidos, seguridad de archivos, JPA base |
 

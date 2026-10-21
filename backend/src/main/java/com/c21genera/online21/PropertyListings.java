@@ -2,7 +2,9 @@ package com.c21genera.online21;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -29,8 +31,28 @@ public interface PropertyListings {
   /** Da de alta la propiedad en 21Online; devuelve su id. Lanza {@link PublishException} si 21Online la rechaza. */
   long create(ListingDraft draft);
 
-  /** Actualiza en 21Online una propiedad que ya existe allá. */
+  /** Actualiza en 21Online una propiedad que ya existe allá (manda todos los campos). */
   void update(long id, ListingDraft draft);
+
+  /**
+   * Actualiza en 21Online solo los campos que cambiaron respecto de baseline (lo último que se vio o
+   * se mandó): no pisa lo que se haya editado allá en otros campos. Sin cambios no llama a 21Online.
+   */
+  void update(long id, ListingDraft draft, ListingDraft baseline);
+
+  /** Ficha completa para editarla desde Genera (sin dueño ni datos de cierre); vacío si no existe. */
+  Optional<RemoteListing> editable(long id);
+
+  /** Última modificación en 21Online de cada id (los que no existen o no se ven no vienen). */
+  Map<Long, Instant> modifiedAt(Collection<Long> ids);
+
+  /**
+   * "Eliminar": la API de 21Online no borra propiedades; se cancelan (status "cancelada") y dejan de
+   * promocionarse. Lanza {@link PublishException} si 21Online lo rechaza.
+   */
+  void cancel(long id);
+
+  record RemoteListing(long id, ListingDraft draft, Instant updatedAt) {}
 
   record ListingFilter(String query, String status, String operation, String subtype, String municipality, int page) {}
 

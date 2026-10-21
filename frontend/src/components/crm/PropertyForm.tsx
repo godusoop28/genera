@@ -230,7 +230,8 @@ export function PropertyForm({
             label="Estatus en 21Online"
             value={form.status}
             onChange={(e) => set("status")(e.target.value as ListingStatus)}
-            options={editableStatuses.map((s) => ({ value: s, label: listingStatusLabels[s] }))}
+            // Una propiedad cerrada en 21Online (traída de allá) conserva su estatus; el cierre se registra allá.
+            options={(editableStatuses.includes(form.status) ? editableStatuses : [form.status, ...editableStatuses]).map((s) => ({ value: s, label: listingStatusLabels[s] }))}
           />
           {canChooseAdvisor ? (
             <Select

@@ -6,15 +6,17 @@ import { Features, ListingStatusBadge, SyncBadge } from "@/components/crm/Proper
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
+import { Modal } from "@/components/ui/Modal";
 import { StateMessage } from "@/components/ui/StateMessage";
 import { useToast } from "@/components/ui/Toast";
 import { listAdvisors } from "@/lib/api/crm";
-import { getCaptured, retryPropertySync, updateProperty, type CapturedProperty } from "@/lib/api/properties";
+import { deleteProperty, getCaptured, retryPropertySync, updateProperty, type CapturedProperty } from "@/lib/api/properties";
 import { ONLINE21_BASE_URL, formatDateTime } from "@/lib/crm/labels";
 import { contractLabels, operationLabels, priceOf, subtypeLabel, typeLabels } from "@/lib/crm/property-labels";
 import { useCan } from "@/lib/permissions";
-import { AlertTriangle, ArrowLeft, ExternalLink, Pencil, RefreshCw } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ExternalLink, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { use, useState, type ReactNode } from "react";
 
 export default function CapturedPropertyPage({ params }: PageProps<"/propiedades/[id]">) {
@@ -23,7 +25,32 @@ export default function CapturedPropertyPage({ params }: PageProps<"/propiedades
   const seesAll = can("LEAD_VIEW_ALL");
   const detail = useApi(() => getCaptured(id), [id]);
   const advisors = useApi(() => (seesAll ? listAdvisors() : Promise.resolve([])), [seesAll]);
-  const [editing, setEditing] = useState(false);
+  // ?editar=1: viene de "Editar desde Genera" en la ficha de 21Online.
+  const searchParams = useSearchParams();
+  const [editing, setEditing] = useState(searchParams.get("editar") === "1");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const router = useRouter();
+  const { showToast } = useToast();
+
+  const remove = async () => {
+    setDeleting(true);
+    try {
+      const result = await deleteProperty(id);
+      setConfirmDelete(false);
+      if (!result) {
+        showToast("Propiedad eliminada.");
+        router.push("/propiedades?vista=capturadas");
+        return;
+      }
+      detail.setData(result);
+      showToast("Propiedad dada de baja: quedó cancelada en 21Online.");
+    } catch (err) {
+      showToast(errorText(err));
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   if (detail.error && !detail.data) {
     return (
@@ -51,12 +78,40 @@ export default function CapturedPropertyPage({ params }: PageProps<"/propiedades
       }
       action={
         p.canEdit && !editing ? (
-          <Button variant="secondary" onClick={() => setEditing(true)}>
-            <Pencil className="h-4 w-4" aria-hidden /> Editar
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => setEditing(true)}>
+              <Pencil className="h-4 w-4" aria-hidden /> Editar
+            </Button>
+            {p.data.status !== "cancelada" || !p.online21Id ? (
+              <Button variant="ghost" onClick={() => setConfirmDelete(true)}>
+                <Trash2 className="h-4 w-4" aria-hidden /> Eliminar
+              </Button>
+            ) : null}
+          </div>
         ) : null
       }
     >
+      <Modal
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        title="Eliminar propiedad"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirmDelete(false)} disabled={deleting}>
+              Cancelar
+            </Button>
+            <Button variant="danger" onClick={remove} disabled={deleting}>
+              {deleting ? "Eliminando…" : p.online21Id ? "Dar de baja en 21Online" : "Eliminar"}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-muted">
+          {p.online21Id
+            ? "Ya está en 21Online, que no permite borrar propiedades: quedará con estatus \u201ccancelada\u201d allá y aquí, y dejará de promocionarse. Puedes reactivarla después cambiando su estatus."
+            : "Todavía no llegó a 21Online, así que se borra de Genera."}
+        </p>
+      </Modal>
       <SyncCard property={p} onChange={detail.setData} />
       {editing ? (
         <PropertyForm
@@ -112,6 +167,13 @@ function SyncCard({ property: p, onChange }: { property: CapturedProperty; onCha
             ) : null}
           </div>
           {p.syncStatus === "DONE" && p.syncedAt ? <p className="text-sm text-muted">Última sincronización: {formatDateTime(p.syncedAt)}.</p> : null}
+          {p.online21Id ? (
+            <p className="text-sm text-muted">
+              {p.origin === "ONLINE21" ? "Dada de alta en 21Online y vinculada aquí. " : ""}
+              Sincronizada en ambos sentidos: lo que se edite en 21Online se trae solo cada pocos minutos
+              {p.remoteModifiedAt ? ` (último cambio allá: ${formatDateTime(p.remoteModifiedAt)})` : ""}.
+            </p>
+          ) : null}
           {p.syncError ? <p className="text-sm text-danger-text">{p.syncError}</p> : null}
           {p.syncUncertain ? (
             <p className="flex items-start gap-2 text-sm text-warning-text">
@@ -164,7 +226,7 @@ function Summary({ property: p }: { property: CapturedProperty }) {
           {d.levels !== null ? <Row label="Niveles">{d.levels}</Row> : null}
           {d.age !== null ? <Row label="Antigüedad">{d.age} años</Row> : null}
           {d.maintenanceFee !== null ? <Row label="Mantenimiento">{priceOf({ operation: "venta", salePrice: d.maintenanceFee, rentPrice: null, currency: d.currency })}</Row> : null}
-          <Row label="Capturó">
+          <Row label={p.origin === "ONLINE21" ? "Vinculó" : "Capturó"}>
             {p.createdBy.name} · {formatDateTime(p.createdAt)}
           </Row>
         </dl>

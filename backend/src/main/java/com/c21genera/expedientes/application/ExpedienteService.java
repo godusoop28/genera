@@ -39,9 +39,11 @@ import com.c21genera.shared.events.DocumentEvents.DocumentReviewed;
 import com.c21genera.shared.events.DocumentEvents.ReceptionSigned;
 import com.c21genera.shared.events.DocumentEvents.RequiredDocumentsReopened;
 import com.c21genera.shared.events.ExpedienteEvents.DuplicateClientAuthorized;
+import com.c21genera.shared.events.ExpedienteEvents.ExpedienteArchived;
 import com.c21genera.shared.events.ExpedienteEvents.ExpedienteCreated;
 import com.c21genera.shared.events.ExpedienteEvents.ExpedienteDataCorrected;
 import com.c21genera.shared.events.ExpedienteEvents.ExpedienteRequirementsChanged;
+import com.c21genera.shared.events.ExpedienteEvents.ExpedienteUnarchived;
 import com.c21genera.shared.events.ExpedienteEvents.PrivacySignatureDeferred;
 import com.c21genera.shared.events.ExpedienteEvents.PropertyAccepted;
 import com.c21genera.shared.events.ExpedienteEvents.PropertyRejected;
@@ -261,11 +263,13 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
   /**
    * Listado con búsqueda (folio, titular o domicilio), filtro por estatus y
    * filtros de cartera. ownerUserId null = todos los expedientes; si no, solo
-   * los asignados a ese asesor.
+   * los asignados a ese asesor. archived = solo los archivados; si no, solo los activos.
    */
   @Transactional(readOnly = true)
-  public Page<Expediente> search(UUID ownerUserId, String query, Set<ExpedienteStatus> statuses, PortfolioFilter filter, Pageable pageable) {
+  public Page<Expediente> search(
+      UUID ownerUserId, String query, Set<ExpedienteStatus> statuses, PortfolioFilter filter, boolean archived, Pageable pageable) {
     Specification<Expediente> spec = visibleWith(ownerUserId, filter);
+    spec = spec.and((root, q, cb) -> archived ? cb.isNotNull(root.get("archivedAt")) : cb.isNull(root.get("archivedAt")));
     if (statuses != null && !statuses.isEmpty()) {
       spec = spec.and((root, q, cb) -> root.get("status").in(statuses));
     }
@@ -284,7 +288,13 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
     return expedienteRepository.findAll(spec, pageable);
   }
 
-  /** Total de expedientes por estatus (los que puede ver el usuario, con los filtros de cartera). */
+  /** Archivados que puede ver el usuario (ownerUserId null = todos). */
+  @Transactional(readOnly = true)
+  public long countArchived(UUID ownerUserId) {
+    return ownerUserId == null ? expedienteRepository.countByArchivedAtIsNotNull() : expedienteRepository.countByAssignedAdvisorIdAndArchivedAtIsNotNull(ownerUserId);
+  }
+
+  /** Total de expedientes activos por estatus (los que puede ver el usuario, con los filtros de cartera). */
   @Transactional(readOnly = true)
   public Map<ExpedienteStatus, Long> countByStatus(UUID ownerUserId, PortfolioFilter filter) {
     Map<ExpedienteStatus, Long> counts = new EnumMap<>(ExpedienteStatus.class);
@@ -503,6 +513,24 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
         new ExpedienteChange(
             expediente.getId(), clock.instant(), actor, "Asesor asignado", "Asesor asignado", emptyToNull(previous), advisorName, emptyToNull(reason)));
     events.publishEvent(new ExpedienteDataCorrected(expediente.getId(), actor, "Asesor asignado", List.of("Asesor asignado"), emptyToNull(reason), false));
+    return expediente;
+  }
+
+  /** Saca el expediente del listado de trabajo sin tocar su estatus ni sus documentos; queda en el historial. */
+  public Expediente archive(UUID expedienteId, Actor actor, String reason) {
+    Expediente expediente = get(expedienteId);
+    String why = blankToNull(reason);
+    expediente.archive(actor.userId(), why, clock.instant());
+    changeRepository.save(new ExpedienteChange(expediente.getId(), clock.instant(), actor, "Archivo", "Archivado", "No", "Sí", why));
+    events.publishEvent(new ExpedienteArchived(expediente.getId(), why, actor));
+    return expediente;
+  }
+
+  public Expediente unarchive(UUID expedienteId, Actor actor) {
+    Expediente expediente = get(expedienteId);
+    expediente.unarchive();
+    changeRepository.save(new ExpedienteChange(expediente.getId(), clock.instant(), actor, "Archivo", "Archivado", "Sí", "No", null));
+    events.publishEvent(new ExpedienteUnarchived(expediente.getId(), actor));
     return expediente;
   }
 

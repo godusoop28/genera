@@ -47,7 +47,7 @@ class PropertyRulesTest {
         }
       };
 
-  private final PropertyService service = new PropertyService(null, null, null, null, CATALOG, null, null);
+  private final PropertyService service = new PropertyService(null, null, null, null, CATALOG, null, null, null);
   private final UUID advisorId = UUID.randomUUID();
   private final CurrentUser advisor = new CurrentUser(advisorId, "Asesor", "a@test", "ADVISOR", List.of("PROPERTY_VIEW", "PROPERTY_MANAGE", "LEAD_VIEW_OWN"));
   private final CurrentUser director = new CurrentUser(UUID.randomUUID(), "Directora", "d@test", "DIRECTOR", List.of("PROPERTY_MANAGE", "LEAD_VIEW_ALL"));

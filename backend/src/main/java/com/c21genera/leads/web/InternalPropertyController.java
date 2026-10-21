@@ -31,6 +31,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -65,7 +66,8 @@ public class InternalPropertyController {
       @Size(max = 16) String contractType,
       @Size(max = 24) String status,
       @NotBlank @Size(max = 200) String headline,
-      @Size(max = 8000) String description,
+      // Las traídas de 21Online pueden tener descripciones largas.
+      @Size(max = 20000) String description,
       @DecimalMin("0") BigDecimal salePrice,
       @DecimalMin("0") BigDecimal rentPrice,
       @Size(max = 3) String currency,
@@ -182,5 +184,27 @@ public class InternalPropertyController {
   @PreAuthorize("hasAuthority('PROPERTY_MANAGE')")
   public PropertyView retry(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
     return service.retry(id, CurrentUser.from(jwt));
+  }
+
+  /** Vincula una propiedad dada de alta en 21Online para editarla desde Genera (queda sincronizada). */
+  @PostMapping("/api/v1/internal/properties/inventory/{online21Id}/link")
+  @PreAuthorize("hasAuthority('PROPERTY_MANAGE')")
+  public PropertyView link(@PathVariable long online21Id, @AuthenticationPrincipal Jwt jwt) {
+    return service.link(online21Id, CurrentUser.from(jwt));
+  }
+
+  /** Da de baja una propiedad de 21Online desde el inventario (21Online no borra: queda cancelada). */
+  @PostMapping("/api/v1/internal/properties/inventory/{online21Id}/cancel")
+  @PreAuthorize("hasAuthority('PROPERTY_MANAGE')")
+  public PropertyView cancelRemote(@PathVariable long online21Id, @AuthenticationPrincipal Jwt jwt) {
+    return service.removeRemote(online21Id, CurrentUser.from(jwt));
+  }
+
+  /** Eliminar: si ya está en 21Online queda cancelada allá (200); si nunca llegó, se borra (204). */
+  @DeleteMapping("/api/v1/internal/properties/{id}")
+  @PreAuthorize("hasAuthority('PROPERTY_MANAGE')")
+  public ResponseEntity<PropertyView> remove(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+    PropertyView view = service.remove(id, CurrentUser.from(jwt));
+    return view == null ? ResponseEntity.noContent().build() : ResponseEntity.ok(view);
   }
 }

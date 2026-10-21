@@ -22,7 +22,7 @@ import { PropertyTypeFilters } from "@/components/property/PropertyTypeSelect";
 import { operationLabels, propertyTypeLabels } from "@/lib/labels";
 import { useCan } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
-import { ArrowRight, Calendar, CheckCircle2, Clock, FileText, FolderOpen, Home, LayoutGrid, List, MapPin, Plus, RefreshCw, UserRound } from "lucide-react";
+import { Archive, ArrowRight, Calendar, CheckCircle2, Clock, FileText, FolderOpen, Home, LayoutGrid, List, MapPin, Plus, RefreshCw, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -77,6 +77,7 @@ interface LoadedPage {
   key: string;
   items: ExpedienteOverviewItem[];
   counts: ExpedienteOverview["counts"];
+  archived: number;
   page: number;
   totalPages: number;
   totalElements: number;
@@ -107,6 +108,8 @@ function ExpedientesContent() {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [group, setGroup] = useState<ExpedienteStatusGroup | null>(null);
+  // Archivados: fuera del listado de trabajo y de los totales; se consultan aparte.
+  const [archived, setArchived] = useState(params.get("archivados") === "1");
   // Control de Cambios #24/#26: filtros de cartera; los reportes enlazan aquí con ?categoria=&subtipo=&operacion=&asesor=.
   const [categoryId, setCategoryId] = useState<string | null>(params.get("categoria"));
   const [subtypeId, setSubtypeId] = useState<string | null>(params.get("subtipo"));
@@ -123,7 +126,7 @@ function ExpedientesContent() {
 
   // Cada combinación de búsqueda + filtro (+ "Actualizar") es una carga distinta;
   // "cargando" = la última respuesta no corresponde a lo que se pidió.
-  const key = `${debouncedQuery.trim()}|${group ?? ""}|${categoryId ?? ""}|${subtypeId ?? ""}|${operationType ?? ""}|${advisorId}|${reloadToken}`;
+  const key = `${debouncedQuery.trim()}|${group ?? ""}|${categoryId ?? ""}|${subtypeId ?? ""}|${operationType ?? ""}|${advisorId}|${archived ? "A" : ""}|${reloadToken}`;
   const portfolio = { categoryId, subtypeId, operationType, advisorId: advisorId || null };
   const currentKey = useRef(key);
   useEffect(() => {
@@ -144,10 +147,10 @@ function ExpedientesContent() {
 
   useEffect(() => {
     let cancelled = false;
-    getExpedienteOverview({ q: debouncedQuery, group, page: 0, size: PAGE_SIZE, ...portfolio })
+    getExpedienteOverview({ q: debouncedQuery, group: archived ? null : group, archived, page: 0, size: PAGE_SIZE, ...portfolio })
       .then((res) => {
         if (cancelled) return;
-        setData({ key, items: res.page.items, counts: res.counts, page: 0, totalPages: res.page.totalPages, totalElements: res.page.totalElements });
+        setData({ key, items: res.page.items, counts: res.counts, archived: res.archived ?? 0, page: 0, totalPages: res.page.totalPages, totalElements: res.page.totalElements });
         setFailure(null);
         setMoreError(null);
       })
@@ -159,7 +162,7 @@ function ExpedientesContent() {
     };
     // portfolio se deriva de los mismos valores que key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, debouncedQuery, group]);
+  }, [key, debouncedQuery, group, archived]);
 
   const error = failure?.key === key ? failure : null;
   const loading = data?.key !== key && !error;
@@ -170,7 +173,7 @@ function ExpedientesContent() {
     const requestedFor = data.key;
     setLoadingMore(true);
     setMoreError(null);
-    getExpedienteOverview({ q: debouncedQuery, group, page: data.page + 1, size: PAGE_SIZE, ...portfolio })
+    getExpedienteOverview({ q: debouncedQuery, group: archived ? null : group, archived, page: data.page + 1, size: PAGE_SIZE, ...portfolio })
       .then((res) => {
         if (currentKey.current !== requestedFor) return;
         setData((prev) => {
@@ -180,6 +183,7 @@ function ExpedientesContent() {
             ...prev,
             items: [...prev.items, ...res.page.items.filter((i) => !seen.has(i.expediente.id))],
             counts: res.counts,
+            archived: res.archived ?? prev.archived,
             page: prev.page + 1,
             totalPages: res.page.totalPages,
             totalElements: res.page.totalElements,
@@ -193,7 +197,7 @@ function ExpedientesContent() {
   const counts = data?.counts;
   const countFor = (id: ExpedienteStatusGroup | null) =>
     !counts ? null : id === null ? counts.total : id === "PENDING" ? counts.pending : id === "IN_REVIEW" ? counts.inReview : counts.complete;
-  const filtering = debouncedQuery.trim().length > 0 || group !== null || categoryId !== null || subtypeId !== null || operationType !== null || advisorId !== "";
+  const filtering = archived || debouncedQuery.trim().length > 0 || group !== null || categoryId !== null || subtypeId !== null || operationType !== null || advisorId !== "";
   // Si el asesor del enlace ya no está activo, igual se muestra como opción para poder quitarlo.
   const advisorOptions = [
     { value: "", label: "Todos los asesores" },
@@ -245,13 +249,16 @@ function ExpedientesContent() {
             />
             <div className="flex flex-1 flex-wrap items-center gap-2" role="group" aria-label="Filtrar por estado">
               {groups.map((g) => {
-                const active = group === g.id;
+                const active = !archived && group === g.id;
                 const n = countFor(g.id);
                 return (
                   <button
                     key={g.label}
                     type="button"
-                    onClick={() => setGroup(g.id)}
+                    onClick={() => {
+                      setArchived(false);
+                      setGroup(g.id);
+                    }}
                     aria-pressed={active}
                     title={g.hint}
                     className={cn(
@@ -266,6 +273,20 @@ function ExpedientesContent() {
                   </button>
                 );
               })}
+              <button
+                type="button"
+                onClick={() => setArchived((a) => !a)}
+                aria-pressed={archived}
+                title="Expedientes archivados: no aparecen en el listado ni en los totales"
+                className={cn(
+                  "inline-flex min-h-10 items-center gap-2 rounded-full border px-4 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/30",
+                  archived ? "border-obsessed bg-obsessed text-white" : "border-dashed border-border bg-card text-muted hover:border-gold/60 hover:text-obsessed",
+                )}
+              >
+                <Archive className="h-4 w-4" aria-hidden />
+                Archivados
+                {data ? <span className={cn("rounded-full px-1.5 text-xs tabular-nums", archived ? "bg-white/20" : "bg-app-bg")}>{data.archived}</span> : null}
+              </button>
             </div>
             <div className="flex shrink-0 gap-1 self-start rounded-xl border border-border bg-card p-1 lg:self-auto" role="group" aria-label="Vista">
               <ViewButton active={view === "grid"} onClick={() => storeView("grid")} label="Ver como tarjetas" icon={LayoutGrid} />
@@ -292,6 +313,13 @@ function ExpedientesContent() {
               <Select aria-label="Filtrar por asesor asignado" value={advisorId} onChange={(e) => setAdvisorId(e.target.value)} options={advisorOptions} />
             ) : null}
           </div>
+
+          {archived ? (
+            <p className="mb-4 flex items-center gap-2 rounded-xl border border-border bg-app-bg px-4 py-3 text-sm text-muted">
+              <Archive className="h-4 w-4 shrink-0" aria-hidden />
+              Estás viendo los expedientes archivados. Ábrelos para consultarlos o desarchivarlos.
+            </p>
+          ) : null}
 
           {error && !data ? (
             <StateMessage
@@ -322,7 +350,13 @@ function ExpedientesContent() {
                   <StateMessage
                     kind="no-results"
                     title="Sin resultados"
-                    description={debouncedQuery.trim() ? `Ningún expediente coincide con “${debouncedQuery.trim()}” en este filtro.` : "No hay expedientes en este filtro."}
+                    description={
+                      debouncedQuery.trim()
+                        ? `Ningún expediente coincide con “${debouncedQuery.trim()}” en este filtro.`
+                        : archived
+                          ? "No hay expedientes archivados en este filtro."
+                          : "No hay expedientes en este filtro."
+                    }
                     action={
                       <Button
                         variant="secondary"
@@ -330,6 +364,7 @@ function ExpedientesContent() {
                           setQuery("");
                           setDebouncedQuery("");
                           setGroup(null);
+                          setArchived(false);
                           setCategoryId(null);
                           setSubtypeId(null);
                           setOperationType(null);
@@ -425,6 +460,15 @@ function StatCard({
   );
 }
 
+function ArchivedBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-app-bg px-2 py-0.5 text-xs font-medium text-muted">
+      <Archive className="h-3 w-3" aria-hidden />
+      Archivado
+    </span>
+  );
+}
+
 function ViewButton({ active, onClick, label, icon: Icon }: { active: boolean; onClick: () => void; label: string; icon: typeof List }) {
   return (
     <button
@@ -488,7 +532,10 @@ function ExpedienteCard({ item }: { item: ExpedienteOverviewItem }) {
     <article className="group flex h-full flex-col rounded-xl border border-border bg-card p-5 shadow-[0_1px_2px_rgba(36,39,35,0.04)] transition-shadow duration-200 hover:shadow-md">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <span className="font-mono text-xs font-medium tracking-wide text-muted">{e.folio}</span>
-        <ExpedienteStatusBadge status={e.status} received={item.documents?.received} />
+        <span className="flex flex-wrap items-center gap-1.5">
+          {e.archivedAt ? <ArchivedBadge /> : null}
+          <ExpedienteStatusBadge status={e.status} received={item.documents?.received} />
+        </span>
       </div>
 
       <div className="mt-4 flex items-start gap-3">
@@ -578,7 +625,8 @@ function ExpedienteList({ items }: { items: ExpedienteOverviewItem[] }) {
                   </p>
                 </div>
               </div>
-              <div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {e.archivedAt ? <ArchivedBadge /> : null}
                 <ExpedienteStatusBadge status={e.status} received={item.documents?.received} />
               </div>
               <DocumentsProgress progress={item.documents} compact />

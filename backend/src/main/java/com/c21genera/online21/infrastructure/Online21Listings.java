@@ -3,6 +3,11 @@ package com.c21genera.online21.infrastructure;
 import com.c21genera.online21.PropertyListings;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -94,6 +99,76 @@ class Online21Listings implements PropertyListings {
       refreshCatalogLater();
     } catch (RuntimeException e) {
       throw translate(e, "actualizar");
+    }
+  }
+
+  @Override
+  public void update(long id, ListingDraft draft, ListingDraft baseline) {
+    requireAvailable();
+    Map<String, Object> changes = baseline == null ? Online21ListingMapper.toPayload(draft) : Online21ListingMapper.changes(baseline, draft);
+    if (changes.isEmpty()) {
+      return;
+    }
+    try {
+      client.updateProperty(id, changes);
+      refreshCatalogLater();
+    } catch (RuntimeException e) {
+      throw translate(e, "actualizar");
+    }
+  }
+
+  @Override
+  public Optional<RemoteListing> editable(long id) {
+    if (!available()) {
+      return Optional.empty();
+    }
+    JsonNode node = client.property(id);
+    if (node == null) {
+      return Optional.empty();
+    }
+    return Optional.of(new RemoteListing(id, Online21ListingMapper.toDraft(node), instant(node.get("fechaModificacion"))));
+  }
+
+  /** Consulta ligera (solo id y fecha) en lotes de 30 con el filtro id[] de 21Online. */
+  @Override
+  public Map<Long, Instant> modifiedAt(Collection<Long> ids) {
+    Map<Long, Instant> out = new HashMap<>();
+    if (!available() || ids.isEmpty()) {
+      return out;
+    }
+    List<Long> all = new ArrayList<>(ids);
+    for (int from = 0; from < all.size(); from += 30) {
+      List<Long> batch = all.subList(from, Math.min(all.size(), from + 30));
+      JsonNode root = client.modifiedAtPage(batch);
+      for (JsonNode n : client.membersOf(root)) {
+        Instant at = instant(n.get("fechaModificacion"));
+        if (n.hasNonNull("id") && at != null) {
+          out.put(n.get("id").asLong(), at);
+        }
+      }
+    }
+    return out;
+  }
+
+  @Override
+  public void cancel(long id) {
+    requireAvailable();
+    try {
+      client.updateProperty(id, Map.of("status", "cancelada"));
+      refreshCatalogLater();
+    } catch (RuntimeException e) {
+      throw translate(e, "cancelar");
+    }
+  }
+
+  private static Instant instant(JsonNode value) {
+    if (value == null || value.isNull()) {
+      return null;
+    }
+    try {
+      return OffsetDateTime.parse(value.asText()).toInstant();
+    } catch (RuntimeException e) {
+      return null;
     }
   }
 

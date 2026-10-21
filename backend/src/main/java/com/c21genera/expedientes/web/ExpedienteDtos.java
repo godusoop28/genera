@@ -198,7 +198,10 @@ public final class ExpedienteDtos {
       UUID createdByUserId,
       boolean correctable,
       Instant createdAt,
-      Instant updatedAt) {
+      Instant updatedAt,
+      // Archivado: null = activo.
+      Instant archivedAt,
+      String archiveReason) {
 
     public static ExpedienteResponse from(Expediente e) {
       return new ExpedienteResponse(
@@ -230,7 +233,9 @@ public final class ExpedienteDtos {
           e.getCreatedByUserId(),
           e.isCorrectable(),
           e.getCreatedAt(),
-          e.getUpdatedAt());
+          e.getUpdatedAt(),
+          e.getArchivedAt(),
+          e.getArchiveReason());
     }
   }
 
@@ -270,4 +275,6 @@ public final class ExpedienteDtos {
   }
 
   public record RejectPropertyRequest(@NotBlank String reason) {}
+
+  public record ArchiveRequest(@jakarta.validation.constraints.Size(max = 500) String reason) {}
 }

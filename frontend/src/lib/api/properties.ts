@@ -131,6 +131,10 @@ export interface CapturedProperty {
   canEdit: boolean;
   /** "Habitacional → Casa en condominio" (null si se capturó antes del catálogo). */
   propertyTypeLabel: string | null;
+  /** GENERA (capturada aquí) u ONLINE21 (dada de alta en 21Online y vinculada para editarla aquí). */
+  origin: "GENERA" | "ONLINE21";
+  /** Cuándo se trajeron por última vez los cambios hechos en 21Online. */
+  remoteModifiedAt: string | null;
 }
 
 export interface CapturedOverview {
@@ -173,6 +177,21 @@ export function updateProperty(id: string, data: PropertyData) {
 
 export function retryPropertySync(id: string) {
   return apiClient.post<CapturedProperty>(`/internal/properties/${id}/sync`);
+}
+
+/** Vincula una propiedad de 21Online para editarla desde Genera (queda sincronizada en ambos sentidos). */
+export function linkInventoryItem(online21Id: number | string) {
+  return apiClient.post<CapturedProperty>(`/internal/properties/inventory/${online21Id}/link`);
+}
+
+/** Da de baja una propiedad de 21Online (su API no borra: queda cancelada allá). */
+export function cancelInventoryItem(online21Id: number | string) {
+  return apiClient.post<CapturedProperty>(`/internal/properties/inventory/${online21Id}/cancel`);
+}
+
+/** Eliminar: si ya está en 21Online queda cancelada allá; si nunca llegó, se borra (devuelve undefined). */
+export function deleteProperty(id: string) {
+  return apiClient.delete<CapturedProperty | undefined>(`/internal/properties/${id}`);
 }
 
 // --- Detalle de 21Online (como su pantalla "Ver propiedad") ------------------

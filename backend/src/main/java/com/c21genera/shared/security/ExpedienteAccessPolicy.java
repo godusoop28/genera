@@ -23,4 +23,7 @@ public interface ExpedienteAccessPolicy {
   void requireAccess(UUID expedienteId, UUID userId, Collection<String> permissions);
 
   boolean canAccess(UUID expedienteId, UUID userId, Collection<String> permissions);
+
+  /** Lanza {@link com.c21genera.shared.domain.ConflictException} si el expediente está archivado (p. ej. al generar la liga). */
+  default void requireNotArchived(UUID expedienteId) {}
 }

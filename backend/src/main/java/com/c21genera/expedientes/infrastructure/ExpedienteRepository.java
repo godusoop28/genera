@@ -24,22 +24,26 @@ public interface ExpedienteRepository extends JpaRepository<Expediente, UUID>, J
 
   /**
    * Control de Cambios #24/#26: cartera agregada (filas: tratamiento del inmueble, operación, asesor
-   * asignado, nombre del asesor, estatus, total, categoría, subcategoría).
+   * asignado, nombre del asesor, estatus, total, categoría, subcategoría). Sin los archivados.
    */
   @Query(
       "SELECT e.propertyCaseType, e.operationType, e.assignedAdvisorId, e.assignedAdvisorName, e.status, COUNT(e), e.propertyCategoryId, e.propertySubtypeId"
-          + " FROM Expediente e"
+          + " FROM Expediente e WHERE e.archivedAt IS NULL"
           + " GROUP BY e.propertyCaseType, e.operationType, e.assignedAdvisorId, e.assignedAdvisorName, e.status, e.propertyCategoryId, e.propertySubtypeId")
   List<Object[]> portfolioRows();
 
   @Query(
       "SELECT e.propertyCaseType, e.operationType, e.assignedAdvisorId, e.assignedAdvisorName, e.status, COUNT(e), e.propertyCategoryId, e.propertySubtypeId"
-          + " FROM Expediente e WHERE e.assignedAdvisorId = :userId"
+          + " FROM Expediente e WHERE e.assignedAdvisorId = :userId AND e.archivedAt IS NULL"
           + " GROUP BY e.propertyCaseType, e.operationType, e.assignedAdvisorId, e.assignedAdvisorName, e.status, e.propertyCategoryId, e.propertySubtypeId")
   List<Object[]> portfolioRowsOf(@Param("userId") UUID userId);
 
-  /** Control de Cambios #25: expedientes en curso asignados a un asesor (antes de darle de baja). */
-  long countByAssignedAdvisorIdAndStatusNotIn(UUID assignedAdvisorId, java.util.Collection<ExpedienteStatus> statuses);
+  /** Control de Cambios #25: expedientes en curso asignados a un asesor (antes de darle de baja); los archivados no cuentan. */
+  long countByAssignedAdvisorIdAndArchivedAtIsNullAndStatusNotIn(UUID assignedAdvisorId, java.util.Collection<ExpedienteStatus> statuses);
+
+  long countByArchivedAtIsNotNull();
+
+  long countByAssignedAdvisorIdAndArchivedAtIsNotNull(UUID assignedAdvisorId);
 
   @Query(value = "SELECT nextval('expediente_folio_seq')", nativeQuery = true)
   long nextFolioSequenceValue();

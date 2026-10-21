@@ -5,13 +5,17 @@ import { BarList, ColumnChart, type ChartDatum } from "@/components/crm/Property
 import { Features, ListingStatusBadge } from "@/components/crm/PropertyUi";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
+import { Modal } from "@/components/ui/Modal";
 import { StateMessage } from "@/components/ui/StateMessage";
 import { Tabs } from "@/components/ui/Tabs";
 import { useToast } from "@/components/ui/Toast";
 import { getBlob } from "@/lib/api/client";
 import {
+  cancelInventoryItem,
   getInventoryItem,
+  linkInventoryItem,
   getPropertyClients,
   getPropertyDetails,
   getPropertyFollowUps,
@@ -26,9 +30,11 @@ import {
 import { ONLINE21_BASE_URL, formatDateTime } from "@/lib/crm/labels";
 import { contractLabels, priceOf } from "@/lib/crm/property-labels";
 import { errorText } from "@/lib/errors";
+import { useCan } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, ArrowLeft, ChevronDown, Copy, Download, ExternalLink, FileText, Globe, ImageOff, MapPin, MessageCircle, Pencil, Phone, Users } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Ban, ChevronDown, Copy, Download, ExternalLink, FileText, Globe, ImageOff, MapPin, MessageCircle, Pencil, Phone, Users } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { use, useEffect, useRef, useState, type ReactNode } from "react";
 
 type TabId = "datos" | "portales" | "clientes" | "seguimientos" | "resumen";
@@ -242,22 +248,92 @@ function GeneralTab({ data, online21Id }: { data: PropertyDetails; online21Id: s
             ) : null}
           </div>
         </Card>
-        <EditInGenera online21Id={online21Id} />
+        <EditInGenera online21Id={online21Id} status={l.status} onCancelled={() => window.location.reload()} />
       </div>
     </div>
   );
 }
 
-/** Si la propiedad se capturó en Genera, liga a su ficha para editarla. */
-function EditInGenera({ online21Id }: { online21Id: string }) {
+/**
+ * Editar o dar de baja desde Genera. Si aún no está vinculada, al editar se vincula (queda sincronizada:
+ * lo que se cambie aquí se manda a 21Online y lo que se cambie allá se trae solo).
+ */
+function EditInGenera({ online21Id, status, onCancelled }: { online21Id: string; status: string | null; onCancelled: () => void }) {
+  const can = useCan();
+  const router = useRouter();
+  const { showToast } = useToast();
   const item = useApi(() => getInventoryItem(online21Id), [online21Id]);
-  if (!item.data?.generaId) return null;
+  const [busy, setBusy] = useState<"link" | "cancel" | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const manage = can("PROPERTY_MANAGE");
+  const generaId = item.data?.generaId ?? null;
+  if (!generaId && !manage) return null;
+
+  const edit = async () => {
+    if (generaId) {
+      router.push(`/propiedades/${generaId}?editar=1`);
+      return;
+    }
+    setBusy("link");
+    try {
+      const linked = await linkInventoryItem(online21Id);
+      router.push(`/propiedades/${linked.id}?editar=1`);
+    } catch (err) {
+      showToast(errorText(err));
+      setBusy(null);
+    }
+  };
+
+  const cancel = async () => {
+    setBusy("cancel");
+    try {
+      await cancelInventoryItem(online21Id);
+      setConfirmCancel(false);
+      showToast("Propiedad dada de baja: quedó cancelada en 21Online.");
+      onCancelled();
+    } catch (err) {
+      showToast(errorText(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <Card>
-      <Badge tone="gold">Capturada en Genera</Badge>
-      <Link href={`/propiedades/${item.data.generaId}`} className="mt-3 flex items-center gap-2 text-sm font-medium text-dark-gold hover:underline">
-        <Pencil className="h-4 w-4" aria-hidden /> Editar en Genera
-      </Link>
+      {generaId ? <Badge tone="gold">Vinculada con Genera</Badge> : null}
+      <p className="mt-2 text-sm text-muted">
+        Los cambios que hagas desde Genera se mandan a 21Online (solo los campos que cambies) y lo que se edite en 21Online se trae solo cada pocos minutos.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button variant="secondary" size="sm" onClick={edit} disabled={busy !== null}>
+          <Pencil className="h-4 w-4" aria-hidden /> {busy === "link" ? "Abriendo…" : "Editar desde Genera"}
+        </Button>
+        {manage && status !== "cancelada" && status !== "cerrada" ? (
+          <Button variant="ghost" size="sm" onClick={() => setConfirmCancel(true)} disabled={busy !== null}>
+            <Ban className="h-4 w-4" aria-hidden /> Dar de baja
+          </Button>
+        ) : null}
+      </div>
+      <Modal
+        open={confirmCancel}
+        onClose={() => setConfirmCancel(false)}
+        title="Dar de baja la propiedad"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirmCancel(false)} disabled={busy === "cancel"}>
+              Cancelar
+            </Button>
+            <Button variant="danger" onClick={cancel} disabled={busy === "cancel"}>
+              {busy === "cancel" ? "Dando de baja…" : "Dar de baja"}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-muted">
+          21Online no permite borrar propiedades: quedará con estatus <strong>cancelada</strong> y dejará de promocionarse en portales. Puedes reactivarla
+          después cambiando su estatus.
+        </p>
+      </Modal>
     </Card>
   );
 }

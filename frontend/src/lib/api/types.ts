@@ -104,6 +104,9 @@ export interface ExpedienteResponse {
   correctable: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Archivado: null = activo. */
+  archivedAt: string | null;
+  archiveReason: string | null;
 }
 
 export interface RequirementResponse {

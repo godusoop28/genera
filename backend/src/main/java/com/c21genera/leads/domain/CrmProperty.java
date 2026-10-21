@@ -123,6 +123,19 @@ public class CrmProperty extends AuditableEntity {
   @Column(nullable = false)
   private UUID createdByUserId;
 
+  /** GENERA (capturada aquí) u ONLINE21 (dada de alta en 21Online y vinculada desde Genera). */
+  @Column(nullable = false, length = 16)
+  private String origin = ORIGIN_GENERA;
+
+  /** Lo último que se vio o se mandó a 21Online (JSON): al editar solo se mandan los campos que cambiaron. */
+  private String syncedDraft;
+
+  /** fechaModificacion de 21Online la última vez que se trajo. */
+  private Instant remoteModifiedAt;
+
+  public static final String ORIGIN_GENERA = "GENERA";
+  public static final String ORIGIN_ONLINE21 = "ONLINE21";
+
   protected CrmProperty() {}
 
   public CrmProperty(UUID createdByUserId, Data data) {
@@ -130,6 +143,20 @@ public class CrmProperty extends AuditableEntity {
     this.createdByUserId = createdByUserId;
     this.syncStatus = SyncStatus.PENDING;
     apply(data);
+  }
+
+  /** Propiedad que ya existe en 21Online, vinculada para editarla desde Genera (queda sincronizada). */
+  public static CrmProperty linked(UUID createdByUserId, long online21Id, Data data, Instant remoteModifiedAt, Instant now) {
+    CrmProperty p = new CrmProperty();
+    p.id = UUID.randomUUID();
+    p.createdByUserId = createdByUserId;
+    p.online21Id = online21Id;
+    p.origin = ORIGIN_ONLINE21;
+    p.assign(data);
+    p.syncStatus = SyncStatus.DONE;
+    p.syncedAt = now;
+    p.remoteModifiedAt = remoteModifiedAt;
+    return p;
   }
 
   /** Datos editables de la propiedad (mismo orden que el formulario). */
@@ -171,6 +198,46 @@ public class CrmProperty extends AuditableEntity {
 
   /** Cambia los datos; si ya estaba en 21Online, queda pendiente de mandar la actualización. */
   public void apply(Data d) {
+    assign(d);
+    this.syncStatus = SyncStatus.PENDING;
+    this.syncError = null;
+    this.syncUncertain = false;
+  }
+
+  /**
+   * Trae lo que se cambió en 21Online (solo si aquí no hay cambios pendientes de mandar): queda
+   * sincronizada con lo de allá.
+   */
+  public void applyRemote(Data d, String syncedDraft, Instant remoteModifiedAt, Instant now) {
+    assign(d);
+    this.syncStatus = SyncStatus.DONE;
+    this.syncError = null;
+    this.syncUncertain = false;
+    this.syncedDraft = syncedDraft;
+    this.remoteModifiedAt = remoteModifiedAt;
+    this.syncedAt = now;
+  }
+
+  /** Se vio un cambio en 21Online pero aquí hay cambios sin mandar: se mandan primero (solo los campos tocados). */
+  public void noteRemote(Instant remoteModifiedAt) {
+    this.remoteModifiedAt = remoteModifiedAt;
+  }
+
+  public void baseline(String syncedDraft) {
+    this.syncedDraft = syncedDraft;
+  }
+
+  /** "Eliminada": cancelada en 21Online (su API no borra propiedades). */
+  public void markCancelled(String syncedDraft, Instant at) {
+    this.status = "cancelada";
+    this.syncStatus = SyncStatus.DONE;
+    this.syncError = null;
+    this.syncUncertain = false;
+    this.syncedDraft = syncedDraft;
+    this.syncedAt = at;
+  }
+
+  private void assign(Data d) {
     this.operation = d.operation();
     this.propertyType = d.propertyType();
     this.subtype = d.subtype();
@@ -204,9 +271,6 @@ public class CrmProperty extends AuditableEntity {
     this.advisorUserId = d.advisorUserId();
     this.catalogSubtypeId = d.catalogSubtypeId();
     this.propertyTypeDetail = d.propertyTypeDetail();
-    this.syncStatus = SyncStatus.PENDING;
-    this.syncError = null;
-    this.syncUncertain = false;
   }
 
   public Data data() {
@@ -214,6 +278,11 @@ public class CrmProperty extends AuditableEntity {
         operation, propertyType, subtype, contractType, status, headline, description, salePrice, rentPrice, currency, hidePrice, street, extNumber,
         neighborhood, municipality, state, postalCode, hideStreet, hideNumber, bedrooms, bathrooms, halfBathrooms, parking, landM2, builtM2, levels, age,
         maintenanceFee, commission, publishOnline, advisorUserId, catalogSubtypeId, propertyTypeDetail);
+  }
+
+  public void markSynced(Long online21Id, Instant at, String syncedDraft) {
+    markSynced(online21Id, at);
+    this.syncedDraft = syncedDraft;
   }
 
   public void markSynced(Long online21Id, Instant at) {
@@ -280,5 +349,17 @@ public class CrmProperty extends AuditableEntity {
 
   public UUID getCreatedByUserId() {
     return createdByUserId;
+  }
+
+  public String getOrigin() {
+    return origin;
+  }
+
+  public String getSyncedDraft() {
+    return syncedDraft;
+  }
+
+  public Instant getRemoteModifiedAt() {
+    return remoteModifiedAt;
   }
 }

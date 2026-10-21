@@ -14,4 +14,7 @@ public interface CrmPropertyRepository extends JpaRepository<CrmProperty, UUID> 
   List<CrmProperty> findTop25BySyncStatusOrderByCreatedAtAsc(SyncStatus status);
 
   List<CrmProperty> findByOnline21IdIn(Collection<Long> online21Ids);
+
+  /** Las que ya están en 21Online (para traer lo que se cambie allá). */
+  List<CrmProperty> findByOnline21IdNotNull();
 }

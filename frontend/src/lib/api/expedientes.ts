@@ -154,6 +154,15 @@ export function rejectProperty(id: string, reason: string) {
   return apiClient.post<ExpedienteResponse>(`/internal/expedientes/${id}/reject-property`, { reason });
 }
 
+/** Saca el expediente del listado de trabajo (no cambia su estatus); revoca la liga del cliente. */
+export function archiveExpediente(id: string, reason?: string) {
+  return apiClient.post<ExpedienteResponse>(`/internal/expedientes/${id}/archive`, { reason: reason?.trim() || null });
+}
+
+export function unarchiveExpediente(id: string) {
+  return apiClient.post<ExpedienteResponse>(`/internal/expedientes/${id}/unarchive`);
+}
+
 /** Grupos de estatus del listado (ver ExpedienteOverviewController.StatusGroup en el backend). */
 export type ExpedienteStatusGroup = "PENDING" | "IN_REVIEW" | "COMPLETE";
 
@@ -180,6 +189,8 @@ export interface ExpedienteOverview {
   page: PageResponse<ExpedienteOverviewItem>;
   /** Totales sobre todos los expedientes visibles para el usuario con los filtros de cartera (no solo la página). */
   counts: GroupCounts;
+  /** Cuántos archivados puede ver el usuario (no entran en counts). */
+  archived: number;
 }
 
 /**
@@ -205,10 +216,13 @@ function setPortfolioParams(search: URLSearchParams, filters: PortfolioFilters) 
   else if (filters.advisorId) search.set("advisorId", filters.advisorId);
 }
 
-export function getExpedienteOverview(params: { q?: string; group?: ExpedienteStatusGroup | null; page?: number; size?: number } & PortfolioFilters) {
+export function getExpedienteOverview(
+  params: { q?: string; group?: ExpedienteStatusGroup | null; archived?: boolean; page?: number; size?: number } & PortfolioFilters,
+) {
   const search = new URLSearchParams({ page: String(params.page ?? 0), size: String(params.size ?? 18), sort: "updatedAt,desc" });
   if (params.q?.trim()) search.set("q", params.q.trim());
   if (params.group) search.set("group", params.group);
+  if (params.archived) search.set("archived", "true");
   setPortfolioParams(search, params);
   return apiClient.get<ExpedienteOverview>(`/internal/expedientes/overview?${search.toString()}`);
 }

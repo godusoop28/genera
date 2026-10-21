@@ -108,6 +108,17 @@ public class Expediente extends AuditableEntity {
   /** Ver {@link com.c21genera.expedientes.LegalDetails}; lo serializa ExpedienteService. */
   private String legalDetailsJson;
 
+  /**
+   * Archivado: sale del listado de trabajo y de los totales sin cambiar su estatus ni borrar nada.
+   * null = activo.
+   */
+  private Instant archivedAt;
+
+  private UUID archivedByUserId;
+
+  @Column(length = 500)
+  private String archiveReason;
+
   protected Expediente() {}
 
   public Expediente(
@@ -209,6 +220,29 @@ public class Expediente extends AuditableEntity {
   public void assignAdvisor(UUID advisorId, String advisorName) {
     this.assignedAdvisorId = advisorId;
     this.assignedAdvisorName = advisorName;
+  }
+
+  /** Se permite en cualquier estatus; no cambia el estatus ni los documentos. */
+  public void archive(UUID byUserId, String reason, Instant when) {
+    if (archivedAt != null) {
+      throw new com.c21genera.shared.domain.ConflictException("EXPEDIENTE_ARCHIVED", "Este expediente ya está archivado.");
+    }
+    this.archivedAt = when;
+    this.archivedByUserId = byUserId;
+    this.archiveReason = reason;
+  }
+
+  public void unarchive() {
+    if (archivedAt == null) {
+      throw new com.c21genera.shared.domain.ConflictException("EXPEDIENTE_NOT_ARCHIVED", "Este expediente no está archivado.");
+    }
+    this.archivedAt = null;
+    this.archivedByUserId = null;
+    this.archiveReason = null;
+  }
+
+  public boolean isArchived() {
+    return archivedAt != null;
   }
 
   public void replaceLegalDetailsJson(String json) {
@@ -404,5 +438,17 @@ public class Expediente extends AuditableEntity {
 
   public String getLegalDetailsJson() {
     return legalDetailsJson;
+  }
+
+  public Instant getArchivedAt() {
+    return archivedAt;
+  }
+
+  public UUID getArchivedByUserId() {
+    return archivedByUserId;
+  }
+
+  public String getArchiveReason() {
+    return archiveReason;
   }
 }

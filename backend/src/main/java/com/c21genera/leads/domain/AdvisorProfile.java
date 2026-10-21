@@ -59,6 +59,11 @@ public class AdvisorProfile extends AuditableEntity {
     this.whatsappPhone = whatsappPhone == null || whatsappPhone.isBlank() ? null : whatsappPhone.replaceAll("[^0-9+]", "");
   }
 
+  /** Vínculo con su usuario de 21Online (sincronización por correo); no toca lo demás del perfil. */
+  public void linkOnline21(Long online21UserId) {
+    this.online21UserId = online21UserId;
+  }
+
   public void pauseUntil(Instant until) {
     this.pausedUntil = until;
   }

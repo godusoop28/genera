@@ -4,14 +4,16 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { ReasonModal } from "@/components/ui/ReasonModal";
 import { useToast } from "@/components/ui/Toast";
 import { ApiError } from "@/lib/api/client";
-import { getExpediente, getParticipants } from "@/lib/api/expedientes";
+import { archiveExpediente, getExpediente, getParticipants, unarchiveExpediente } from "@/lib/api/expedientes";
 import { backendStatusLabels, backendStatusNextStep, backendStatusTone } from "@/lib/api/status-labels";
 import type { ExpedienteResponse, ParticipantResponse, SigningLinkResponse } from "@/lib/api/types";
 import { readDraft, writeDraft } from "@/lib/drafts";
+import { useCan } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-import { ArrowRight, RefreshCw } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowRight, RefreshCw } from "lucide-react";
 import { use, useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { ConsistencyTab } from "./ConsistencyTab";
 import { ContractDataTab } from "./ContractDataTab";
@@ -64,6 +66,9 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
     writeDraft(tabKey, next);
   };
   const { showToast } = useToast();
+  const can = useCan();
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [unarchiving, setUnarchiving] = useState(false);
   const [expediente, setExpediente] = useState<ExpedienteResponse | null>(null);
   const [participants, setParticipants] = useState<ParticipantResponse[]>([]);
   const [notFound, setNotFound] = useState(false);
@@ -108,6 +113,30 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
       showToast("Información actualizada.");
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  const archive = async (reason: string) => {
+    try {
+      await archiveExpediente(id, reason);
+      setArchiveOpen(false);
+      showToast("Expediente archivado. Ya no aparece en el listado de trabajo.");
+      await reload();
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : "No se pudo archivar el expediente.");
+    }
+  };
+
+  const unarchive = async () => {
+    setUnarchiving(true);
+    try {
+      await unarchiveExpediente(id);
+      showToast("Expediente desarchivado. Vuelve a aparecer en el listado.");
+      await reload();
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : "No se pudo desarchivar el expediente.");
+    } finally {
+      setUnarchiving(false);
     }
   };
 
@@ -165,12 +194,38 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
             </span>
             <Badge tone={backendStatusTone[expediente.status]}>{backendStatusLabels[expediente.status]}</Badge>
             {!expediente.correctable ? <Badge tone="neutral">Datos bloqueados (contrato firmado o expediente decidido)</Badge> : null}
+            {expediente.archivedAt ? <Badge tone="neutral">Archivado</Badge> : null}
           </div>
-          <Button variant="secondary" size="sm" onClick={handleRefresh} disabled={refreshing}>
-            <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} aria-hidden />
-            {refreshing ? "Actualizando…" : "Actualizar"}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {can("EXPEDIENT_ARCHIVE") ? (
+              expediente.archivedAt ? (
+                <Button variant="secondary" size="sm" onClick={unarchive} disabled={unarchiving}>
+                  <ArchiveRestore className="h-4 w-4" aria-hidden />
+                  {unarchiving ? "Desarchivando…" : "Desarchivar"}
+                </Button>
+              ) : (
+                <Button variant="secondary" size="sm" onClick={() => setArchiveOpen(true)}>
+                  <Archive className="h-4 w-4" aria-hidden />
+                  Archivar
+                </Button>
+              )
+            ) : null}
+            <Button variant="secondary" size="sm" onClick={handleRefresh} disabled={refreshing}>
+              <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} aria-hidden />
+              {refreshing ? "Actualizando…" : "Actualizar"}
+            </Button>
+          </div>
         </div>
+        {expediente.archivedAt ? (
+          <p className="mt-4 flex items-start gap-2 rounded-xl border border-border bg-app-bg p-3 text-sm text-muted">
+            <Archive className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            <span>
+              Archivado el {new Intl.DateTimeFormat("es-MX", { dateStyle: "long" }).format(new Date(expediente.archivedAt))}
+              {expediente.archiveReason ? `. Motivo: ${expediente.archiveReason}` : ""}. No aparece en el listado de trabajo ni en los totales y la liga
+              del cliente quedó revocada.
+            </span>
+          </p>
+        ) : null}
         <div className="mt-4 grid gap-2 rounded-xl bg-app-bg p-3 text-sm sm:grid-cols-3">
           <p className="text-muted">
             <span className="block text-xs font-medium uppercase tracking-wide">Qué significa</span>
@@ -204,6 +259,17 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
           </button>
         ))}
       </div>
+
+      <ReasonModal
+        open={archiveOpen}
+        title={`Archivar ${expediente.folio}`}
+        description="El expediente sale del listado de trabajo y de los totales, sin cambiar su estatus ni borrar documentos. La liga del cliente se revoca. Puedes desarchivarlo cuando quieras desde el filtro “Archivados”."
+        label="Motivo (opcional)"
+        placeholder="Ej. el propietario desistió de la venta"
+        confirmLabel="Archivar"
+        onCancel={() => setArchiveOpen(false)}
+        onConfirm={archive}
+      />
 
       <div key={version}>
         {tab === "resumen" ? <SummaryTab {...context} /> : null}

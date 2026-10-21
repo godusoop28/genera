@@ -119,6 +119,23 @@ class Online21Client {
     return read(body);
   }
 
+  /** id y fechaModificacion de las propiedades indicadas (filtro id[] y properties[] de API Platform). */
+  JsonNode modifiedAtPage(List<Long> ids) {
+    String body =
+        restClient
+            .get()
+            .uri(
+                b -> {
+                  b.path("/api/propiedades");
+                  ids.forEach(id -> b.queryParam("id[]", id));
+                  return b.queryParam("properties[]", "id").queryParam("properties[]", "fechaModificacion").queryParam("itemsPerPage", ids.size()).build();
+                })
+            .accept(MediaType.valueOf("application/ld+json"), MediaType.APPLICATION_JSON)
+            .retrieve()
+            .body(String.class);
+    return read(body);
+  }
+
   /** GET de un recurso por su ruta (p. ej. "/api/usuarios/41388"); null si 21Online responde 404. */
   JsonNode item(String path) {
     try {

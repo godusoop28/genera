@@ -45,4 +45,9 @@ public final class ExpedienteEvents {
    * documentos. audit lo registra en la bitácora del expediente.
    */
   public record InconsistencyAuthorized(UUID expedienteId, UUID conflictId, String description, String note, Actor actor) {}
+
+  /** Se archivó el expediente (sale del listado de trabajo); audit lo registra en la bitácora. */
+  public record ExpedienteArchived(UUID expedienteId, String reason, Actor actor) {}
+
+  public record ExpedienteUnarchived(UUID expedienteId, Actor actor) {}
 }

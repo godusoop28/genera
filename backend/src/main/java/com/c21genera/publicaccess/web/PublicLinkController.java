@@ -61,6 +61,7 @@ public class PublicLinkController {
   @ResponseStatus(HttpStatus.CREATED)
   public PublicLinkResponse generate(@PathVariable UUID expedienteId, @AuthenticationPrincipal Jwt jwt) {
     CurrentUser user = requireAccess(expedienteId, jwt);
+    accessPolicy.requireNotArchived(expedienteId);
     PublicAccessTokenApi.IssuedToken issued = tokenApi.generate(expedienteId, user.toActor());
     return new PublicLinkResponse(properties.baseUrl() + "/" + issued.rawToken(), issued.expiresAt());
   }

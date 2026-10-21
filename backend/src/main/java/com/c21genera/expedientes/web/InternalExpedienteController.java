@@ -126,6 +126,22 @@ public class InternalExpedienteController {
     return ExpedienteResponse.from(expedienteService.reassignAdvisor(id, advisor.id(), advisor.name(), user.toActor(), request.reason()));
   }
 
+  /** Saca el expediente del listado de trabajo (no cambia su estatus ni borra nada); queda en el historial. */
+  @PostMapping("/{id}/archive")
+  @PreAuthorize("hasAuthority('EXPEDIENT_ARCHIVE')")
+  public ExpedienteResponse archive(
+      @PathVariable UUID id, @Valid @RequestBody(required = false) ExpedienteDtos.ArchiveRequest request, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = requireAccess(id, jwt);
+    return ExpedienteResponse.from(expedienteService.archive(id, user.toActor(), request == null ? null : request.reason()));
+  }
+
+  @PostMapping("/{id}/unarchive")
+  @PreAuthorize("hasAuthority('EXPEDIENT_ARCHIVE')")
+  public ExpedienteResponse unarchive(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = requireAccess(id, jwt);
+    return ExpedienteResponse.from(expedienteService.unarchive(id, user.toActor()));
+  }
+
   @GetMapping
   @PreAuthorize("hasAnyAuthority('EXPEDIENT_VIEW_ALL', 'EXPEDIENT_VIEW_OWN')")
   public PageResponse<ExpedienteResponse> list(

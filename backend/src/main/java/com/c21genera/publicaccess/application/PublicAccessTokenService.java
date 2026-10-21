@@ -5,6 +5,7 @@ import com.c21genera.publicaccess.domain.PublicAccessToken;
 import com.c21genera.publicaccess.infrastructure.PublicAccessTokenRepository;
 import com.c21genera.shared.config.PublicLinkProperties;
 import com.c21genera.shared.events.Actor;
+import com.c21genera.shared.events.ExpedienteEvents.ExpedienteArchived;
 import com.c21genera.shared.events.ExpedienteEvents.PropertyAccepted;
 import com.c21genera.shared.events.ExpedienteEvents.PropertyRejected;
 import com.c21genera.shared.events.PublicAccessEvents.PublicLinkGenerated;
@@ -93,6 +94,12 @@ public class PublicAccessTokenService implements PublicAccessTokenApi {
   @ApplicationModuleListener
   void on(PropertyRejected event) {
     revoke(event.expedienteId(), Actor.system(), "El inmueble fue rechazado; el expediente ya no recibe documentos.");
+  }
+
+  /** Un expediente archivado no recibe cargas; al desarchivarlo se genera una liga nueva. */
+  @ApplicationModuleListener
+  void on(ExpedienteArchived event) {
+    revoke(event.expedienteId(), Actor.system(), "El expediente se archivó.");
   }
 
   private int revokeActiveTokens(UUID expedienteId) {

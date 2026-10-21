@@ -101,6 +101,89 @@ final class Online21ListingMapper {
     return p;
   }
 
+  /** Subtipos que en 21Online solo existen como comerciales (los ambiguos, como terreno, se toman como habitacionales). */
+  private static final java.util.Set<String> COMMERCIAL_ONLY =
+      java.util.Set.of("local", "oficinas", "bodega", "nave", "fabrica", "fraccionamiento", "escuela", "inmueble-productivo");
+
+  /**
+   * Ficha completa de 21Online como borrador editable en Genera (sin dueño, clave catastral ni datos
+   * de cierre). La lectura de 21Online no trae tipoPropiedad: se deduce del subtipo. La comisión solo
+   * se toma si es porcentaje (Genera la maneja así).
+   */
+  static ListingDraft toDraft(JsonNode n) {
+    String subtype = Online21PropertyMapper.text(n, "subtipoPropiedad");
+    String type = Online21PropertyMapper.text(n, "tipoPropiedad");
+    if (type == null) {
+      type = subtype != null && COMMERCIAL_ONLY.contains(subtype) ? "comercial" : "habitacional";
+    }
+    String commissionType = Online21PropertyMapper.text(n, "tipoComision");
+    BigDecimal commission = commissionType == null || "porcentaje".equals(commissionType) ? Online21PropertyMapper.decimal(n, "comision") : null;
+    String currency = Online21PropertyMapper.text(n, "moneda");
+    return new ListingDraft(
+        Online21PropertyMapper.text(n, "tipoOperacion"),
+        type,
+        subtype,
+        Online21PropertyMapper.text(n, "tipoDeContrato"),
+        Online21PropertyMapper.text(n, "status"),
+        Online21PropertyMapper.text(n, "encabezado") != null ? Online21PropertyMapper.text(n, "encabezado") : title(n),
+        Online21PropertyMapper.text(n, "descripcion"),
+        Online21PropertyMapper.decimal(n, "precioVenta"),
+        Online21PropertyMapper.decimal(n, "precioRenta"),
+        currency != null ? currency : "MXN",
+        Online21PropertyMapper.text(n, "calle"),
+        Online21PropertyMapper.text(n, "numero"),
+        Online21PropertyMapper.text(n, "colonia"),
+        Online21PropertyMapper.text(n, "municipio"),
+        Online21PropertyMapper.text(n, "estado"),
+        Online21PropertyMapper.text(n, "cP"),
+        flag(n, "ocultarCalleInternet"),
+        flag(n, "ocultarNumeroInternet"),
+        flag(n, "ocultarPrecioInternet"),
+        Online21PropertyMapper.integer(n, "recamaras"),
+        Online21PropertyMapper.decimal(n, "banios"),
+        Online21PropertyMapper.integer(n, "mediosBanios"),
+        Online21PropertyMapper.integer(n, "estacionamientos"),
+        Online21PropertyMapper.decimal(n, "m2T"),
+        Online21PropertyMapper.decimal(n, "m2C"),
+        Online21PropertyMapper.integer(n, "nivelesConstruidos"),
+        Online21PropertyMapper.integer(n, "edad"),
+        Online21PropertyMapper.decimal(n, "cuotaMantenimiento"),
+        commission,
+        flag(n, "enInternet"),
+        Online21PropertyMapper.advisorId(n),
+        Online21PropertyMapper.text(n, "idIntegrador"));
+  }
+
+  /**
+   * Solo los campos que cambiaron entre lo último que se vio/mandó (baseline) y lo nuevo. Un campo que
+   * se vació se manda como null. Así un PUT desde Genera nunca pisa lo que se editó en 21Online en otros
+   * campos (ni lo que Genera no maneja: fotos, dueño, características…).
+   */
+  static Map<String, Object> changes(ListingDraft baseline, ListingDraft draft) {
+    Map<String, Object> before = toPayload(baseline);
+    Map<String, Object> after = toPayload(draft);
+    Map<String, Object> out = new LinkedHashMap<>();
+    after.forEach(
+        (k, v) -> {
+          if (!java.util.Objects.equals(before.get(k), v)) {
+            out.put(k, v);
+          }
+        });
+    before.keySet().stream().filter(k -> !after.containsKey(k)).forEach(k -> out.put(k, null));
+    // tipoComision acompaña a la comisión; idIntegrador no se cambia en una propiedad que ya existe.
+    if (out.containsKey("comision") && out.get("comision") != null) {
+      out.put("tipoComision", "porcentaje");
+    } else {
+      out.remove("tipoComision");
+    }
+    out.remove("idIntegrador");
+    return out;
+  }
+
+  private static boolean flag(JsonNode n, String field) {
+    return n.hasNonNull(field) && n.get(field).asBoolean();
+  }
+
   /** Mensaje legible de una respuesta 422 de API Platform ({"violations":[{"propertyPath","message"}]}). */
   static String violations(JsonNode body) {
     if (body == null) {

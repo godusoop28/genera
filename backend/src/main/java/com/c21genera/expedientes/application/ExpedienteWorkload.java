@@ -24,6 +24,6 @@ class ExpedienteWorkload implements StaffWorkload {
 
   @Override
   public List<Item> assignedTo(UUID userId) {
-    return List.of(new Item("Expedientes en curso", expedientes.countByAssignedAdvisorIdAndStatusNotIn(userId, FINISHED)));
+    return List.of(new Item("Expedientes en curso", expedientes.countByAssignedAdvisorIdAndArchivedAtIsNullAndStatusNotIn(userId, FINISHED)));
   }
 }

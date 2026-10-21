@@ -449,3 +449,37 @@ export function simulateMessage(text: string) {
 export function resetSimulation() {
   return apiClient.delete<void>("/internal/assistant/simulator");
 }
+
+// --- Asesores ↔ usuarios de 21Online --------------------------------------------
+
+export interface Online21User {
+  id: number;
+  name: string;
+  email: string | null;
+  position: string | null;
+  mobilePhone: string | null;
+  whatsapp: string | null;
+  /** Con quién de Genera está vinculado (null = nadie). */
+  linkedUserId: string | null;
+  linkedUserName: string | null;
+}
+
+export interface Online21SyncResult {
+  configured: boolean;
+  /** Vínculos nuevos hechos por correo ("Ana → Ana López"). */
+  linked: string[];
+  /** Personal vinculado a un usuario que ya no aparece en 21Online. */
+  brokenLinks: string[];
+  /** Asesores sin usuario de 21Online. */
+  unmatched: string[];
+  users: Online21User[];
+}
+
+export function listOnline21Users() {
+  return apiClient.get<Online21User[]>("/internal/crm/advisors/online21-users");
+}
+
+/** Vincula por correo a quien aún no lo esté (también corre solo cada 6 horas). */
+export function syncAdvisorsWithOnline21() {
+  return apiClient.post<Online21SyncResult>("/internal/crm/advisors/online21-sync");
+}

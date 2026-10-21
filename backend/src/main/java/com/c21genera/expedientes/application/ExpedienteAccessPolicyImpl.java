@@ -32,6 +32,15 @@ class ExpedienteAccessPolicyImpl implements ExpedienteAccessPolicy {
 
   @Override
   @Transactional(readOnly = true)
+  public void requireNotArchived(UUID expedienteId) {
+    if (repository.findById(expedienteId).map(e -> e.isArchived()).orElse(false)) {
+      throw new com.c21genera.shared.domain.ConflictException(
+          "EXPEDIENTE_ARCHIVED", "El expediente está archivado. Desarchívalo para generar una liga nueva.");
+    }
+  }
+
+  @Override
+  @Transactional(readOnly = true)
   public boolean canAccess(UUID expedienteId, UUID userId, Collection<String> permissions) {
     if (expedienteId == null || userId == null || permissions == null) {
       return false;
