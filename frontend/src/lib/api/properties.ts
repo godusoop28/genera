@@ -174,3 +174,100 @@ export function updateProperty(id: string, data: PropertyData) {
 export function retryPropertySync(id: string) {
   return apiClient.post<CapturedProperty>(`/internal/properties/${id}/sync`);
 }
+
+// --- Detalle de 21Online (como su pantalla "Ver propiedad") ------------------
+
+export interface DossierField {
+  section: string;
+  label: string;
+  value: string;
+}
+
+export interface DossierAdvisor {
+  online21Id: number | null;
+  name: string | null;
+  email: string | null;
+  mobile: string | null;
+  officePhone: string | null;
+  photoUrl: string | null;
+}
+
+export interface PropertyDetails {
+  details: {
+    listing: Listing;
+    fields: DossierField[];
+    photos: string[];
+    floorPlans: string[];
+    videoUrl: string | null;
+    headlineEnglish: string | null;
+    descriptionEnglish: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    /** Ficha pública en el sitio de CENTURY 21. */
+    publicUrl: string | null;
+    advisor: DossierAdvisor | null;
+  };
+  generaAdvisor: Person | null;
+}
+
+export interface PortalListing {
+  portal: string;
+  active: boolean;
+  status: string | null;
+  /** Liga a la publicación en el portal, si 21Online la trae. */
+  url: string | null;
+  reference: string | null;
+  withError: boolean;
+  error: string | null;
+  updatedAt: string | null;
+}
+
+export interface RelatedClient {
+  id: number | null;
+  /** Nombre, teléfono, correo y mensaje solo vienen si contactsVisible. */
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  source: string | null;
+  status: string | null;
+  type: string | null;
+  message: string | null;
+  createdAt: string | null;
+}
+
+export interface RelatedClients {
+  contactsVisible: boolean;
+  clients: RelatedClient[];
+}
+
+export interface FollowUp {
+  id: number | null;
+  type: string | null;
+  subtype: string | null;
+  advisor: string | null;
+  client: string | null;
+  createdAt: string | null;
+}
+
+export type SheetVariant = "ADVISOR" | "NO_CONTACT" | "NO_LOGO";
+
+export function getPropertyDetails(online21Id: number | string) {
+  return apiClient.get<PropertyDetails>(`/internal/properties/inventory/${online21Id}/details`);
+}
+
+export function getPropertyPortals(online21Id: number | string) {
+  return apiClient.get<PortalListing[]>(`/internal/properties/inventory/${online21Id}/portals`);
+}
+
+export function getPropertyClients(online21Id: number | string) {
+  return apiClient.get<RelatedClients>(`/internal/properties/inventory/${online21Id}/clients`);
+}
+
+export function getPropertyFollowUps(online21Id: number | string) {
+  return apiClient.get<FollowUp[]>(`/internal/properties/inventory/${online21Id}/follow-ups`);
+}
+
+/** Ruta (relativa a la API) de la ficha técnica en PDF; se descarga con getBlob. */
+export function propertySheetPath(online21Id: number | string, variant: SheetVariant) {
+  return `/internal/properties/inventory/${online21Id}/sheet?variant=${variant}`;
+}

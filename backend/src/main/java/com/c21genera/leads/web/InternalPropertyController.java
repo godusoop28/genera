@@ -1,12 +1,18 @@
 package com.c21genera.leads.web;
 
 import com.c21genera.identity.CurrentUser;
+import com.c21genera.leads.application.PropertyDossierService;
+import com.c21genera.leads.application.PropertyDossierService.ClientsView;
+import com.c21genera.leads.application.PropertyDossierService.DetailsView;
 import com.c21genera.leads.application.PropertyService;
 import com.c21genera.leads.application.PropertyService.InventoryItem;
 import com.c21genera.leads.application.PropertyService.InventoryPage;
 import com.c21genera.leads.application.PropertyService.Overview;
 import com.c21genera.leads.application.PropertyService.PropertyView;
 import com.c21genera.leads.domain.CrmProperty.Data;
+import com.c21genera.online21.PropertyDossier.FollowUp;
+import com.c21genera.online21.PropertyDossier.PortalListing;
+import com.c21genera.online21.PropertyDossier.SheetVariant;
 import com.c21genera.online21.PropertyListings.ListingFilter;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
@@ -15,7 +21,12 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -39,9 +50,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class InternalPropertyController {
 
   private final PropertyService service;
+  private final PropertyDossierService dossier;
 
-  public InternalPropertyController(PropertyService service) {
+  public InternalPropertyController(PropertyService service, PropertyDossierService dossier) {
     this.service = service;
+    this.dossier = dossier;
   }
 
   public record PropertyRequest(
@@ -103,6 +116,42 @@ public class InternalPropertyController {
   @GetMapping("/api/v1/internal/properties/inventory/{online21Id}")
   public InventoryItem inventoryItem(@PathVariable long online21Id) {
     return service.inventoryItem(online21Id);
+  }
+
+  // --- Detalle de 21Online (como su pantalla "Ver propiedad") -----------------------
+
+  /** Datos generales completos, fotos, planos y asesor. */
+  @GetMapping("/api/v1/internal/properties/inventory/{online21Id}/details")
+  public DetailsView details(@PathVariable long online21Id) {
+    return dossier.details(online21Id);
+  }
+
+  /** En qué portales está publicada (Mercado Libre, Inmuebles24…) con su liga y estado. */
+  @GetMapping("/api/v1/internal/properties/inventory/{online21Id}/portals")
+  public List<PortalListing> portals(@PathVariable long online21Id) {
+    return dossier.portals(online21Id);
+  }
+
+  /** Clientes relacionados (prospectos interesados); el contacto solo para quien ve todos los leads o el asesor. */
+  @GetMapping("/api/v1/internal/properties/inventory/{online21Id}/clients")
+  public ClientsView clients(@PathVariable long online21Id, @AuthenticationPrincipal Jwt jwt) {
+    return dossier.clients(online21Id, CurrentUser.from(jwt));
+  }
+
+  /** Historial de seguimientos (visitas, llamadas…). */
+  @GetMapping("/api/v1/internal/properties/inventory/{online21Id}/follow-ups")
+  public List<FollowUp> followUps(@PathVariable long online21Id) {
+    return dossier.followUps(online21Id);
+  }
+
+  /** Ficha técnica en PDF: variant ADVISOR (con contacto del asesor), NO_CONTACT o NO_LOGO. */
+  @GetMapping("/api/v1/internal/properties/inventory/{online21Id}/sheet")
+  public ResponseEntity<byte[]> sheet(@PathVariable long online21Id, @RequestParam(defaultValue = "ADVISOR") SheetVariant variant) {
+    PropertyDossierService.Sheet sheet = dossier.sheet(online21Id, variant);
+    return ResponseEntity.ok()
+        .contentType(MediaType.APPLICATION_PDF)
+        .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(sheet.fileName()).build().toString())
+        .body(sheet.pdf());
   }
 
   /** Propiedades capturadas en Genera, con su estado de envío a 21Online. */

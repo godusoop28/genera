@@ -7,6 +7,7 @@ import 'screens/crm/dashboard_screen.dart';
 import 'screens/crm/lead_detail_screen.dart';
 import 'screens/crm/leads_screen.dart';
 import 'screens/crm/properties_screen.dart';
+import 'screens/crm/property_dossier_screen.dart';
 import 'screens/expedientes/expediente_detail_screen.dart';
 import 'screens/expedientes/expedientes_screen.dart';
 import 'screens/expedientes/new_expediente_screen.dart';

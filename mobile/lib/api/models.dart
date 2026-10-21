@@ -1315,3 +1315,84 @@ class CapturedOverview {
   final bool configured;
   final List<CapturedProperty> captured;
 }
+
+// ---------------------------------------------------------------------------
+// Detalle de una propiedad de 21Online (como su pantalla "Ver propiedad")
+// ---------------------------------------------------------------------------
+
+class DossierField {
+  DossierField.fromJson(Json j)
+      : section = _sr(j['section']),
+        label = _sr(j['label']),
+        value = _sr(j['value']);
+  final String section, label, value;
+}
+
+class DossierAdvisor {
+  DossierAdvisor.fromJson(Json j)
+      : name = _s(j['name']),
+        email = _s(j['email']),
+        mobile = _s(j['mobile']),
+        officePhone = _s(j['officePhone']);
+  final String? name, email, mobile, officePhone;
+}
+
+class PropertyDetails {
+  PropertyDetails.fromJson(Json j)
+      : listing = Listing.fromJson(Json.from((j['details'] as Map)['listing'] as Map)),
+        fields = _list((j['details'] as Map)['fields'], DossierField.fromJson),
+        photos = _ls((j['details'] as Map)['photos']),
+        floorPlans = _ls((j['details'] as Map)['floorPlans']),
+        videoUrl = _s((j['details'] as Map)['videoUrl']),
+        latitude = _dn((j['details'] as Map)['latitude']),
+        longitude = _dn((j['details'] as Map)['longitude']),
+        publicUrl = _s((j['details'] as Map)['publicUrl']),
+        advisor = (j['details'] as Map)['advisor'] is Map ? DossierAdvisor.fromJson(Json.from((j['details'] as Map)['advisor'] as Map)) : null,
+        generaAdvisor = NamedRef.maybe(j['generaAdvisor']);
+  final Listing listing;
+  final List<DossierField> fields;
+  final List<String> photos, floorPlans;
+  final String? videoUrl, publicUrl;
+  final double? latitude, longitude;
+  final DossierAdvisor? advisor;
+  final NamedRef? generaAdvisor;
+}
+
+class PortalListing {
+  PortalListing.fromJson(Json j)
+      : portal = _sr(j['portal'], 'Portal'),
+        active = _b(j['active']),
+        status = _s(j['status']),
+        url = _s(j['url']),
+        reference = _s(j['reference']),
+        withError = _b(j['withError']),
+        error = _s(j['error']),
+        updatedAt = _s(j['updatedAt']);
+  final String portal;
+  final bool active, withError;
+  final String? status, url, reference, error, updatedAt;
+}
+
+class RelatedClient {
+  RelatedClient.fromJson(Json j)
+      : id = _in(j['id']),
+        name = _s(j['name']),
+        phone = _s(j['phone']),
+        email = _s(j['email']),
+        source = _s(j['source']),
+        status = _s(j['status']),
+        message = _s(j['message']),
+        createdAt = _s(j['createdAt']);
+  final int? id;
+  final String? name, phone, email, source, status, message, createdAt;
+}
+
+class FollowUp {
+  FollowUp.fromJson(Json j)
+      : type = _s(j['type']),
+        subtype = _s(j['subtype']),
+        advisor = _s(j['advisor']),
+        client = _s(j['client']),
+        createdAt = _s(j['createdAt']);
+  final String? type, subtype, advisor, client, createdAt;
+}

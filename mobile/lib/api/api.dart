@@ -342,3 +342,22 @@ Future<CapturedProperty> getCaptured(String id) async => CapturedProperty.fromJs
 Future<CapturedProperty> createProperty(Json data) async => CapturedProperty.fromJson(_j(await _c.post('/internal/properties', data)));
 Future<CapturedProperty> updateProperty(String id, Json data) async => CapturedProperty.fromJson(_j(await _c.put('/internal/properties/$id', data)));
 Future<CapturedProperty> retryPropertySync(String id) async => CapturedProperty.fromJson(_j(await _c.post('/internal/properties/$id/sync')));
+
+// --- Detalle de 21Online (como su pantalla "Ver propiedad") -----------------
+
+Future<PropertyDetails> getPropertyDetails(String online21Id) async =>
+    PropertyDetails.fromJson(_j(await _c.get('/internal/properties/inventory/$online21Id/details')));
+Future<List<PortalListing>> getPropertyPortals(String online21Id) async =>
+    _l(await _c.get('/internal/properties/inventory/$online21Id/portals'), PortalListing.fromJson);
+
+/// contactsVisible: si vienen nombre, teléfono, correo y mensaje (solo el asesor o quien ve todos los leads).
+Future<({bool contactsVisible, List<RelatedClient> clients})> getPropertyClients(String online21Id) async {
+  final j = _j(await _c.get('/internal/properties/inventory/$online21Id/clients'));
+  return (contactsVisible: j['contactsVisible'] == true, clients: _l(j['clients'], RelatedClient.fromJson));
+}
+
+Future<List<FollowUp>> getPropertyFollowUps(String online21Id) async =>
+    _l(await _c.get('/internal/properties/inventory/$online21Id/follow-ups'), FollowUp.fromJson);
+
+/// Ficha técnica en PDF. variant: ADVISOR, NO_CONTACT o NO_LOGO.
+Future<List<int>> getPropertySheet(String online21Id, String variant) => _c.getBytes('/internal/properties/inventory/$online21Id/sheet?variant=$variant');

@@ -521,6 +521,26 @@ void main() {
     await _close(tester);
   });
 
+  testWidgets('flujo: detalle de una propiedad de 21Online con portales, clientes y resumen', (tester) async {
+    await _open(tester, '/propiedades/21online/634294');
+    expect(find.text('Ficha técnica'), findsOneWidget);
+    await tester.tap(find.text('Portales'));
+    await settle(tester, 3);
+    expect(find.text('Ver en Mercado Libre'), findsOneWidget);
+    expect(find.text('Falta foto de portada'), findsOneWidget);
+    await tester.tap(find.text('Clientes'));
+    await settle(tester, 3);
+    expect(find.text('Guadalupe Jasso Rocha'), findsOneWidget);
+    // La barra de pestañas se desplaza: "Resumen" queda a la derecha.
+    await tester.drag(find.text('Clientes'), const Offset(-400, 0));
+    await settle(tester, 2);
+    await tester.tap(find.text('Resumen'));
+    await settle(tester, 3);
+    expect(find.text('Clientes interesados'), findsOneWidget);
+    expect(find.text('¿Por dónde llegaron?'), findsOneWidget);
+    await _close(tester);
+  });
+
   testWidgets('flujo: cambiar el tema a oscuro', (tester) async {
     await _open(tester, '/configuracion');
     await tester.scrollUntilVisible(find.text('Oscuro'), 300, scrollable: find.byType(Scrollable).first);

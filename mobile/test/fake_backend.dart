@@ -505,6 +505,56 @@ final List<({String method, String path, Object? body})> sentRequests = [];
   if (p == '/internal/properties/inventory') {
     return (200, {'configured': true, 'error': null, 'items': [{'listing': _listing, 'advisor': _ana, 'generaId': null}, {'listing': {..._listing, 'id': 634331, 'key': '634331--649', 'internalKey': 'GA 08', 'status': 'suspendida', 'operation': 'renta', 'rentPrice': 15000, 'salePrice': null, 'title': 'Departamento amueblado en renta', 'advisorOnline21Id': 99}, 'advisor': null, 'generaId': 'prop-1'}], 'page': 1, 'totalItems': 2, 'hasNext': false});
   }
+  // Detalle de 21Online (como su pantalla "Ver propiedad").
+  if (p == '/internal/properties/inventory/634294/details') {
+    return (
+      200,
+      {
+        'details': {
+          'listing': _listing,
+          'fields': [
+            {'section': 'Generales', 'label': 'Clave', 'value': 'GN 14'},
+            {'section': 'Generales', 'label': 'Comisión', 'value': '5%'},
+            {'section': 'Características', 'label': 'Alberca', 'value': 'Sí'},
+          ],
+          'photos': [],
+          'floorPlans': [],
+          'videoUrl': null,
+          'latitude': 18.93,
+          'longitude': -99.22,
+          'publicUrl': 'https://century21mexico.com/propiedad/634294',
+          'advisor': {'name': 'Ana Sofía Herrera', 'email': 'ana@c21genera.com', 'mobile': '7771234567', 'officePhone': null},
+        },
+        'generaAdvisor': _ana,
+      }
+    );
+  }
+  if (p == '/internal/properties/inventory/634294/portals') {
+    return (
+      200,
+      [
+        {'portal': 'Mercado Libre', 'active': true, 'status': 'publicado', 'url': 'https://casa.mercadolibre.com.mx/MLM-1', 'reference': 'ID: MLM1', 'withError': false},
+        {'portal': 'Inmuebles24', 'active': false, 'status': null, 'url': null, 'withError': true, 'error': 'Falta foto de portada'},
+      ]
+    );
+  }
+  if (p == '/internal/properties/inventory/634294/clients') {
+    return (
+      200,
+      {
+        'contactsVisible': true,
+        'clients': [
+          {'id': 2839694, 'name': 'Guadalupe Jasso Rocha', 'phone': '8121463220', 'source': 'Mercado Libre', 'status': 'Interesado', 'createdAt': _now},
+          {'id': 2839695, 'name': 'Pedro Ruiz', 'phone': null, 'source': 'Inmuebles24', 'status': 'Interesado', 'createdAt': '2026-09-02T10:00:00Z'},
+        ],
+      }
+    );
+  }
+  if (p == '/internal/properties/inventory/634294/follow-ups') {
+    return (200, [
+      {'type': 'visita', 'subtype': 'Primera visita', 'advisor': 'Ana Sofía Herrera', 'client': 'Guadalupe Jasso Rocha', 'createdAt': _now},
+    ]);
+  }
   if (p == '/internal/properties/inventory/634294') return (200, {'listing': _listing, 'advisor': _ana, 'generaId': null});
   if (p == '/internal/properties') return (200, {'configured': true, 'captured': [_captured]});
   if (p == '/internal/properties/prop-1') return (200, _captured);

@@ -99,6 +99,39 @@ class Online21Client {
     return read(body);
   }
 
+  /**
+   * GET genérico de una colección de 21Online (JSON-LD) con filtros; devuelve el cuerpo tal cual. Los
+   * filtros pueden repetirse (p. ej. "idPropiedades.id"). Los errores HTTP se propagan.
+   */
+  JsonNode collection(String path, Map<String, String> filters, int page) {
+    String body =
+        restClient
+            .get()
+            .uri(
+                b -> {
+                  b.path(path);
+                  filters.forEach(b::queryParam);
+                  return b.queryParam("page", page).build();
+                })
+            .accept(MediaType.valueOf("application/ld+json"), MediaType.APPLICATION_JSON)
+            .retrieve()
+            .body(String.class);
+    return read(body);
+  }
+
+  /** GET de un recurso por su ruta (p. ej. "/api/usuarios/41388"); null si 21Online responde 404. */
+  JsonNode item(String path) {
+    try {
+      String body = restClient.get().uri(path).accept(MediaType.APPLICATION_JSON).retrieve().body(String.class);
+      return read(body);
+    } catch (RestClientResponseException e) {
+      if (e.getStatusCode().value() == 404) {
+        return null;
+      }
+      throw e;
+    }
+  }
+
   /** Lista de propiedades de una respuesta (JSON-LD o arreglo plano). */
   List<JsonNode> membersOf(JsonNode root) {
     List<JsonNode> out = new ArrayList<>();
