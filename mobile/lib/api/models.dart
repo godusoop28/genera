@@ -34,9 +34,92 @@ class UserResponse {
         roleCode = _sr(j['roleCode']),
         roleName = _sr(j['roleName']),
         status = _sr(j['status']),
-        lastActivityAt = _s(j['lastActivityAt']);
+        lastActivityAt = _s(j['lastActivityAt']),
+        locked = _b(j['locked']),
+        lockedUntil = _s(j['lockedUntil']),
+        offboardedAt = _s(j['offboardedAt']);
+
+  /// Control de Cambios #25: PENDING (aún no define su contraseña), ACTIVE, INACTIVE u OFFBOARDED (baja definitiva).
   final String id, name, email, roleCode, roleName, status;
-  final String? lastActivityAt;
+  final String? lastActivityAt, lockedUntil, offboardedAt;
+
+  /// Bloqueada ahora por intentos fallidos de acceso.
+  final bool locked;
+}
+
+/// Control de Cambios #25: enlace de un solo uso para definir contraseña (solo se muestra una vez).
+class SetupLink {
+  SetupLink.fromJson(Json j)
+      : url = _sr(j['url']),
+        expiresAt = _sr(j['expiresAt']),
+        purpose = _sr(j['purpose'], 'RESET');
+  final String url, expiresAt, purpose;
+  bool get invite => purpose == 'INVITE';
+}
+
+class WorkloadItem {
+  WorkloadItem.fromJson(Json j)
+      : label = _sr(j['label']),
+        count = _i(j['count']);
+  final String label;
+  final int count;
+}
+
+class AuditEvent {
+  AuditEvent.fromJson(Json j)
+      : id = _sr(j['id']),
+        occurredAt = _sr(j['occurredAt']),
+        eventType = _sr(j['eventType']),
+        actorType = _sr(j['actorType']),
+        actorName = _s(j['actorName']),
+        actorRole = _s(j['actorRole']),
+        summary = _sr(j['summary']);
+  final String id, occurredAt, eventType, actorType, summary;
+  final String? actorName, actorRole;
+}
+
+// ---------------------------------------------------------------------------
+// Catálogo de inmuebles (Control de Cambios #26)
+// ---------------------------------------------------------------------------
+
+class CatalogSubtype {
+  CatalogSubtype.fromJson(Json j)
+      : id = _sr(j['id']),
+        categoryId = _sr(j['categoryId']),
+        categoryName = _sr(j['categoryName']),
+        name = _sr(j['name']),
+        active = j['active'] != false,
+        requiresDetail = _b(j['requiresDetail']),
+        caseType = _sr(j['caseType'], 'COMMERCIAL'),
+        online21Type = _sr(j['online21Type'], 'comercial'),
+        online21Subtype = _sr(j['online21Subtype']);
+  final String id, categoryId, categoryName, name, caseType, online21Type, online21Subtype;
+  final bool active, requiresDetail;
+
+  /// "Habitacional → Casa en condominio" o "Especiales → Otro: Capilla".
+  String label([String? detail]) =>
+      requiresDetail && (detail ?? '').trim().isNotEmpty ? '$categoryName → ${name.replaceAll(RegExp(r'\s*—.*$'), '')}: ${detail!.trim()}' : '$categoryName → $name';
+}
+
+class CatalogCategory {
+  CatalogCategory.fromJson(Json j)
+      : id = _sr(j['id']),
+        name = _sr(j['name']),
+        active = j['active'] != false,
+        subtypes = _list(j['subtypes'], CatalogSubtype.fromJson);
+  final String id, name;
+  final bool active;
+  final List<CatalogSubtype> subtypes;
+}
+
+CatalogSubtype? findSubtype(List<CatalogCategory>? catalog, String? id) {
+  if (catalog == null || id == null) return null;
+  for (final c in catalog) {
+    for (final s in c.subtypes) {
+      if (s.id == id) return s;
+    }
+  }
+  return null;
 }
 
 class RoleResponse {
@@ -84,6 +167,12 @@ class ExpedienteResponse {
         accreditationType = _sr(j['accreditationType']),
         condominiumRegime = _b(j['condominiumRegime']),
         propertyCaseType = _sr(j['propertyCaseType']),
+        propertyCategoryId = _s(j['propertyCategoryId']),
+        propertyCategoryName = _s(j['propertyCategoryName']),
+        propertySubtypeId = _s(j['propertySubtypeId']),
+        propertySubtypeName = _s(j['propertySubtypeName']),
+        propertyTypeDetail = _s(j['propertyTypeDetail']),
+        propertyTypeLabel = _s(j['propertyTypeLabel']),
         operationType = _s(j['operationType']) ?? 'SALE',
         declaredLegalStatus = _sr(j['declaredLegalStatus']),
         propertyAddress = _s(j['propertyAddress']),
@@ -101,6 +190,9 @@ class ExpedienteResponse {
   /// Control de Cambios #24: asesor responsable (null = sin asignar).
   final String? assignedAdvisorId, assignedAdvisorName;
   final String createdAt, updatedAt;
+
+  /// Control de Cambios #26: catálogo de inmuebles. Sin subcategoría = pendiente de clasificación.
+  final String? propertyCategoryId, propertyCategoryName, propertySubtypeId, propertySubtypeName, propertyTypeDetail, propertyTypeLabel;
 }
 
 /// Asesor activo que se puede asignar a un expediente (Control de Cambios #24).
@@ -121,24 +213,29 @@ class GroupCounts {
   final int total, pending, inReview, complete;
 }
 
-/// Control de Cambios #24: cartera por tipo de propiedad + operación (nivel 1) y por asesor (nivel 2).
+/// Control de Cambios #24/#26: cartera por categoría → subcategoría + operación (nivel 1) y por asesor (nivel 2).
+/// subtypeId null = pendientes de clasificación. Solo vienen las combinaciones con expedientes, en orden del catálogo.
 class PortfolioReport {
   PortfolioReport.fromJson(Json j)
       : total = GroupCounts.fromJson(Json.from((j['total'] as Map?) ?? {})),
         byTypeOperation = [
           for (final r in (j['byTypeOperation'] as List? ?? const []).whereType<Map>())
-            (propertyCaseType: _sr(r['propertyCaseType']), operationType: _sr(r['operationType']), counts: GroupCounts.fromJson(Json.from((r['counts'] as Map?) ?? {}))),
+            (
+              categoryId: _s(r['categoryId']),
+              categoryName: _sr(r['categoryName'], 'Sin clasificar'),
+              subtypeId: _s(r['subtypeId']),
+              subtypeName: _sr(r['subtypeName'], 'Pendiente de clasificación'),
+              operationType: _sr(r['operationType']),
+              counts: GroupCounts.fromJson(Json.from((r['counts'] as Map?) ?? {})),
+            ),
         ],
         byAdvisor = [
           for (final r in (j['byAdvisor'] as List? ?? const []).whereType<Map>())
             (advisorId: _s(r['advisorId']), name: _sr(r['name']), counts: GroupCounts.fromJson(Json.from((r['counts'] as Map?) ?? {}))),
         ];
   final GroupCounts total;
-  final List<({String propertyCaseType, String operationType, GroupCounts counts})> byTypeOperation;
+  final List<({String? categoryId, String categoryName, String? subtypeId, String subtypeName, String operationType, GroupCounts counts})> byTypeOperation;
   final List<({String? advisorId, String name, GroupCounts counts})> byAdvisor;
-
-  int cell(String type, String operation) =>
-      byTypeOperation.where((r) => r.propertyCaseType == type && r.operationType == operation).fold(0, (sum, r) => sum + r.counts.total);
 }
 
 class DocumentProgress {
@@ -1179,6 +1276,10 @@ class PropertyData {
   double? get commission => _dn(raw['commission']);
   bool get publishOnline => raw['publishOnline'] != false;
   String? get advisorUserId => _s(raw['advisorUserId']);
+
+  /// Control de Cambios #26: subcategoría del catálogo (de ella salen propertyType/subtype de 21Online).
+  String? get catalogSubtypeId => _s(raw['catalogSubtypeId']);
+  String? get propertyTypeDetail => _s(raw['propertyTypeDetail']);
 }
 
 class CapturedProperty {
@@ -1194,10 +1295,14 @@ class CapturedProperty {
         advisorLinked = _b(j['advisorLinked']),
         createdBy = NamedRef.maybe(j['createdBy']),
         createdAt = _sr(j['createdAt']),
-        canEdit = _b(j['canEdit']);
+        canEdit = _b(j['canEdit']),
+        propertyTypeLabel = _s(j['propertyTypeLabel']);
   final String id, syncStatus, createdAt;
   final int? online21Id;
   final String? syncError, syncedAt;
+
+  /// "Habitacional → Casa en condominio" (null si se capturó antes del catálogo).
+  final String? propertyTypeLabel;
   final bool syncUncertain, advisorLinked, canEdit;
   final PropertyData data;
   final NamedRef? advisor, createdBy;

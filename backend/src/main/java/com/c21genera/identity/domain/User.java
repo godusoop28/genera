@@ -30,7 +30,7 @@ public class User extends AuditableEntity {
   @Column(nullable = false, unique = true)
   private String email;
 
-  @Column(nullable = false)
+  /** null mientras la cuenta está PENDING (aún no define su contraseña). */
   private String passwordHash;
 
   @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -43,6 +43,18 @@ public class User extends AuditableEntity {
 
   private Instant lastActivityAt;
 
+  @Column(nullable = false)
+  private int failedLoginAttempts;
+
+  private Instant lockedUntil;
+
+  /** Los access tokens emitidos antes de esta fecha ya no valen (ver SessionRevocation). */
+  private Instant sessionsValidAfter;
+
+  private Instant passwordChangedAt;
+
+  private Instant offboardedAt;
+
   protected User() {}
 
   public User(String name, String email, String passwordHash, Role role) {
@@ -54,6 +66,13 @@ public class User extends AuditableEntity {
     this.status = UserStatus.ACTIVE;
   }
 
+  /** Control de Cambios #25: alta sin contraseña; la persona la define con su enlace. */
+  public static User pending(String name, String email, Role role) {
+    User user = new User(name, email, null, role);
+    user.status = UserStatus.PENDING;
+    return user;
+  }
+
   public void rename(String name) {
     this.name = name;
   }
@@ -62,20 +81,86 @@ public class User extends AuditableEntity {
     this.email = email.toLowerCase();
   }
 
-  public void changePasswordHash(String passwordHash) {
+  /**
+   * Nueva contraseña (cambio propio o con enlace): desbloquea la cuenta y
+   * revoca las sesiones abiertas. Una cuenta PENDING queda activa.
+   */
+  public void changePasswordHash(String passwordHash, Instant when) {
     this.passwordHash = passwordHash;
+    this.passwordChangedAt = when;
+    this.failedLoginAttempts = 0;
+    this.lockedUntil = null;
+    if (status == UserStatus.PENDING) {
+      status = UserStatus.ACTIVE;
+    }
+    revokeSessions(when);
+  }
+
+  public boolean hasPassword() {
+    return passwordHash != null;
   }
 
   public void changeRole(Role role) {
     this.role = role;
   }
 
+  /** Reactiva una cuenta desactivada; si nunca definió contraseña vuelve a PENDING. */
   public void activate() {
-    this.status = UserStatus.ACTIVE;
+    if (status == UserStatus.OFFBOARDED) {
+      throw new IllegalStateException("Una cuenta dada de baja no se puede reactivar");
+    }
+    this.status = hasPassword() ? UserStatus.ACTIVE : UserStatus.PENDING;
+    this.failedLoginAttempts = 0;
+    this.lockedUntil = null;
   }
 
-  public void deactivate() {
+  public void deactivate(Instant when) {
     this.status = UserStatus.INACTIVE;
+    revokeSessions(when);
+  }
+
+  /** Baja definitiva: no se borra nada, solo deja de poder entrar. */
+  public void offboard(Instant when) {
+    this.status = UserStatus.OFFBOARDED;
+    this.offboardedAt = when;
+    this.lockedUntil = null;
+    revokeSessions(when);
+  }
+
+  /** Los access tokens emitidos antes de este momento dejan de valer. */
+  public void revokeSessions(Instant when) {
+    this.sessionsValidAfter = when.truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+  }
+
+  public boolean isLocked(Instant now) {
+    return lockedUntil != null && now.isBefore(lockedUntil);
+  }
+
+  /** Registra un intento fallido; devuelve true si con este la cuenta quedó bloqueada. */
+  public boolean registerFailedLogin(Instant now, int maxAttempts, java.time.Duration lockDuration) {
+    if (lockedUntil != null && !now.isBefore(lockedUntil)) {
+      // El bloqueo anterior ya venció: se empieza a contar de nuevo.
+      lockedUntil = null;
+      failedLoginAttempts = 0;
+    }
+    failedLoginAttempts++;
+    if (failedLoginAttempts >= maxAttempts) {
+      lockedUntil = now.plus(lockDuration);
+      failedLoginAttempts = 0;
+      return true;
+    }
+    return false;
+  }
+
+  public void registerSuccessfulLogin(Instant now) {
+    this.failedLoginAttempts = 0;
+    this.lockedUntil = null;
+    this.lastActivityAt = now;
+  }
+
+  public void unlock() {
+    this.failedLoginAttempts = 0;
+    this.lockedUntil = null;
   }
 
   public void touchActivity(Instant when) {
@@ -112,5 +197,21 @@ public class User extends AuditableEntity {
 
   public Instant getLastActivityAt() {
     return lastActivityAt;
+  }
+
+  public Instant getLockedUntil() {
+    return lockedUntil;
+  }
+
+  public Instant getSessionsValidAfter() {
+    return sessionsValidAfter;
+  }
+
+  public Instant getPasswordChangedAt() {
+    return passwordChangedAt;
+  }
+
+  public Instant getOffboardedAt() {
+    return offboardedAt;
   }
 }

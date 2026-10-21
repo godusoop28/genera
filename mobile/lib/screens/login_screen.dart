@@ -17,6 +17,7 @@ class _LoginScreenState extends State<LoginScreen> {
   String password = '';
   String? error;
   bool submitting = false;
+  bool showForgot = false;
 
   Future<void> submit() async {
     if (email.trim().isEmpty || password.isEmpty) {
@@ -31,7 +32,10 @@ class _LoginScreenState extends State<LoginScreen> {
       await context.read<AuthState>().login(email.trim(), password);
     } catch (err) {
       setState(() {
-        if (err is ApiError && (err.status == 401 || err.status == 400)) {
+        if (err is ApiError && err.status == 423) {
+          // Control de Cambios #25: bloqueo temporal tras varios intentos fallidos.
+          error = err.message;
+        } else if (err is ApiError && (err.status == 401 || err.status == 400)) {
           error = 'Correo o contraseña incorrectos.';
         } else if (err is NetworkError) {
           error = 'No se pudo conectar con el servidor. Intenta de nuevo en unos segundos.';
@@ -98,6 +102,21 @@ class _LoginScreenState extends State<LoginScreen> {
                       if (error != null) ...[const SizedBox(height: 12), Text(error!, style: TextStyle(color: c.dangerText, fontSize: 13.5))],
                       const SizedBox(height: 20),
                       Btn(submitting ? 'Entrando...' : 'Entrar', large: true, expand: true, loading: submitting, onPressed: submit),
+                      const SizedBox(height: 14),
+                      Center(
+                        child: LinkText(
+                          '¿Olvidaste tu contraseña?',
+                          onTap: () => setState(() => showForgot = !showForgot),
+                        ),
+                      ),
+                      if (showForgot) ...[
+                        const SizedBox(height: 10),
+                        const Notice(
+                          tone: Tone.info,
+                          text:
+                              'Pide al administrador de la oficina que te envíe un enlace para restablecerla. Con ese enlace defines tu nueva contraseña; nadie más la conoce.',
+                        ),
+                      ],
                     ]),
                   ),
                   const SizedBox(height: 20),

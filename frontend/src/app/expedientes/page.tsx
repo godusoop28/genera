@@ -17,7 +17,8 @@ import {
   type ExpedienteOverviewItem,
   type ExpedienteStatusGroup,
 } from "@/lib/api/expedientes";
-import type { BackendOperationType, BackendPropertyCaseType } from "@/lib/api/types";
+import type { BackendOperationType } from "@/lib/api/types";
+import { PropertyTypeFilters } from "@/components/property/PropertyTypeSelect";
 import { operationLabels, propertyTypeLabels } from "@/lib/labels";
 import { useCan } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
@@ -106,8 +107,9 @@ function ExpedientesContent() {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [group, setGroup] = useState<ExpedienteStatusGroup | null>(null);
-  // Control de Cambios #24: filtros de cartera; los reportes enlazan aquí con ?tipo=&operacion=&asesor=.
-  const [propertyCaseType, setPropertyCaseType] = useState<BackendPropertyCaseType | null>(() => oneOf(params.get("tipo"), propertyTypeLabels));
+  // Control de Cambios #24/#26: filtros de cartera; los reportes enlazan aquí con ?categoria=&subtipo=&operacion=&asesor=.
+  const [categoryId, setCategoryId] = useState<string | null>(params.get("categoria"));
+  const [subtypeId, setSubtypeId] = useState<string | null>(params.get("subtipo"));
   const [operationType, setOperationType] = useState<BackendOperationType | null>(() => oneOf(params.get("operacion"), operationLabels));
   const [advisorId, setAdvisorId] = useState(params.get("asesor") ?? "");
   const [advisors, setAdvisors] = useState<AdvisorOption[]>([]);
@@ -121,8 +123,8 @@ function ExpedientesContent() {
 
   // Cada combinación de búsqueda + filtro (+ "Actualizar") es una carga distinta;
   // "cargando" = la última respuesta no corresponde a lo que se pidió.
-  const key = `${debouncedQuery.trim()}|${group ?? ""}|${propertyCaseType ?? ""}|${operationType ?? ""}|${advisorId}|${reloadToken}`;
-  const portfolio = { propertyCaseType, operationType, advisorId: advisorId || null };
+  const key = `${debouncedQuery.trim()}|${group ?? ""}|${categoryId ?? ""}|${subtypeId ?? ""}|${operationType ?? ""}|${advisorId}|${reloadToken}`;
+  const portfolio = { categoryId, subtypeId, operationType, advisorId: advisorId || null };
   const currentKey = useRef(key);
   useEffect(() => {
     currentKey.current = key;
@@ -191,7 +193,7 @@ function ExpedientesContent() {
   const counts = data?.counts;
   const countFor = (id: ExpedienteStatusGroup | null) =>
     !counts ? null : id === null ? counts.total : id === "PENDING" ? counts.pending : id === "IN_REVIEW" ? counts.inReview : counts.complete;
-  const filtering = debouncedQuery.trim().length > 0 || group !== null || propertyCaseType !== null || operationType !== null || advisorId !== "";
+  const filtering = debouncedQuery.trim().length > 0 || group !== null || categoryId !== null || subtypeId !== null || operationType !== null || advisorId !== "";
   // Si el asesor del enlace ya no está activo, igual se muestra como opción para poder quitarlo.
   const advisorOptions = [
     { value: "", label: "Todos los asesores" },
@@ -271,12 +273,14 @@ function ExpedientesContent() {
             </div>
           </div>
 
-          <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3" role="group" aria-label="Filtrar cartera">
-            <Select
-              aria-label="Filtrar por tipo de propiedad"
-              value={propertyCaseType ?? ""}
-              onChange={(e) => setPropertyCaseType((e.target.value || null) as BackendPropertyCaseType | null)}
-              options={[{ value: "", label: "Todos los tipos de propiedad" }, ...Object.entries(propertyTypeLabels).map(([value, label]) => ({ value, label }))]}
+          <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4" role="group" aria-label="Filtrar cartera">
+            <PropertyTypeFilters
+              categoryId={categoryId}
+              subtypeId={subtypeId}
+              onChange={(v) => {
+                setCategoryId(v.categoryId);
+                setSubtypeId(v.subtypeId);
+              }}
             />
             <Select
               aria-label="Filtrar por operación"
@@ -326,7 +330,8 @@ function ExpedientesContent() {
                           setQuery("");
                           setDebouncedQuery("");
                           setGroup(null);
-                          setPropertyCaseType(null);
+                          setCategoryId(null);
+                          setSubtypeId(null);
                           setOperationType(null);
                           setAdvisorId("");
                         }}
@@ -472,7 +477,9 @@ function DocumentsProgress({ progress, compact = false }: { progress: DocumentPr
 }
 
 function operationLabel(item: ExpedienteOverviewItem) {
-  return `${propertyTypeLabels[item.expediente.propertyCaseType]} en ${operationLabels[item.expediente.operationType].toLowerCase()}`;
+  const e = item.expediente;
+  const type = e.propertySubtypeName ?? (e.propertyCategoryName ? `${e.propertyCategoryName} (sin clasificar)` : propertyTypeLabels[e.propertyCaseType]);
+  return `${type} en ${operationLabels[e.operationType].toLowerCase()}`;
 }
 
 function ExpedienteCard({ item }: { item: ExpedienteOverviewItem }) {

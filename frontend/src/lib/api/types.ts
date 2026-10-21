@@ -82,6 +82,14 @@ export interface ExpedienteResponse {
   accreditationType: BackendAccreditationType;
   condominiumRegime: boolean;
   propertyCaseType: BackendPropertyCaseType;
+  /** Control de Cambios #26: catálogo de inmuebles. Sin subcategoría = pendiente de clasificación. */
+  propertyCategoryId: string | null;
+  propertyCategoryName: string | null;
+  propertySubtypeId: string | null;
+  propertySubtypeName: string | null;
+  propertyTypeDetail: string | null;
+  /** "Habitacional → Casa en condominio" (o "Terrenos → Pendiente de clasificación"). */
+  propertyTypeLabel: string | null;
   operationType: BackendOperationType;
   declaredLegalStatus: BackendPropertyLegalStatus;
   propertyAddress: string | null;
@@ -686,7 +694,8 @@ export interface EmailAttachmentPreview {
 }
 
 export type BackendRoleCode = "ADMINISTRATOR" | "DIRECTOR" | "ADVISOR" | "DOCUMENT_REVIEWER";
-export type BackendUserStatus = "ACTIVE" | "INACTIVE";
+/** Control de Cambios #25: PENDING = aún no define su contraseña; OFFBOARDED = dada de baja (definitivo). */
+export type BackendUserStatus = "PENDING" | "ACTIVE" | "INACTIVE" | "OFFBOARDED";
 
 export interface UserResponse {
   id: string;
@@ -696,6 +705,42 @@ export interface UserResponse {
   roleName: string;
   status: BackendUserStatus;
   lastActivityAt: string | null;
+  /** Bloqueada ahora por intentos fallidos de acceso (hasta lockedUntil). */
+  locked: boolean;
+  lockedUntil: string | null;
+  passwordChangedAt: string | null;
+  offboardedAt: string | null;
+  createdAt: string | null;
+}
+
+/** Enlace de un solo uso para definir contraseña: solo se muestra una vez. */
+export interface SetupLinkResponse {
+  url: string;
+  expiresAt: string;
+  purpose: "INVITE" | "RESET";
+}
+
+export interface CreatedUserResponse {
+  user: UserResponse;
+  link: SetupLinkResponse;
+}
+
+export interface WorkloadItem {
+  label: string;
+  count: number;
+}
+
+export interface AuditEventResponse {
+  id: string;
+  occurredAt: string;
+  eventType: string;
+  aggregateType: string;
+  aggregateId: string;
+  actorType: string;
+  actorUserId: string | null;
+  actorName: string | null;
+  actorRole: string | null;
+  summary: string;
 }
 
 export interface RoleResponse {

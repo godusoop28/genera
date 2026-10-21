@@ -1,6 +1,7 @@
 "use client";
 
 import { errorText } from "@/components/crm/CrmUi";
+import { PropertyTypeSelect, propertyTypeError, usePropertyCatalog } from "@/components/property/PropertyTypeSelect";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -8,7 +9,8 @@ import { Select } from "@/components/ui/Select";
 import { Toggle } from "@/components/ui/Toggle";
 import type { AdvisorRouting } from "@/lib/api/crm";
 import type { ListingStatus, Operation, PropertyData, PropertyType } from "@/lib/api/properties";
-import { contractLabels, editableStatuses, listingStatusLabels, mexicanStates, operationLabels, subtypeLabel, subtypesByType, typeLabels } from "@/lib/crm/property-labels";
+import { findSubtype } from "@/lib/api/property-catalog";
+import { contractLabels, editableStatuses, listingStatusLabels, mexicanStates, operationLabels, subtypeLabel, typeLabels } from "@/lib/crm/property-labels";
 import { useState, type FormEvent } from "react";
 
 /** Valores del formulario como texto (los inputs numéricos vacíos son null al enviar). */
@@ -16,6 +18,9 @@ type FormState = {
   operation: Operation;
   propertyType: PropertyType;
   subtype: string;
+  /** Control de Cambios #26: el tipo se elige en el catálogo de inmuebles. */
+  catalogSubtypeId: string | null;
+  propertyTypeDetail: string;
   contractType: string;
   status: ListingStatus;
   headline: string;
@@ -52,6 +57,8 @@ function initialState(data?: PropertyData): FormState {
     operation: data?.operation ?? "venta",
     propertyType: data?.propertyType ?? "habitacional",
     subtype: data?.subtype ?? "casa",
+    catalogSubtypeId: data?.catalogSubtypeId ?? null,
+    propertyTypeDetail: data?.propertyTypeDetail ?? "",
     contractType: data?.contractType ?? "exclusiva",
     status: data?.status ?? "enPromocion",
     headline: data?.headline ?? "",
@@ -123,6 +130,8 @@ function toData(f: FormState): PropertyData {
     commission: num(f.commission),
     publishOnline: f.publishOnline,
     advisorUserId: f.advisorUserId || null,
+    catalogSubtypeId: f.catalogSubtypeId,
+    propertyTypeDetail: f.propertyTypeDetail.trim() || null,
   };
 }
 
@@ -153,7 +162,10 @@ export function PropertyForm({
   const [error, setError] = useState<string | null>(null);
   const set = <K extends keyof FormState>(key: K) => (value: FormState[K]) => setForm((f) => ({ ...f, [key]: value }));
 
+  const { catalog } = usePropertyCatalog();
+  const typeProblem = propertyTypeError(catalog, form.catalogSubtypeId, form.propertyTypeDetail, initial?.catalogSubtypeId);
   const missing: string[] = [];
+  if (typeProblem) missing.push("tipo de inmueble");
   if (!form.headline.trim()) missing.push("encabezado");
   if (num(form.price) === null || (num(form.price) ?? 0) <= 0) missing.push("precio");
   if (!form.neighborhood.trim()) missing.push("colonia");
@@ -172,10 +184,8 @@ export function PropertyForm({
     }
   };
 
-  const changeType = (type: PropertyType) =>
-    setForm((f) => ({ ...f, propertyType: type, subtype: subtypesByType[type].includes(f.subtype) ? f.subtype : subtypesByType[type][0] }));
-
   const isLand = form.subtype === "terreno";
+  const legacyType = !form.catalogSubtypeId && initial ? `${subtypeLabel(initial.subtype)} (${typeLabels[initial.propertyType]})` : null;
 
   return (
     <form onSubmit={submit} className="space-y-5">
@@ -188,18 +198,28 @@ export function PropertyForm({
             onChange={(e) => set("operation")(e.target.value as Operation)}
             options={(Object.keys(operationLabels) as Operation[]).map((o) => ({ value: o, label: operationLabels[o] }))}
           />
-          <Select
-            label="Tipo"
-            value={form.propertyType}
-            onChange={(e) => changeType(e.target.value as PropertyType)}
-            options={(Object.keys(typeLabels) as PropertyType[]).map((t) => ({ value: t, label: typeLabels[t] }))}
-          />
-          <Select
-            label="Subtipo"
-            value={form.subtype}
-            onChange={(e) => set("subtype")(e.target.value)}
-            options={subtypesByType[form.propertyType].map((s) => ({ value: s, label: subtypeLabel(s) }))}
-          />
+          <div className="sm:col-span-2">
+            <PropertyTypeSelect
+              subtypeId={form.catalogSubtypeId}
+              detail={form.propertyTypeDetail}
+              current={initial?.catalogSubtypeId ? { id: initial.catalogSubtypeId, label: "Tipo guardado" } : null}
+              onChange={({ subtypeId, detail, subtype }) =>
+                setForm((f) => ({
+                  ...f,
+                  catalogSubtypeId: subtypeId,
+                  propertyTypeDetail: detail,
+                  // Se publica en 21Online con el tipo y subtipo que corresponden a la subcategoría.
+                  propertyType: (subtype?.online21Type as PropertyType | undefined) ?? f.propertyType,
+                  subtype: subtype?.online21Subtype ?? f.subtype,
+                }))
+              }
+              error={typeProblem && form.catalogSubtypeId ? typeProblem : undefined}
+            />
+            {legacyType ? <p className="mt-1 text-xs text-warning-text">Se capturó antes del catálogo como {legacyType}. Elige su tipo de inmueble.</p> : null}
+            {findSubtype(catalog, form.catalogSubtypeId) ? (
+              <p className="mt-1 text-xs text-muted">En 21Online: {subtypeLabel(form.subtype)} ({typeLabels[form.propertyType]})</p>
+            ) : null}
+          </div>
           <Select
             label="Contrato con el propietario"
             value={form.contractType}

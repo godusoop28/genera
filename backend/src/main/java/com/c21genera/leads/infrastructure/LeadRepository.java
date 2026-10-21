@@ -34,4 +34,7 @@ public interface LeadRepository extends JpaRepository<Lead, UUID>, JpaSpecificat
   List<Lead> lockPending(@Param("limit") int limit);
 
   long countByAssignmentStatusIn(List<com.c21genera.leads.AssignmentStatus> statuses);
+
+  /** Control de Cambios #25: leads abiertos asignados a un asesor (antes de darle de baja). */
+  long countByAdvisorUserIdAndStageIn(UUID advisorUserId, java.util.Collection<com.c21genera.leads.LeadStage> stages);
 }

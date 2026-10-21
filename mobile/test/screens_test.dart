@@ -380,6 +380,14 @@ void main() {
       await settle(tester, 1);
     }
 
+    // Control de Cambios #26: el tipo se elige en el catálogo (categorías con todas sus subcategorías).
+    final picker = find.text('Selecciona el tipo de inmueble');
+    await tester.scrollUntilVisible(picker, 200, scrollable: find.byType(Scrollable).first);
+    await tester.tap(picker);
+    await settle(tester, 3);
+    expect(find.text('INDUSTRIAL Y LOGÍSTICA'), findsOneWidget);
+    await tester.tap(find.text('Nave industrial'));
+    await settle(tester, 3);
     await type('Encabezado del anuncio', 'Casa con jardín');
     await type('Precio de venta', '4500000');
     await type('Colonia', 'Burgos');
@@ -395,6 +403,9 @@ void main() {
     expect(body['neighborhood'], 'Burgos');
     expect(body['municipality'], 'Temixco');
     expect(body['state'], 'Morelos');
+    expect(body['catalogSubtypeId'], 'sub-nave');
+    expect(body['propertyType'], 'comercial');
+    expect(body['subtype'], 'nave');
     await _close(tester);
   });
 
@@ -441,6 +452,15 @@ void main() {
     await tester.scrollUntilVisible(find.byType(TextField), -300, scrollable: find.byType(Scrollable).first);
     await settle(tester);
     await tester.enterText(find.byType(TextField).first, 'Casa en Vista Hermosa');
+    // Sin tipo de inmueble no se puede seguir (Control de Cambios #26).
+    await tester.tap(find.text('Continuar'));
+    await settle(tester);
+    expect(find.text('Revisa antes de crear'), findsNothing);
+    await tester.tap(find.text('Selecciona el tipo de inmueble'));
+    await settle(tester, 3);
+    await tester.tap(find.text('Departamento'));
+    await settle(tester, 3);
+    expect(find.text('Habitacional → Departamento'), findsOneWidget);
     await tester.tap(find.text('Continuar'));
     await settle(tester);
     expect(find.text('Revisa antes de crear'), findsOneWidget);
@@ -451,6 +471,8 @@ void main() {
     expect(body['propertyReference'], 'Casa en Vista Hermosa');
     expect(body['assignedAdvisorId'], 'u-3');
     expect(body['operationType'], 'SALE');
+    expect(body['propertySubtypeId'], 'sub-depto');
+    expect(body.containsKey('propertyCaseType'), isFalse);
     expect((body['participants'] as List).first, {'role': 'OWNER', 'fullName': 'Juan Pérez López'});
     expect(sentRequests.any((r) => r.method == 'DELETE' && r.path == '/internal/drafts/nuevo-expediente'), isTrue, reason: 'borra el borrador');
     await _close(tester);
@@ -467,8 +489,41 @@ void main() {
     await _close(tester);
   });
 
+  testWidgets('flujo: crear un usuario sin contraseña y compartir su enlace', (tester) async {
+    await _open(tester, '/usuarios');
+    await tester.tap(find.text('Crear usuario'));
+    await settle(tester, 3);
+    final fields = find.descendant(of: find.byType(BottomSheet), matching: find.byType(TextField));
+    expect(fields, findsNWidgets(2), reason: 'nombre y correo; ya no se captura contraseña');
+    await tester.enterText(fields.at(0), 'Rosa Asesora');
+    await tester.enterText(fields.at(1), 'rosa@c21genera.com');
+    await tester.tap(find.text('Crear y obtener enlace'));
+    await settle(tester, 6);
+    final req = sentRequests.lastWhere((r) => r.method == 'POST' && r.path == '/internal/users');
+    expect(req.body, {'name': 'Rosa Asesora', 'email': 'rosa@c21genera.com', 'roleCode': 'ADVISOR'});
+    expect(find.text('Cuenta creada'), findsOneWidget);
+    expect(find.text('https://genera.test/acceso/tok-123'), findsOneWidget);
+    await _close(tester);
+  });
+
+  testWidgets('flujo: restablecer la contraseña de un usuario genera un enlace', (tester) async {
+    await _open(tester, '/usuarios');
+    // La primera tarjeta es la propia (sin restablecer); la de Ana Sofía queda más abajo.
+    final button = find.text('Restablecer contraseña').first;
+    await tester.ensureVisible(button);
+    await settle(tester, 2);
+    await tester.tap(button);
+    await settle(tester, 3);
+    await tester.tap(find.text('Generar enlace'));
+    await settle(tester, 6);
+    expect(sentRequests.any((r) => r.path == '/internal/users/u-2/password-link'), isTrue);
+    expect(find.text('Enlace de restablecimiento'), findsOneWidget);
+    await _close(tester);
+  });
+
   testWidgets('flujo: cambiar el tema a oscuro', (tester) async {
     await _open(tester, '/configuracion');
+    await tester.scrollUntilVisible(find.text('Oscuro'), 300, scrollable: find.byType(Scrollable).first);
     await tester.tap(find.text('Oscuro'));
     await settle(tester, 2);
     final app = tester.widget<MaterialApp>(find.byType(MaterialApp));

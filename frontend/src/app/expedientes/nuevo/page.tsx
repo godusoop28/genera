@@ -1,6 +1,7 @@
 "use client";
 
 import { ParticipantFields } from "@/components/expediente/ParticipantFields";
+import { PropertyTypeSelect, propertyTypeError, usePropertyCatalog } from "@/components/property/PropertyTypeSelect";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -13,11 +14,12 @@ import { useToast } from "@/components/ui/Toast";
 import { ApiError } from "@/lib/api/client";
 import { addCustomDocument } from "@/lib/api/documents";
 import { checkClientDuplicates, createExpediente, listAssignableAdvisors, type AdvisorOption, type DuplicateMatchResponse } from "@/lib/api/expedientes";
+import { findSubtype, subtypeLabel } from "@/lib/api/property-catalog";
 import { backendStatusLabels } from "@/lib/api/status-labels";
 import { formatDate } from "@/lib/labels";
 import type { BackendAccreditationType, BackendOperationType, BackendPersonType, BackendPropertyCaseType, ParticipantRequest } from "@/lib/api/types";
 import { useAuth } from "@/context/AuthProvider";
-import { accreditationLabels, operationLabels, propertyTypeLabels, roleLabels } from "@/lib/labels";
+import { accreditationLabels, operationLabels, roleLabels } from "@/lib/labels";
 import { useCan } from "@/lib/permissions";
 import Link from "next/link";
 import { previewRequirements, type PreviewItem } from "@/lib/requirements-preview";
@@ -60,7 +62,9 @@ interface NewExpedienteDraft {
   representatives: ParticipantRequest[];
   attorney: ParticipantRequest;
   accreditationType: BackendAccreditationType;
-  propertyCaseType: BackendPropertyCaseType;
+  /** Control de Cambios #26: subcategoría del catálogo y descripción si es "Otro". */
+  propertySubtypeId?: string | null;
+  propertyTypeDetail?: string;
   /** Control de Cambios #24. */
   operationType?: BackendOperationType;
   assignedAdvisorId?: string;
@@ -120,7 +124,12 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
   const [representatives, setRepresentatives] = useState<ParticipantRequest[]>(draft?.representatives ?? [person("LEGAL_REPRESENTATIVE")]);
   const [attorney, setAttorney] = useState<ParticipantRequest>(draft?.attorney ?? person("ATTORNEY"));
   const [accreditationType, setAccreditationType] = useState<BackendAccreditationType>(draft?.accreditationType ?? "ESCRITURA_PUBLICA");
-  const [propertyCaseType, setPropertyCaseType] = useState<BackendPropertyCaseType>(draft?.propertyCaseType ?? "HOUSING");
+  // Control de Cambios #26: se elige la subcategoría; la categoría y el tratamiento de documentos salen de ella.
+  const { catalog } = usePropertyCatalog();
+  const [propertySubtypeId, setPropertySubtypeId] = useState<string | null>(draft?.propertySubtypeId ?? null);
+  const [propertyTypeDetail, setPropertyTypeDetail] = useState(draft?.propertyTypeDetail ?? "");
+  const selectedSubtype = findSubtype(catalog, propertySubtypeId);
+  const propertyCaseType: BackendPropertyCaseType = selectedSubtype?.caseType ?? "HOUSING";
   const [operationType, setOperationType] = useState<BackendOperationType>(draft?.operationType ?? "SALE");
   // Control de Cambios #24: asesor responsable, obligatorio desde el inicio del alta.
   const [assignedAdvisorId, setAssignedAdvisorId] = useState(draft?.assignedAdvisorId ?? "");
@@ -174,7 +183,8 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
       representatives,
       attorney,
       accreditationType,
-      propertyCaseType,
+      propertySubtypeId,
+      propertyTypeDetail,
       operationType,
       assignedAdvisorId,
       condominiumRegime,
@@ -190,7 +200,8 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
     representatives,
     attorney,
     accreditationType,
-    propertyCaseType,
+    propertySubtypeId,
+    propertyTypeDetail,
     operationType,
     assignedAdvisorId,
     condominiumRegime,
@@ -206,17 +217,15 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
     return signedByAttorney ? [...titulares, attorney] : titulares;
   }, [isMoral, owners, representatives, attorney, signedByAttorney]);
 
-  const preview = useMemo(
-    () => previewRequirements({ personType, signedByAttorney, accreditationType, condominiumRegime, propertyCaseType, participants }),
-    [personType, signedByAttorney, accreditationType, condominiumRegime, propertyCaseType, participants],
-  );
+  const preview = previewRequirements({ personType, signedByAttorney, accreditationType, condominiumRegime, propertyCaseType, participants });
   const requiredPreview = preview.filter((i) => i.kind === "required");
   const conditionalPreview = preview.filter((i) => i.kind === "conditional");
   const optionalPreview = preview.filter((i) => i.kind === "optional");
 
   const advisorValid = assignedAdvisorId.length > 0;
   const clientValid = advisorValid && participants.every((p) => p.fullName.trim().length > 0);
-  const propertyValid = propertyReference.trim().length > 0;
+  const propertyTypeProblem = propertyTypeError(catalog, propertySubtypeId, propertyTypeDetail);
+  const propertyValid = propertyReference.trim().length > 0 && !propertyTypeProblem;
   const showError = (key: string, value: string) => (showErrors || touched.has(key)) && !value.trim();
   // Cada mensaje nombra el dato concreto que falta (antes todos decían "Captura el nombre completo").
   const nameError = (key: string, value: string, message: string) => (showError(key, value) ? message : undefined);
@@ -295,7 +304,7 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
     }
     if (step === 2 && !propertyValid) {
       setShowErrors(true);
-      setError("Captura una referencia del inmueble para que el cliente lo reconozca.");
+      setError(propertyReference.trim() ? propertyTypeProblem : "Captura una referencia del inmueble para que el cliente lo reconozca.");
       return;
     }
     setShowErrors(false);
@@ -325,7 +334,8 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
         signedByAttorney: personType === "FISICA" && signedByAttorney,
         accreditationType,
         condominiumRegime,
-        propertyCaseType,
+        propertySubtypeId: propertySubtypeId ?? "",
+        propertyTypeDetail: selectedSubtype?.requiresDetail ? propertyTypeDetail.trim() : undefined,
         operationType,
         assignedAdvisorId,
         propertyReference: propertyReference.trim(),
@@ -605,11 +615,14 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
                 required
               />
               <div className="grid gap-4 sm:grid-cols-2">
-                <Select
-                  label="Tipo de inmueble"
-                  value={propertyCaseType}
-                  onChange={(e) => setPropertyCaseType(e.target.value as BackendPropertyCaseType)}
-                  options={Object.entries(propertyTypeLabels).map(([value, label]) => ({ value, label }))}
+                <PropertyTypeSelect
+                  subtypeId={propertySubtypeId}
+                  detail={propertyTypeDetail}
+                  onChange={({ subtypeId, detail }) => {
+                    setPropertySubtypeId(subtypeId);
+                    setPropertyTypeDetail(detail);
+                  }}
+                  error={showErrors && propertyTypeProblem ? propertyTypeProblem : undefined}
                 />
                 <Select
                   label="Operación"
@@ -633,11 +646,11 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
                   description="Se pedirá la escritura del régimen de condominio."
                 />
               </div>
-              {propertyCaseType === "COMMERCIAL" ? (
+              {selectedSubtype && propertyCaseType === "COMMERCIAL" ? (
                 <p className="mt-4 flex items-start gap-2 rounded-xl bg-warning-bg px-3 py-2.5 text-sm text-warning-text">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
                   El contrato registrado ante PROFECO solo ampara inmuebles destinados a casa habitación. Puedes integrar el expediente, pero el sistema no
-                  generará el contrato para un inmueble comercial.
+                  generará el contrato para este tipo de inmueble.
                 </p>
               ) : null}
               <p className="mt-4 flex items-start gap-2 rounded-xl bg-info-bg px-3 py-2.5 text-sm text-info-text">
@@ -684,7 +697,7 @@ function NuevoExpedienteForm({ draft, serverDraft }: { draft: NewExpedienteDraft
               ) : null}
               <ReviewSection title="Inmueble" onEdit={() => goTo(2)}>
                 <ReviewRow label="Referencia para el cliente" value={propertyReference.trim() || "—"} />
-                <ReviewRow label="Tipo de inmueble" value={propertyTypeLabels[propertyCaseType]} />
+                <ReviewRow label="Tipo de inmueble" value={selectedSubtype ? subtypeLabel(selectedSubtype, propertyTypeDetail) : "—"} />
                 <ReviewRow label="Operación" value={operationLabels[operationType]} />
                 <ReviewRow label="Acreditación" value={accreditationLabels[accreditationType]} />
                 <ReviewRow label="Régimen de condominio" value={condominiumRegime ? "Sí" : "No"} />

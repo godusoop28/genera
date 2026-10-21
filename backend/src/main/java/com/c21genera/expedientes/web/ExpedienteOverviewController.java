@@ -4,13 +4,13 @@ import com.c21genera.documents.DocumentsApi;
 import com.c21genera.documents.DocumentsApi.DocumentProgressView;
 import com.c21genera.expedientes.ExpedienteStatus;
 import com.c21genera.expedientes.OperationType;
-import com.c21genera.expedientes.PropertyCaseType;
 import com.c21genera.expedientes.application.AssignableAdvisors;
 import com.c21genera.expedientes.application.ExpedienteService;
 import com.c21genera.expedientes.application.ExpedienteService.PortfolioFilter;
 import com.c21genera.expedientes.domain.Expediente;
 import com.c21genera.expedientes.web.ExpedienteDtos.ExpedienteResponse;
 import com.c21genera.identity.CurrentUser;
+import com.c21genera.propertycatalog.PropertyCatalog;
 import com.c21genera.shared.web.PageResponse;
 import com.c21genera.shared.web.Pagination;
 import java.util.ArrayList;
@@ -90,8 +90,12 @@ public class ExpedienteOverviewController {
 
   public record OverviewResponse(PageResponse<OverviewItem> page, Counts counts) {}
 
-  /** Nivel 1 del reporte: tipo de propiedad + operación. */
-  public record TypeOperationRow(PropertyCaseType propertyCaseType, OperationType operationType, Counts counts) {}
+  /**
+   * Nivel 1 del reporte (Control de Cambios #24/#26): categoría → subcategoría + operación. subtypeId
+   * null = pendientes de clasificación de esa categoría. Solo filas con expedientes.
+   */
+  public record TypeOperationRow(
+      UUID categoryId, String categoryName, UUID subtypeId, String subtypeName, OperationType operationType, Counts counts) {}
 
   /** Nivel 2 del reporte: asesor asignado (advisorId null = sin asignar). */
   public record AdvisorRow(UUID advisorId, String name, Counts counts) {}
@@ -105,11 +109,14 @@ public class ExpedienteOverviewController {
   private final ExpedienteService expedienteService;
   private final DocumentsApi documentsApi;
   private final AssignableAdvisors assignableAdvisors;
+  private final PropertyCatalog propertyCatalog;
 
-  public ExpedienteOverviewController(ExpedienteService expedienteService, DocumentsApi documentsApi, AssignableAdvisors assignableAdvisors) {
+  public ExpedienteOverviewController(
+      ExpedienteService expedienteService, DocumentsApi documentsApi, AssignableAdvisors assignableAdvisors, PropertyCatalog propertyCatalog) {
     this.expedienteService = expedienteService;
     this.documentsApi = documentsApi;
     this.assignableAdvisors = assignableAdvisors;
+    this.propertyCatalog = propertyCatalog;
   }
 
   @GetMapping
@@ -117,7 +124,9 @@ public class ExpedienteOverviewController {
   public OverviewResponse overview(
       @RequestParam(required = false) String q,
       @RequestParam(required = false) StatusGroup group,
-      @RequestParam(required = false) PropertyCaseType propertyCaseType,
+      @RequestParam(required = false) UUID categoryId,
+      @RequestParam(required = false) UUID subtypeId,
+      @RequestParam(defaultValue = "false") boolean unclassified,
       @RequestParam(required = false) OperationType operationType,
       @RequestParam(required = false) UUID advisorId,
       @RequestParam(defaultValue = "false") boolean unassigned,
@@ -125,7 +134,7 @@ public class ExpedienteOverviewController {
       @AuthenticationPrincipal Jwt jwt) {
     CurrentUser user = CurrentUser.from(jwt);
     UUID owner = user.hasPermission("EXPEDIENT_VIEW_ALL") ? null : user.id();
-    PortfolioFilter filter = new PortfolioFilter(propertyCaseType, operationType, advisorId, unassigned);
+    PortfolioFilter filter = new PortfolioFilter(categoryId, subtypeId, unclassified, operationType, advisorId, unassigned);
 
     Page<Expediente> page = expedienteService.search(owner, q, group == null ? null : group.statuses(), filter, Pagination.cap(pageable));
     Map<UUID, DocumentProgressView> progress = documentsApi.documentProgressOf(page.map(Expediente::getId).getContent());
@@ -144,7 +153,9 @@ public class ExpedienteOverviewController {
   @GetMapping("/portfolio")
   @PreAuthorize("hasAnyAuthority('EXPEDIENT_VIEW_ALL', 'EXPEDIENT_VIEW_OWN')")
   public PortfolioResponse portfolio(
-      @RequestParam(required = false) PropertyCaseType propertyCaseType,
+      @RequestParam(required = false) UUID categoryId,
+      @RequestParam(required = false) UUID subtypeId,
+      @RequestParam(defaultValue = "false") boolean unclassified,
       @RequestParam(required = false) OperationType operationType,
       @RequestParam(required = false) UUID advisorId,
       @RequestParam(defaultValue = "false") boolean unassigned,
@@ -152,19 +163,48 @@ public class ExpedienteOverviewController {
     CurrentUser user = CurrentUser.from(jwt);
     boolean viewAll = user.hasPermission("EXPEDIENT_VIEW_ALL");
     List<Object[]> rows = expedienteService.portfolioRows(viewAll ? null : user.id());
-    PortfolioFilter all = new PortfolioFilter(propertyCaseType, operationType, advisorId, unassigned);
-    PortfolioFilter byAdvisorOnly = new PortfolioFilter(null, null, advisorId, unassigned);
-    PortfolioFilter byTypeOnly = new PortfolioFilter(propertyCaseType, operationType, null, false);
+    PortfolioFilter all = new PortfolioFilter(categoryId, subtypeId, unclassified, operationType, advisorId, unassigned);
+    PortfolioFilter byAdvisorOnly = new PortfolioFilter(null, null, false, null, advisorId, unassigned);
+    PortfolioFilter byTypeOnly = new PortfolioFilter(categoryId, subtypeId, unclassified, operationType, null, false);
 
+    // Control de Cambios #26: una fila por categoría → subcategoría (o pendientes) y operación, en el orden del catálogo.
     List<TypeOperationRow> byTypeOperation = new ArrayList<>();
-    for (PropertyCaseType type : PropertyCaseType.values()) {
-      for (OperationType operation : OperationType.values()) {
-        PortfolioFilter cell = new PortfolioFilter(type, operation, null, false);
-        byTypeOperation.add(
-            new TypeOperationRow(
-                type, operation, countsOf(statusTotals(rows, r -> ExpedienteService.matches(r, byAdvisorOnly) && ExpedienteService.matches(r, cell)))));
+    List<PropertyCatalog.Category> catalog = propertyCatalog.all();
+    Map<UUID, Integer> order = new java.util.HashMap<>();
+    Map<UUID, String> labels = new java.util.HashMap<>();
+    int position = 0;
+    for (PropertyCatalog.Category category : catalog) {
+      order.put(category.id(), position++);
+      labels.put(category.id(), category.name());
+      for (PropertyCatalog.Subtype subtype : category.subtypes()) {
+        order.put(subtype.id(), position++);
+        labels.put(subtype.id(), subtype.name());
       }
     }
+    Map<java.util.List<Object>, Map<ExpedienteStatus, Long>> cells = new LinkedHashMap<>();
+    for (Object[] row : rows) {
+      if (ExpedienteService.matches(row, byAdvisorOnly)) {
+        cells.computeIfAbsent(java.util.Arrays.asList(row[6], row[7], row[1]), k -> new java.util.EnumMap<>(ExpedienteStatus.class))
+            .merge((ExpedienteStatus) row[4], ((Number) row[5]).longValue(), Long::sum);
+      }
+    }
+    cells.forEach(
+        (key, totals) -> {
+          UUID category = (UUID) key.get(0);
+          UUID subtype = (UUID) key.get(1);
+          byTypeOperation.add(
+              new TypeOperationRow(
+                  category,
+                  category == null ? "Sin clasificar" : labels.getOrDefault(category, "Sin clasificar"),
+                  subtype,
+                  subtype == null ? "Pendiente de clasificación" : labels.getOrDefault(subtype, "Subcategoría"),
+                  (OperationType) key.get(2),
+                  countsOf(totals)));
+        });
+    byTypeOperation.sort(
+        java.util.Comparator.comparingInt((TypeOperationRow r) -> r.categoryId() == null ? Integer.MAX_VALUE : order.getOrDefault(r.categoryId(), Integer.MAX_VALUE - 1))
+            .thenComparingInt(r -> r.subtypeId() == null ? Integer.MAX_VALUE : order.getOrDefault(r.subtypeId(), Integer.MAX_VALUE - 1))
+            .thenComparing(TypeOperationRow::operationType));
 
     // Todos los asesores asignables aparecen (aunque tengan cero) para quien ve toda la cartera.
     Map<UUID, String> names = new LinkedHashMap<>();
@@ -179,7 +219,7 @@ public class ExpedienteOverviewController {
     List<AdvisorRow> byAdvisor = new ArrayList<>();
     names.forEach(
         (id, name) -> {
-          PortfolioFilter advisor = new PortfolioFilter(null, null, id, id == null);
+          PortfolioFilter advisor = new PortfolioFilter(null, null, false, null, id, id == null);
           Counts counts = countsOf(statusTotals(rows, r -> ExpedienteService.matches(r, byTypeOnly) && ExpedienteService.matches(r, advisor)));
           byAdvisor.add(new AdvisorRow(id, id == null ? "Sin asesor asignado" : name, counts));
         });

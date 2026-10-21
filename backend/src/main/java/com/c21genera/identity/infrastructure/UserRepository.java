@@ -24,4 +24,10 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
   @EntityGraph(attributePaths = "role")
   List<User> findByStatus(UserStatus status);
+
+  @EntityGraph(attributePaths = "role")
+  List<User> findByStatusIn(java.util.Collection<UserStatus> statuses);
+
+  /** Control de Cambios #25: nunca se puede quedar el sistema sin un administrador activo. */
+  long countByRole_CodeAndStatus(com.c21genera.identity.domain.RoleCode roleCode, UserStatus status);
 }

@@ -21,19 +21,23 @@ public interface ExpedienteRepository extends JpaRepository<Expediente, UUID>, J
   Page<Expediente> findByStatus(ExpedienteStatus status, Pageable pageable);
 
   /**
-   * Control de Cambios #24: cartera agregada (filas: tipo de propiedad, operación, asesor
-   * asignado, nombre del asesor, estatus, total).
+   * Control de Cambios #24/#26: cartera agregada (filas: tratamiento del inmueble, operación, asesor
+   * asignado, nombre del asesor, estatus, total, categoría, subcategoría).
    */
   @Query(
-      "SELECT e.propertyCaseType, e.operationType, e.assignedAdvisorId, e.assignedAdvisorName, e.status, COUNT(e) FROM Expediente e"
-          + " GROUP BY e.propertyCaseType, e.operationType, e.assignedAdvisorId, e.assignedAdvisorName, e.status")
+      "SELECT e.propertyCaseType, e.operationType, e.assignedAdvisorId, e.assignedAdvisorName, e.status, COUNT(e), e.propertyCategoryId, e.propertySubtypeId"
+          + " FROM Expediente e"
+          + " GROUP BY e.propertyCaseType, e.operationType, e.assignedAdvisorId, e.assignedAdvisorName, e.status, e.propertyCategoryId, e.propertySubtypeId")
   List<Object[]> portfolioRows();
 
   @Query(
-      "SELECT e.propertyCaseType, e.operationType, e.assignedAdvisorId, e.assignedAdvisorName, e.status, COUNT(e) FROM Expediente e"
-          + " WHERE e.assignedAdvisorId = :userId"
-          + " GROUP BY e.propertyCaseType, e.operationType, e.assignedAdvisorId, e.assignedAdvisorName, e.status")
+      "SELECT e.propertyCaseType, e.operationType, e.assignedAdvisorId, e.assignedAdvisorName, e.status, COUNT(e), e.propertyCategoryId, e.propertySubtypeId"
+          + " FROM Expediente e WHERE e.assignedAdvisorId = :userId"
+          + " GROUP BY e.propertyCaseType, e.operationType, e.assignedAdvisorId, e.assignedAdvisorName, e.status, e.propertyCategoryId, e.propertySubtypeId")
   List<Object[]> portfolioRowsOf(@Param("userId") UUID userId);
+
+  /** Control de Cambios #25: expedientes en curso asignados a un asesor (antes de darle de baja). */
+  long countByAssignedAdvisorIdAndStatusNotIn(UUID assignedAdvisorId, java.util.Collection<ExpedienteStatus> statuses);
 
   @Query(value = "SELECT nextval('expediente_folio_seq')", nativeQuery = true)
   long nextFolioSequenceValue();

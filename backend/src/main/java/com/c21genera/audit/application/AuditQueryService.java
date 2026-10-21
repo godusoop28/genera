@@ -6,6 +6,8 @@ import com.c21genera.audit.infrastructure.ActivityRepository;
 import com.c21genera.audit.infrastructure.AuditEventRepository;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,5 +29,10 @@ public class AuditQueryService {
 
   public List<AuditEvent> auditEventsOf(UUID aggregateId) {
     return auditEventRepository.findByAggregateIdOrderByOccurredAtDesc(aggregateId);
+  }
+
+  /** Control de Cambios #25: bitácora de cuentas de usuario (altas, roles, bajas, contraseñas...). */
+  public Page<AuditEvent> accountEvents(Pageable pageable) {
+    return auditEventRepository.findByAggregateTypeOrderByOccurredAtDesc("User", pageable);
   }
 }

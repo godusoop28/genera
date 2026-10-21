@@ -46,8 +46,9 @@ public class InternalPropertyController {
 
   public record PropertyRequest(
       @NotBlank @Size(max = 8) String operation,
-      @NotBlank @Size(max = 24) String propertyType,
-      @NotBlank @Size(max = 40) String subtype,
+      // Control de Cambios #26: se toman de la subcategoría del catálogo (catalogSubtypeId).
+      @Size(max = 24) String propertyType,
+      @Size(max = 40) String subtype,
       @Size(max = 16) String contractType,
       @Size(max = 24) String status,
       @NotBlank @Size(max = 200) String headline,
@@ -75,13 +76,15 @@ public class InternalPropertyController {
       @DecimalMin("0") BigDecimal maintenanceFee,
       @DecimalMin("0") BigDecimal commission,
       boolean publishOnline,
-      UUID advisorUserId) {
+      UUID advisorUserId,
+      UUID catalogSubtypeId,
+      @Size(max = 160) String propertyTypeDetail) {
 
     Data toData() {
       return new Data(
           operation, propertyType, subtype, contractType, status, headline, description, salePrice, rentPrice, currency, hidePrice, street, extNumber,
           neighborhood, municipality, state, postalCode, hideStreet, hideNumber, bedrooms, bathrooms, halfBathrooms, parking, landM2, builtM2, levels, age,
-          maintenanceFee, commission, publishOnline, advisorUserId);
+          maintenanceFee, commission, publishOnline, advisorUserId, catalogSubtypeId, propertyTypeDetail);
     }
   }
 

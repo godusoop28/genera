@@ -12,6 +12,7 @@ import '../../api/models.dart';
 import '../../labels.dart';
 import '../../state/auth.dart';
 import '../../ui/shell.dart';
+import '../../ui/property_type_picker.dart';
 import '../../ui/widgets.dart';
 
 // Criterio de agrupación (definido en el backend): cada estatus pertenece a un
@@ -20,12 +21,15 @@ const _groups = [(id: '', label: 'Todos'), (id: 'PENDING', label: 'Pendientes'),
 
 const _pageSize = 18;
 
-String _operationText(ExpedienteResponse e) => '${label(propertyTypeLabels, e.propertyCaseType)} en ${label(operationLabels, e.operationType).toLowerCase()}';
+String _operationText(ExpedienteResponse e) {
+  final type = e.propertySubtypeName ?? (e.propertyCategoryName != null ? '${e.propertyCategoryName} (sin clasificar)' : label(propertyTypeLabels, e.propertyCaseType));
+  return '$type en ${label(operationLabels, e.operationType).toLowerCase()}';
+}
 
 class ExpedientesScreen extends StatefulWidget {
-  /// Control de Cambios #24: los reportes abren el listado ya filtrado (?tipo=&operacion=&asesor=).
-  const ExpedientesScreen({super.key, this.initialType, this.initialOperation, this.initialAdvisor});
-  final String? initialType, initialOperation, initialAdvisor;
+  /// Control de Cambios #24/#26: los reportes abren el listado ya filtrado (?categoria=&subtipo=&operacion=&asesor=).
+  const ExpedientesScreen({super.key, this.initialCategory, this.initialSubtype, this.initialOperation, this.initialAdvisor});
+  final String? initialCategory, initialSubtype, initialOperation, initialAdvisor;
 
   @override
   State<ExpedientesScreen> createState() => _ExpedientesScreenState();
@@ -34,7 +38,8 @@ class ExpedientesScreen extends StatefulWidget {
 class _ExpedientesScreenState extends State<ExpedientesScreen> {
   String query = '';
   String group = '';
-  late String propertyCaseType = propertyTypeLabels.containsKey(widget.initialType) ? widget.initialType! : '';
+  late String categoryId = widget.initialCategory ?? '';
+  late String subtypeId = widget.initialSubtype ?? '';
   late String operationType = operationLabels.containsKey(widget.initialOperation) ? widget.initialOperation! : '';
   late String advisorId = widget.initialAdvisor ?? '';
   List<AdvisorOption> advisors = [];
@@ -89,7 +94,7 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
     final id = ++_request;
     setState(() => loading = true);
     try {
-      final res = await api.getExpedienteOverview(q: query, group: group.isEmpty ? null : group, page: 0, size: _pageSize, propertyCaseType: _portfolio.propertyCaseType, operationType: _portfolio.operationType, advisorId: _portfolio.advisorId);
+      final res = await api.getExpedienteOverview(q: query, group: group.isEmpty ? null : group, page: 0, size: _pageSize, categoryId: _portfolio.categoryId, subtypeId: _portfolio.subtypeId, operationType: _portfolio.operationType, advisorId: _portfolio.advisorId);
       if (!mounted || id != _request) return;
       setState(() {
         last = res;
@@ -116,7 +121,7 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
       moreError = null;
     });
     try {
-      final res = await api.getExpedienteOverview(q: query, group: group.isEmpty ? null : group, page: page + 1, size: _pageSize, propertyCaseType: _portfolio.propertyCaseType, operationType: _portfolio.operationType, advisorId: _portfolio.advisorId);
+      final res = await api.getExpedienteOverview(q: query, group: group.isEmpty ? null : group, page: page + 1, size: _pageSize, categoryId: _portfolio.categoryId, subtypeId: _portfolio.subtypeId, operationType: _portfolio.operationType, advisorId: _portfolio.advisorId);
       if (!mounted || id != _request) return;
       final seen = items!.map((i) => i.expediente.id).toSet();
       setState(() {
@@ -142,10 +147,15 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
     };
   }
 
-  ({String? propertyCaseType, String? operationType, String? advisorId}) get _portfolio =>
-      (propertyCaseType: propertyCaseType.isEmpty ? null : propertyCaseType, operationType: operationType.isEmpty ? null : operationType, advisorId: advisorId.isEmpty ? null : advisorId);
+  ({String? categoryId, String? subtypeId, String? operationType, String? advisorId}) get _portfolio => (
+        categoryId: categoryId.isEmpty ? null : categoryId,
+        subtypeId: subtypeId.isEmpty ? null : subtypeId,
+        operationType: operationType.isEmpty ? null : operationType,
+        advisorId: advisorId.isEmpty ? null : advisorId,
+      );
 
-  bool get filtering => query.trim().isNotEmpty || group.isNotEmpty || propertyCaseType.isNotEmpty || operationType.isNotEmpty || advisorId.isNotEmpty;
+  bool get filtering =>
+      query.trim().isNotEmpty || group.isNotEmpty || categoryId.isNotEmpty || subtypeId.isNotEmpty || operationType.isNotEmpty || advisorId.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -204,11 +214,14 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
                   },
                 ),
                 const SizedBox(height: 12),
-                AppSelect<String>(
-                  value: propertyCaseType,
-                  options: optionsOf(propertyTypeLabels, empty: 'Todos los tipos de propiedad'),
-                  onChanged: (v) {
-                    setState(() => propertyCaseType = v);
+                PropertyTypeFilters(
+                  categoryId: categoryId,
+                  subtypeId: subtypeId,
+                  onChanged: (category, subtype) {
+                    setState(() {
+                      categoryId = category;
+                      subtypeId = subtype;
+                    });
                     load();
                   },
                 ),
@@ -268,7 +281,8 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
                                       setState(() {
                                         query = '';
                                         group = '';
-                                        propertyCaseType = '';
+                                        categoryId = '';
+                                        subtypeId = '';
                                         operationType = '';
                                         advisorId = '';
                                       });

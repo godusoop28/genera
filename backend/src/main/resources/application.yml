@@ -117,6 +117,14 @@ app:
       base-url: ${PUBLIC_LINK_BASE_URL:https://genera-puce.vercel.app/carga}
       # Vigencia de cada liga de cliente; después hay que generar una nueva.
       ttl: ${PUBLIC_LINK_TTL:P30D}
+    # Control de Cambios #25: enlaces de un solo uso para definir contraseña
+    # (alta y restablecimiento) y bloqueo tras intentos fallidos.
+    account:
+      link-base-url: ${ACCOUNT_LINK_BASE_URL:https://genera-puce.vercel.app/acceso}
+      invite-ttl: PT72H
+      reset-ttl: PT24H
+      max-failed-logins: 5
+      lock-duration: PT15M
     cors:
       allowed-origins: ${FRONTEND_URL:http://localhost:3000}
   storage:

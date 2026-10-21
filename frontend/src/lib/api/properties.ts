@@ -108,6 +108,9 @@ export interface PropertyData {
   commission: number | null;
   publishOnline: boolean;
   advisorUserId: string | null;
+  /** Control de Cambios #26: subcategoría del catálogo (de ella salen propertyType/subtype de 21Online). */
+  catalogSubtypeId: string | null;
+  propertyTypeDetail: string | null;
 }
 
 export interface CapturedProperty {
@@ -126,6 +129,8 @@ export interface CapturedProperty {
   createdAt: string;
   updatedAt: string;
   canEdit: boolean;
+  /** "Habitacional → Casa en condominio" (null si se capturó antes del catálogo). */
+  propertyTypeLabel: string | null;
 }
 
 export interface CapturedOverview {

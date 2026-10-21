@@ -43,6 +43,7 @@ class ClientOwnerCorrectionTest {
           mock(ExpedienteChangeRepository.class),
           mock(ApplicationEventPublisher.class),
           new ObjectMapper(),
+          mock(com.c21genera.propertycatalog.PropertyCatalog.class),
           Clock.systemUTC());
   private final UUID expedienteId = UUID.randomUUID();
   private final Expediente expediente = mock(Expediente.class);

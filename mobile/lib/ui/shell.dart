@@ -158,7 +158,7 @@ class AppScaffold extends StatelessWidget {
               child: InkWell(
                 customBorder: const CircleBorder(),
                 onTap: () => context.go('/configuracion'),
-                child: Tooltip(message: 'Configuración de la cuenta', child: Avatar(context.watch<AuthState>().user!.name, size: 34)),
+                child: Tooltip(message: 'Mi perfil y configuración', child: Avatar(context.watch<AuthState>().user!.name, size: 34)),
               ),
             ),
         ],

@@ -10,6 +10,7 @@ import '../../api/models.dart';
 import '../../config.dart';
 import '../../labels.dart';
 import '../../state/auth.dart';
+import '../../ui/property_type_picker.dart';
 import '../../ui/shell.dart';
 import '../../ui/widgets.dart';
 import 'crm_ui.dart';
@@ -584,7 +585,7 @@ class _CapturedPropertyScreenState extends State<CapturedPropertyScreen> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               CardHeader(
                 title: listingPrice(d.operation, d.salePrice, d.rentPrice, d.currency),
-                description: '${subtypeLabel(d.subtype)} · ${label(listingTypeLabels, d.propertyType)} · ${label(listingOperationLabels, d.operation)}',
+                description: '${p.propertyTypeLabel ?? '${subtypeLabel(d.subtype)} · ${label(listingTypeLabels, d.propertyType)}'} · ${label(listingOperationLabels, d.operation)}',
                 action: ListingStatusBadge(d.status),
               ),
               if (features.isNotEmpty) MutedText(features),
@@ -635,6 +636,10 @@ class _PropertyFormScreenState extends State<PropertyFormScreen> {
   late String operation = d?.operation ?? 'venta';
   late String propertyType = d?.propertyType ?? 'habitacional';
   late String subtype = d?.subtype ?? 'casa';
+  // Control de Cambios #26: el tipo se elige en el catálogo de inmuebles; el tipo/subtipo de 21Online salen de él.
+  late String? catalogSubtypeId = d?.catalogSubtypeId;
+  late String propertyTypeDetail = d?.propertyTypeDetail ?? '';
+  List<CatalogCategory>? catalog;
   late String contractType = d?.contractType ?? 'exclusiva';
   late String status = d?.status ?? 'enPromocion';
   late String currency = d?.currency ?? 'MXN';
@@ -675,6 +680,9 @@ class _PropertyFormScreenState extends State<PropertyFormScreen> {
   @override
   void initState() {
     super.initState();
+    api.listPropertyCatalog().then((c) {
+      if (mounted) setState(() => catalog = c);
+    }).catchError((Object _) {});
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (seesAll) api.listAdvisors().then((a) => mounted ? setState(() => advisors = a) : null).catchError((_) => null);
     });
@@ -687,7 +695,10 @@ class _PropertyFormScreenState extends State<PropertyFormScreen> {
 
   String? _opt(String key) => (text[key] ?? '').trim().isEmpty ? null : text[key]!.trim();
 
+  String? get typeProblem => propertyTypeError(catalog, catalogSubtypeId, propertyTypeDetail, currentId: d?.catalogSubtypeId);
+
   List<String> get missing => [
+        if (typeProblem != null) 'tipo de inmueble',
         if ((text['headline'] ?? '').trim().isEmpty) 'encabezado',
         if ((_num('price') ?? 0) <= 0) 'precio',
         if ((text['neighborhood'] ?? '').trim().isEmpty) 'colonia',
@@ -700,6 +711,8 @@ class _PropertyFormScreenState extends State<PropertyFormScreen> {
       'operation': operation,
       'propertyType': propertyType,
       'subtype': subtype,
+      'catalogSubtypeId': catalogSubtypeId,
+      'propertyTypeDetail': propertyTypeDetail.trim().isEmpty ? null : propertyTypeDetail.trim(),
       'contractType': contractType.isEmpty ? null : contractType,
       'status': status,
       'headline': text['headline']!.trim(),
@@ -785,22 +798,28 @@ class _PropertyFormScreenState extends State<PropertyFormScreen> {
               const CardHeader(title: 'Operación y tipo', description: 'Se publica en 21Online con estos mismos datos.'),
               AppSelect<String>(label: 'Operación', value: operation, options: optionsOf(listingOperationLabels), onChanged: (v) => setState(() => operation = v)),
               gap,
-              AppSelect<String>(
-                label: 'Tipo',
-                value: propertyType,
-                options: optionsOf(listingTypeLabels),
-                onChanged: (v) => setState(() {
-                  propertyType = v;
-                  if (!subtypesByType[v]!.contains(subtype)) subtype = subtypesByType[v]!.first;
+              PropertyTypePicker(
+                subtypeId: catalogSubtypeId,
+                detail: propertyTypeDetail,
+                currentLabel: widget.existing?.propertyTypeLabel,
+                onChanged: (id, detail, picked) => setState(() {
+                  catalogSubtypeId = id;
+                  propertyTypeDetail = detail;
+                  // Se publica en 21Online con el tipo y subtipo que corresponden a la subcategoría.
+                  if (picked != null) {
+                    propertyType = picked.online21Type;
+                    subtype = picked.online21Subtype;
+                  }
                 }),
               ),
-              gap,
-              AppSelect<String>(
-                label: 'Subtipo',
-                value: subtype,
-                options: [for (final s in subtypesByType[propertyType]!) (value: s, label: subtypeLabel(s))],
-                onChanged: (v) => setState(() => subtype = v),
-              ),
+              if (catalogSubtypeId == null && d != null) ...[
+                const SizedBox(height: 6),
+                MutedText('Se capturó antes del catálogo como ${subtypeLabel(d!.subtype)} (${label(listingTypeLabels, d!.propertyType)}). Elige su tipo de inmueble.', size: 12.5),
+              ],
+              if (findSubtype(catalog, catalogSubtypeId) != null) ...[
+                const SizedBox(height: 6),
+                MutedText('En 21Online: ${subtypeLabel(subtype)} (${label(listingTypeLabels, propertyType)})', size: 12.5),
+              ],
               gap,
               AppSelect<String>(
                 label: 'Contrato con el propietario',

@@ -17,6 +17,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -26,7 +27,10 @@ export default function LoginPage() {
       await login(email, password);
       router.push("/expedientes");
     } catch (err) {
-      if (err instanceof ApiError && (err.status === 401 || err.status === 400)) {
+      if (err instanceof ApiError && err.status === 423) {
+        // Control de Cambios #25: bloqueo temporal tras varios intentos fallidos.
+        setError(err.message);
+      } else if (err instanceof ApiError && (err.status === 401 || err.status === 400)) {
         setError("Correo o contraseña incorrectos.");
       } else if (err instanceof TypeError) {
         setError("No se pudo conectar con el servidor. Intenta de nuevo en unos segundos.");
@@ -87,6 +91,22 @@ export default function LoginPage() {
               {submitting ? "Entrando..." : "Entrar"}
             </Button>
           </form>
+
+          <div className="mt-5 border-t border-border pt-4 text-center">
+            <button
+              type="button"
+              onClick={() => setShowForgot((v) => !v)}
+              aria-expanded={showForgot}
+              className="text-sm font-medium text-dark-gold underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/30"
+            >
+              ¿Olvidaste tu contraseña?
+            </button>
+            {showForgot ? (
+              <p className="mt-3 rounded-lg bg-info-bg px-3 py-2 text-left text-sm text-info-text">
+                Pide al administrador de la oficina que te envíe un enlace para restablecerla. Con ese enlace defines tu nueva contraseña; nadie más la conoce.
+              </p>
+            ) : null}
+          </div>
         </div>
 
         <div className="mt-6 text-center">

@@ -74,7 +74,8 @@ public class InternalExpedienteController {
                 request.signedByAttorney(),
                 request.accreditationType(),
                 request.condominiumRegime(),
-                request.propertyCaseType(),
+                request.propertySubtypeId(),
+                request.propertyTypeDetail(),
                 request.operationType(),
                 request.declaredLegalStatus(),
                 request.propertyAddress(),
@@ -160,12 +161,26 @@ public class InternalExpedienteController {
                 request.signedByAttorney(),
                 request.accreditationType(),
                 request.condominiumRegime(),
-                request.propertyCaseType(),
+                request.propertySubtypeId(),
+                request.propertyTypeDetail(),
                 request.operationType(),
                 request.declaredLegalStatus(),
                 request.propertyAddress()),
             user.toActor(),
             request.reason()));
+  }
+
+  /**
+   * Control de Cambios #26: clasificar el tipo de inmueble (p. ej. un terreno anterior al catálogo que
+   * quedó pendiente) sin la corrección completa, siempre que no cambie documentos ni contrato.
+   */
+  @PutMapping("/{id}/property-type")
+  @PreAuthorize("hasAuthority('EXPEDIENT_EDIT')")
+  public ExpedienteResponse classifyProperty(
+      @PathVariable UUID id, @Valid @RequestBody ExpedienteDtos.ClassifyPropertyRequest request, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = requireAccess(id, jwt);
+    return ExpedienteResponse.from(
+        expedienteService.classifyProperty(id, request.propertySubtypeId(), request.propertyTypeDetail(), user.toActor(), request.reason()));
   }
 
   @GetMapping("/{id}/participants")

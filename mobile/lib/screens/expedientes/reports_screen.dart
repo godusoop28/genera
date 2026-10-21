@@ -7,12 +7,13 @@ import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../labels.dart';
 import '../../state/auth.dart';
+import '../../ui/property_type_picker.dart';
 import '../../ui/shell.dart';
 import '../../ui/widgets.dart';
 
-/// Control de Cambios #24 (como /reportes en la web): cartera en dos niveles. Nivel 1: tipo de
-/// propiedad + operación. Nivel 2: asesor asignado. De cualquier combinación se abre el listado
-/// de expedientes ya filtrado.
+/// Control de Cambios #24/#26 (como /reportes en la web): cartera en dos niveles. Nivel 1: categoría
+/// → subcategoría del inmueble + operación. Nivel 2: asesor asignado. De cualquier combinación se
+/// abre el listado de expedientes ya filtrado.
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
 
@@ -21,7 +22,8 @@ class ReportsScreen extends StatefulWidget {
 }
 
 class _ReportsScreenState extends State<ReportsScreen> {
-  String? propertyCaseType;
+  String? categoryId;
+  String? subtypeId;
   String? operationType;
   String? advisorId;
   PortfolioReport? data;
@@ -37,7 +39,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Future<void> load() async {
     final id = ++_request;
     try {
-      final result = await api.getPortfolioReport(propertyCaseType: propertyCaseType, operationType: operationType, advisorId: advisorId);
+      final result = await api.getPortfolioReport(categoryId: categoryId, subtypeId: subtypeId, operationType: operationType, advisorId: advisorId);
       if (mounted && id == _request) {
         setState(() {
           data = result;
@@ -49,10 +51,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
-  void selectCell(String? type, String? operation) {
-    final same = type == propertyCaseType && operation == operationType;
+  void selectCell(String? category, String? subtype, String? operation) {
+    final same = category == categoryId && subtype == subtypeId && operation == operationType;
     setState(() {
-      propertyCaseType = same ? null : type;
+      categoryId = same ? null : category;
+      subtypeId = same ? null : subtype;
       operationType = same ? null : operation;
     });
     load();
@@ -64,7 +67,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   String get listRoute {
-    final params = {'tipo': propertyCaseType, 'operacion': operationType, 'asesor': advisorId}..removeWhere((_, v) => v == null);
+    final params = {'categoria': categoryId, 'subtipo': subtypeId, 'operacion': operationType, 'asesor': advisorId}..removeWhere((_, v) => v == null);
     return params.isEmpty ? '/expedientes' : Uri(path: '/expedientes', queryParameters: params).toString();
   }
 
@@ -81,9 +84,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
       body: PageBody(
         onRefresh: load,
         subtitle: auth.can('EXPEDIENT_VIEW_ALL')
-            ? 'Expedientes por tipo de propiedad, operación y asesor asignado. Elige una combinación para ver sus expedientes.'
-            : 'Tus expedientes asignados por tipo de propiedad y operación.',
+            ? 'Expedientes por categoría y subcategoría del inmueble, operación y asesor asignado. Elige una combinación para ver sus expedientes.'
+            : 'Tus expedientes asignados por tipo de inmueble y operación.',
         children: [
+          PropertyTypeFilters(
+            categoryId: categoryId ?? '',
+            subtypeId: subtypeId ?? '',
+            onChanged: (category, subtype) {
+              setState(() {
+                categoryId = category.isEmpty ? null : category;
+                subtypeId = subtype.isEmpty ? null : subtype;
+              });
+              load();
+            },
+          ),
+          const SizedBox(height: 16),
           if (error != null && d == null)
             LoadError(message: error!, onRetry: load)
           else if (d == null)
@@ -97,8 +112,28 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   List<Widget> _content(BuildContext context, PortfolioReport d) {
     final c = context.c;
+    final rows = d.byTypeOperation;
+    final categoryName = categoryId == null ? null : rows.where((r) => r.categoryId == categoryId).firstOrNull?.categoryName ?? 'Categoría elegida';
+    final subtypeName = subtypeId == null
+        ? null
+        : subtypeId == api.unclassifiedSubtype
+            ? 'Pendientes de clasificación'
+            : rows.where((r) => r.subtypeId == subtypeId).firstOrNull?.subtypeName ?? 'Subcategoría elegida';
+    // Filas agrupadas por categoría, en el orden del catálogo (así llegan del servidor).
+    final groups = <({String? id, String name, List<({String? id, String name})> subtypes})>[];
+    for (final r in rows) {
+      var g = groups.where((g) => g.id == r.categoryId).firstOrNull;
+      if (g == null) {
+        g = (id: r.categoryId, name: r.categoryName, subtypes: <({String? id, String name})>[]);
+        groups.add(g);
+      }
+      if (!g.subtypes.any((s) => s.id == r.subtypeId)) g.subtypes.add((id: r.subtypeId, name: r.subtypeName));
+    }
+    int count({String? category, String? subtype, bool anySubtype = false, String? operation}) => rows
+        .where((r) => r.categoryId == category && (anySubtype || r.subtypeId == subtype) && (operation == null || r.operationType == operation))
+        .fold(0, (sum, r) => sum + r.counts.total);
     final selection = [
-      if (propertyCaseType != null) label(propertyTypeLabels, propertyCaseType),
+      if (categoryName != null || subtypeName != null) [categoryName, subtypeName].whereType<String>().join(' → '),
       if (operationType != null) label(operationLabels, operationType),
       if (advisorId != null) d.byAdvisor.where((a) => (a.advisorId ?? api.unassignedAdvisor) == advisorId).firstOrNull?.name ?? 'Asesor',
     ];
@@ -145,7 +180,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 variant: BtnVariant.secondary,
                 onPressed: () {
                   setState(() {
-                    propertyCaseType = null;
+                    categoryId = null;
+                    subtypeId = null;
                     operationType = null;
                     advisorId = null;
                   });
@@ -170,49 +206,76 @@ class _ReportsScreenState extends State<ReportsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const CardHeader(title: 'Nivel 1 · Tipo de propiedad y operación', description: 'Toca una celda para filtrar; vuelve a tocarla para quitar el filtro.'),
-            Table(
-              columnWidths: const {0: FlexColumnWidth(1.6), 1: FlexColumnWidth(), 2: FlexColumnWidth(), 3: FlexColumnWidth(0.8)},
-              defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-              children: [
-                TableRow(
-                  children: [
-                    const MutedText('Tipo', size: 12),
-                    for (final op in operationLabels.keys)
-                      Padding(
-                        padding: const EdgeInsets.all(3),
-                        child: cell(operationLabels[op]!, active: propertyCaseType == null && operationType == op, onTap: () => selectCell(null, op)),
-                      ),
-                    const MutedText('Total', size: 12, center: true),
-                  ],
-                ),
-                for (final type in propertyTypeLabels.keys)
+            const CardHeader(title: 'Nivel 1 · Tipo de inmueble y operación', description: 'Categorías con sus subcategorías. Toca una celda para filtrar; vuelve a tocarla para quitar el filtro.'),
+            if (groups.isEmpty)
+              const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: MutedText('Sin expedientes con este filtro', center: true))
+            else
+              Table(
+                columnWidths: const {0: FlexColumnWidth(1.8), 1: FlexColumnWidth(), 2: FlexColumnWidth(), 3: FlexColumnWidth(0.8)},
+                defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                children: [
                   TableRow(
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.all(3),
-                        child: cell(propertyTypeLabels[type]!, active: propertyCaseType == type && operationType == null, onTap: () => selectCell(type, null)),
-                      ),
+                      const MutedText('Tipo', size: 12),
                       for (final op in operationLabels.keys)
                         Padding(
                           padding: const EdgeInsets.all(3),
-                          child: cell(
-                            '${d.cell(type, op)}',
-                            active: propertyCaseType == type && operationType == op,
-                            onTap: () => selectCell(type, op),
-                            strong: true,
-                            muted: d.cell(type, op) == 0,
-                          ),
+                          child: cell(operationLabels[op]!, active: categoryId == null && subtypeId == null && operationType == op, onTap: () => selectCell(null, null, op)),
                         ),
-                      Text(
-                        '${operationLabels.keys.fold(0, (sum, op) => sum + d.cell(type, op))}',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontWeight: FontWeight.w600, color: c.fg),
-                      ),
+                      const MutedText('Total', size: 12, center: true),
                     ],
                   ),
-              ],
-            ),
+                  for (final g in groups) ...[
+                    TableRow(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(3, 10, 3, 3),
+                          child: cell(g.name, active: categoryId == g.id && subtypeId == null && operationType == null, onTap: () => selectCell(g.id, null, null)),
+                        ),
+                        for (final op in operationLabels.keys)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(3, 10, 3, 3),
+                            child: cell(
+                              '${count(category: g.id, anySubtype: true, operation: op)}',
+                              active: categoryId == g.id && subtypeId == null && operationType == op,
+                              onTap: () => selectCell(g.id, null, op),
+                            ),
+                          ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 7),
+                          child: Text('${count(category: g.id, anySubtype: true)}', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w700, color: c.fg)),
+                        ),
+                      ],
+                    ),
+                    for (final st in g.subtypes)
+                      TableRow(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(14, 3, 3, 3),
+                            child: cell(
+                              st.name,
+                              active: categoryId == g.id && subtypeId == (st.id ?? api.unclassifiedSubtype) && operationType == null,
+                              onTap: () => selectCell(g.id, st.id ?? api.unclassifiedSubtype, null),
+                              muted: st.id == null,
+                            ),
+                          ),
+                          for (final op in operationLabels.keys)
+                            Padding(
+                              padding: const EdgeInsets.all(3),
+                              child: cell(
+                                '${count(category: g.id, subtype: st.id, operation: op)}',
+                                active: categoryId == g.id && subtypeId == (st.id ?? api.unclassifiedSubtype) && operationType == op,
+                                onTap: () => selectCell(g.id, st.id ?? api.unclassifiedSubtype, op),
+                                strong: true,
+                                muted: count(category: g.id, subtype: st.id, operation: op) == 0,
+                              ),
+                            ),
+                          Text('${count(category: g.id, subtype: st.id)}', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w600, color: c.fg)),
+                        ],
+                      ),
+                  ],
+                ],
+              ),
           ],
         ),
       ),

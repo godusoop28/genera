@@ -7,8 +7,10 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 
@@ -39,8 +41,15 @@ public class JwtKeyConfig {
     return new NimbusJwtEncoder(new ImmutableSecret<>(jwtSecretKey));
   }
 
+  /**
+   * Además de firma y vigencia, cada token se valida contra el estado actual de
+   * la cuenta (Control de Cambios #25, ver {@link SessionRevocationValidator}).
+   */
   @Bean
-  public JwtDecoder jwtDecoder(SecretKey jwtSecretKey) {
-    return NimbusJwtDecoder.withSecretKey(jwtSecretKey).macAlgorithm(org.springframework.security.oauth2.jose.jws.MacAlgorithm.HS256).build();
+  public JwtDecoder jwtDecoder(SecretKey jwtSecretKey, SessionRevocationValidator sessionRevocationValidator) {
+    NimbusJwtDecoder decoder =
+        NimbusJwtDecoder.withSecretKey(jwtSecretKey).macAlgorithm(org.springframework.security.oauth2.jose.jws.MacAlgorithm.HS256).build();
+    decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(JwtValidators.createDefault(), sessionRevocationValidator));
+    return decoder;
   }
 }

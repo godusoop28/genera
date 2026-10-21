@@ -34,7 +34,8 @@ GoRouter buildRouter(AuthState auth) => GoRouter(
         GoRoute(
           path: '/expedientes',
           builder: (_, s) => ExpedientesScreen(
-            initialType: s.uri.queryParameters['tipo'],
+            initialCategory: s.uri.queryParameters['categoria'],
+            initialSubtype: s.uri.queryParameters['subtipo'],
             initialOperation: s.uri.queryParameters['operacion'],
             initialAdvisor: s.uri.queryParameters['asesor'],
           ),

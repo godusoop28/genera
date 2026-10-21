@@ -10,6 +10,7 @@ import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../labels.dart';
 import '../../state/auth.dart';
+import '../../ui/property_type_picker.dart';
 import '../../ui/shell.dart';
 import '../../ui/widgets.dart';
 
@@ -91,7 +92,12 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
   List<String> representatives = [''];
   String attorney = '';
   String accreditationType = 'ESCRITURA_PUBLICA';
-  String propertyCaseType = 'HOUSING';
+  // Control de Cambios #26: se elige la subcategoría del catálogo; la categoría y el tratamiento de documentos salen de ella.
+  String? propertySubtypeId;
+  String propertyTypeDetail = '';
+  List<CatalogCategory>? catalog;
+  CatalogSubtype? get selectedSubtype => findSubtype(catalog, propertySubtypeId);
+  String get propertyCaseType => selectedSubtype?.caseType ?? 'HOUSING';
   String operationType = 'SALE';
 
   /// Control de Cambios #24: asesor responsable, obligatorio desde el inicio del alta.
@@ -117,6 +123,9 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
   @override
   void initState() {
     super.initState();
+    api.listPropertyCatalog().then((c) {
+      if (mounted) setState(() => catalog = c);
+    }).catchError((Object _) {});
     restore().then((_) => loadAdvisors());
   }
 
@@ -157,7 +166,8 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
         if (representatives.isEmpty) representatives = [''];
         attorney = '${(d['attorney'] as Map?)?['fullName'] ?? ''}';
         accreditationType = d['accreditationType'] as String? ?? accreditationType;
-        propertyCaseType = d['propertyCaseType'] as String? ?? propertyCaseType;
+        propertySubtypeId = d['propertySubtypeId'] as String?;
+        propertyTypeDetail = d['propertyTypeDetail'] as String? ?? '';
         operationType = d['operationType'] as String? ?? operationType;
         assignedAdvisorId = d['assignedAdvisorId'] as String? ?? '';
         condominiumRegime = d['condominiumRegime'] == true;
@@ -189,7 +199,8 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
       'representatives': [for (final r in representatives) person('LEGAL_REPRESENTATIVE', r)],
       'attorney': person('ATTORNEY', attorney),
       'accreditationType': accreditationType,
-      'propertyCaseType': propertyCaseType,
+      'propertySubtypeId': propertySubtypeId,
+      'propertyTypeDetail': propertyTypeDetail,
       'operationType': operationType,
       'assignedAdvisorId': assignedAdvisorId,
       'condominiumRegime': condominiumRegime,
@@ -215,7 +226,8 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
 
   bool get advisorValid => assignedAdvisorId.isNotEmpty;
   bool get clientValid => advisorValid && participants.every((p) => p.fullName.trim().isNotEmpty);
-  bool get propertyValid => propertyReference.trim().isNotEmpty;
+  String? get propertyTypeProblem => propertyTypeError(catalog, propertySubtypeId, propertyTypeDetail);
+  bool get propertyValid => propertyReference.trim().isNotEmpty && propertyTypeProblem == null;
 
   String get missingNamesText {
     if (!advisorValid) return 'Selecciona el asesor asignado al inmueble.';
@@ -271,7 +283,7 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
     if (step == 2 && !propertyValid) {
       setState(() {
         showErrors = true;
-        error = 'Captura una referencia del inmueble para que el cliente lo reconozca.';
+        error = propertyReference.trim().isEmpty ? 'Captura una referencia del inmueble para que el cliente lo reconozca.' : propertyTypeProblem;
       });
       return;
     }
@@ -286,7 +298,7 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
       goTo(clientValid ? 2 : 1);
       setState(() {
         showErrors = true;
-        error = clientValid ? 'Captura una referencia del inmueble antes de crear el expediente.' : missingNamesText;
+        error = clientValid ? (propertyTypeProblem ?? 'Captura una referencia del inmueble antes de crear el expediente.') : missingNamesText;
       });
       return;
     }
@@ -302,7 +314,8 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
         'signedByAttorney': personType == 'FISICA' && signedByAttorney,
         'accreditationType': accreditationType,
         'condominiumRegime': condominiumRegime,
-        'propertyCaseType': propertyCaseType,
+        'propertySubtypeId': propertySubtypeId,
+        'propertyTypeDetail': selectedSubtype?.requiresDetail == true ? propertyTypeDetail.trim() : null,
         'operationType': operationType,
         'assignedAdvisorId': assignedAdvisorId,
         'propertyReference': propertyReference.trim(),
@@ -707,7 +720,15 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
           onChanged: (v) => changed(() => propertyReference = v),
         ),
         const SizedBox(height: 14),
-        AppSelect<String>(label: 'Tipo de inmueble', value: propertyCaseType, options: optionsOf(propertyTypeLabels), onChanged: (v) => changed(() => propertyCaseType = v)),
+        PropertyTypePicker(
+          subtypeId: propertySubtypeId,
+          detail: propertyTypeDetail,
+          error: showErrors ? propertyTypeProblem : null,
+          onChanged: (id, detail, _) => changed(() {
+            propertySubtypeId = id;
+            propertyTypeDetail = detail;
+          }),
+        ),
         const SizedBox(height: 14),
         AppSelect<String>(label: 'Operación', value: operationType, options: optionsOf(operationLabels), onChanged: (v) => changed(() => operationType = v)),
         const SizedBox(height: 14),
@@ -725,13 +746,13 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
           value: condominiumRegime,
           onChanged: (v) => changed(() => condominiumRegime = v),
         ),
-        if (propertyCaseType == 'COMMERCIAL') ...[
+        if (selectedSubtype != null && propertyCaseType == 'COMMERCIAL') ...[
           const SizedBox(height: 12),
           const Notice(
             tone: Tone.warning,
             icon: Icons.warning_amber_rounded,
             text:
-                'El contrato registrado ante PROFECO solo ampara inmuebles destinados a casa habitación. Puedes integrar el expediente, pero el sistema no generará el contrato para un inmueble comercial.',
+                'El contrato registrado ante PROFECO solo ampara inmuebles destinados a casa habitación. Puedes integrar el expediente, pero el sistema no generará el contrato para este tipo de inmueble.',
           ),
         ],
         const SizedBox(height: 12),
@@ -793,7 +814,7 @@ class _NewExpedienteScreenState extends State<NewExpedienteScreen> {
           const SizedBox(height: 8),
           section('Inmueble', 2, [
             FieldView('Referencia para el cliente', propertyReference.trim().isEmpty ? '—' : propertyReference.trim()),
-            FieldView('Tipo de inmueble', label(propertyTypeLabels, propertyCaseType)),
+            FieldView('Tipo de inmueble', selectedSubtype?.label(propertyTypeDetail) ?? '—'),
             FieldView('Operación', label(operationLabels, operationType)),
             FieldView('Acreditación', label(accreditationLabels, accreditationType)),
             FieldView('Régimen de condominio', condominiumRegime ? 'Sí' : 'No'),

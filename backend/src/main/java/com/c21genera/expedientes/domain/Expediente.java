@@ -53,6 +53,22 @@ public class Expediente extends AuditableEntity {
   @Column(nullable = false, length = 24)
   private PropertyCaseType propertyCaseType;
 
+  // Control de Cambios #26: tipo de inmueble del catálogo, con el nombre tal
+  // como estaba al elegirlo. Sin subcategoría = pendiente de clasificación
+  // (registros anteriores al catálogo que no decían de qué tipo eran).
+  private UUID propertyCategoryId;
+
+  @Column(length = 80)
+  private String propertyCategoryName;
+
+  private UUID propertySubtypeId;
+
+  @Column(length = 80)
+  private String propertySubtypeName;
+
+  @Column(length = 160)
+  private String propertyTypeDetail;
+
   @Enumerated(EnumType.STRING)
   @Column(nullable = false, length = 16)
   private OperationType operationType;
@@ -125,6 +141,22 @@ public class Expediente extends AuditableEntity {
     this.createdByUserId = createdByUserId;
     this.assignedAdvisorId = assignedAdvisorId;
     this.assignedAdvisorName = assignedAdvisorName;
+  }
+
+  /** Control de Cambios #26: categoría → subcategoría elegidas en el catálogo (detail: solo para "Otro"). */
+  public record PropertyClassification(UUID categoryId, String categoryName, UUID subtypeId, String subtypeName, String detail) {}
+
+  public PropertyClassification propertyClassification() {
+    return new PropertyClassification(propertyCategoryId, propertyCategoryName, propertySubtypeId, propertySubtypeName, propertyTypeDetail);
+  }
+
+  /** Solo la clasificación; el tratamiento de documentos y contrato (propertyCaseType) va en {@link Configuration}. */
+  public void classifyProperty(PropertyClassification classification) {
+    this.propertyCategoryId = classification.categoryId();
+    this.propertyCategoryName = classification.categoryName();
+    this.propertySubtypeId = classification.subtypeId();
+    this.propertySubtypeName = classification.subtypeName();
+    this.propertyTypeDetail = classification.detail();
   }
 
   public record Configuration(
@@ -306,6 +338,40 @@ public class Expediente extends AuditableEntity {
 
   public PropertyCaseType getPropertyCaseType() {
     return propertyCaseType;
+  }
+
+  public UUID getPropertyCategoryId() {
+    return propertyCategoryId;
+  }
+
+  public String getPropertyCategoryName() {
+    return propertyCategoryName;
+  }
+
+  public UUID getPropertySubtypeId() {
+    return propertySubtypeId;
+  }
+
+  public String getPropertySubtypeName() {
+    return propertySubtypeName;
+  }
+
+  public String getPropertyTypeDetail() {
+    return propertyTypeDetail;
+  }
+
+  /** "Habitacional → Casa en condominio", "Especiales → Otro: Capilla" o "Terrenos → Pendiente de clasificación". */
+  public String propertyTypeLabel() {
+    if (propertyCategoryName == null) {
+      return null;
+    }
+    if (propertySubtypeName == null) {
+      return propertyCategoryName + " → Pendiente de clasificación";
+    }
+    if (propertyTypeDetail != null && !propertyTypeDetail.isBlank()) {
+      return propertyCategoryName + " → " + propertySubtypeName.replaceAll("\\s*—.*$", "") + ": " + propertyTypeDetail;
+    }
+    return propertyCategoryName + " → " + propertySubtypeName;
   }
 
   public OperationType getOperationType() {

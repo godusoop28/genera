@@ -78,7 +78,10 @@ public final class ExpedienteDtos {
       boolean signedByAttorney,
       @NotNull AccreditationType accreditationType,
       boolean condominiumRegime,
-      @NotNull PropertyCaseType propertyCaseType,
+      // Control de Cambios #26: subcategoría del catálogo de inmuebles (la categoría sale de ella).
+      @NotNull(message = "Selecciona el tipo de inmueble") UUID propertySubtypeId,
+      // Obligatorio solo si la subcategoría es "Otro — especificar".
+      @Size(max = 160) String propertyTypeDetail,
       // Control de Cambios #24: venta o renta (si no llega, venta).
       OperationType operationType,
       // Control de Cambios #24: asesor responsable, obligatorio desde el alta.
@@ -104,12 +107,16 @@ public final class ExpedienteDtos {
       boolean signedByAttorney,
       @NotNull AccreditationType accreditationType,
       boolean condominiumRegime,
-      @NotNull PropertyCaseType propertyCaseType,
+      // Control de Cambios #26: null solo para dejar como estaba un expediente pendiente de clasificación.
+      UUID propertySubtypeId,
+      @Size(max = 160) String propertyTypeDetail,
       // null = conserva la operación actual.
       OperationType operationType,
       @NotNull PropertyLegalStatus declaredLegalStatus,
       String propertyAddress,
       String reason) {}
+
+  public record ClassifyPropertyRequest(@NotNull UUID propertySubtypeId, @Size(max = 160) String propertyTypeDetail, @Size(max = 500) String reason) {}
 
   /** Control de Cambios #24: cambio de asesor (administrador o directivo). */
   public record AssignAdvisorRequest(@NotNull UUID advisorId, @Size(max = 500) String reason) {}
@@ -172,6 +179,13 @@ public final class ExpedienteDtos {
       AccreditationType accreditationType,
       boolean condominiumRegime,
       PropertyCaseType propertyCaseType,
+      // Control de Cambios #26: categoría → subcategoría (sin subcategoría = pendiente de clasificación).
+      UUID propertyCategoryId,
+      String propertyCategoryName,
+      UUID propertySubtypeId,
+      String propertySubtypeName,
+      String propertyTypeDetail,
+      String propertyTypeLabel,
       OperationType operationType,
       PropertyLegalStatus declaredLegalStatus,
       String propertyAddress,
@@ -198,6 +212,12 @@ public final class ExpedienteDtos {
           e.getAccreditationType(),
           e.isCondominiumRegime(),
           e.getPropertyCaseType(),
+          e.getPropertyCategoryId(),
+          e.getPropertyCategoryName(),
+          e.getPropertySubtypeId(),
+          e.getPropertySubtypeName(),
+          e.getPropertyTypeDetail(),
+          e.propertyTypeLabel(),
           e.getOperationType(),
           e.getDeclaredLegalStatus(),
           e.getPropertyAddress(),

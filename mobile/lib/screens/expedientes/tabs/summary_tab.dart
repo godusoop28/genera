@@ -8,6 +8,7 @@ import '../../../api/models.dart';
 import '../../../labels.dart';
 import '../../../state/auth.dart';
 import '../../../ui/file_pick.dart';
+import '../../../ui/property_type_picker.dart';
 import '../../../ui/widgets.dart';
 import '../expediente_detail_screen.dart';
 
@@ -114,7 +115,7 @@ class _SummaryTabState extends State<SummaryTab> {
                   FieldView('Tipo de cliente', label(personTypeLabels, e.personType), upper: true),
                   FieldView('Quién firma', label(signerCharacterLabels, e.signerCharacter), upper: true),
                   FieldView('Acreditación de la propiedad', label(accreditationLabels, e.accreditationType), upper: true),
-                  FieldView('Tipo de inmueble', label(propertyTypeLabels, e.propertyCaseType), upper: true),
+                  FieldView('Tipo de inmueble', e.propertyTypeLabel ?? label(propertyTypeLabels, e.propertyCaseType), upper: true),
                   FieldView('Régimen de condominio', e.condominiumRegime ? 'Sí' : 'No', upper: true),
                   FieldView('Situación jurídica', label(legalStatusLabels, e.declaredLegalStatus), upper: true),
                   FieldView('Domicilio del inmueble', (e.propertyAddress?.isNotEmpty ?? false) ? e.propertyAddress : 'Se tomará de la escritura o el predial', upper: true),
@@ -127,7 +128,7 @@ class _SummaryTabState extends State<SummaryTab> {
                   if (e.decisionReason != null) FieldView('Motivo de la decisión', e.decisionReason, upper: true),
                 ],
               ),
-              if ((auth.can('EXPEDIENT_EDIT') && e.correctable) || auth.can('EXPEDIENT_ADVISOR_ASSIGN')) ...[
+              if (auth.can('EXPEDIENT_EDIT') || auth.can('EXPEDIENT_ADVISOR_ASSIGN')) ...[
                 const SizedBox(height: 14),
                 Wrap(
                   spacing: 8,
@@ -135,6 +136,15 @@ class _SummaryTabState extends State<SummaryTab> {
                   children: [
                     if (auth.can('EXPEDIENT_EDIT') && e.correctable)
                       Btn('Corregir datos', icon: Icons.edit_outlined, small: true, variant: BtnVariant.secondary, onPressed: () => _correct(context)),
+                    // Control de Cambios #26: un registro anterior al catálogo queda pendiente hasta que se clasifica.
+                    if (auth.can('EXPEDIENT_EDIT'))
+                      Btn(
+                        e.propertySubtypeId == null ? 'Clasificar tipo de inmueble' : 'Cambiar tipo de inmueble',
+                        icon: Icons.home_work_outlined,
+                        small: true,
+                        variant: e.propertySubtypeId == null ? BtnVariant.primary : BtnVariant.secondary,
+                        onPressed: () => _classify(context),
+                      ),
                     // Control de Cambios #24: el administrador o directivo cambia el asesor en cualquier etapa.
                     if (auth.can('EXPEDIENT_ADVISOR_ASSIGN'))
                       Btn('Cambiar asesor', icon: Icons.manage_accounts_outlined, small: true, variant: BtnVariant.secondary, onPressed: () => _changeAdvisor(context)),
@@ -290,7 +300,8 @@ class _SummaryTabState extends State<SummaryTab> {
       'signedByAttorney': e.signedByAttorney,
       'accreditationType': e.accreditationType,
       'condominiumRegime': e.condominiumRegime,
-      'propertyCaseType': e.propertyCaseType,
+      'propertySubtypeId': e.propertySubtypeId,
+      'propertyTypeDetail': e.propertyTypeDetail ?? '',
       'operationType': e.operationType,
       'declaredLegalStatus': e.declaredLegalStatus,
       'propertyAddress': e.propertyAddress ?? '',
@@ -323,11 +334,14 @@ class _SummaryTabState extends State<SummaryTab> {
             onChanged: (v) => setSheet(() => config['accreditationType'] = v),
           ),
           const SizedBox(height: 12),
-          AppSelect<String>(
-            label: 'Tipo de inmueble',
-            value: config['propertyCaseType'] as String,
-            options: optionsOf(propertyTypeLabels),
-            onChanged: (v) => setSheet(() => config['propertyCaseType'] = v),
+          PropertyTypePicker(
+            subtypeId: config['propertySubtypeId'] as String?,
+            detail: config['propertyTypeDetail'] as String? ?? '',
+            currentLabel: e.propertyTypeLabel,
+            onChanged: (id, detail, _) => setSheet(() {
+              config['propertySubtypeId'] = id;
+              config['propertyTypeDetail'] = detail;
+            }),
           ),
           const SizedBox(height: 12),
           AppSelect<String>(
@@ -368,6 +382,50 @@ class _SummaryTabState extends State<SummaryTab> {
               : () async {
                   setSheet(() => saving = true);
                   await run(() => api.correctExpediente(e.id, config, reason.trim()), 'Datos corregidos y registrados en la bitácora.');
+                  if (ctx.mounted) Navigator.pop(ctx);
+                },
+        ),
+      ],
+    );
+  }
+
+  /// Control de Cambios #26: clasificar (o cambiar) el tipo de inmueble sin la corrección completa. El servidor
+  /// lo rechaza si cambia los documentos que se piden o el modelo de contrato.
+  Future<void> _classify(BuildContext context) async {
+    String? subtypeId = e.propertySubtypeId;
+    var detail = e.propertyTypeDetail ?? '';
+    var reason = '';
+    var saving = false;
+    await showAppSheet(
+      context,
+      title: 'Tipo de inmueble',
+      builder: (ctx, setSheet) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (e.propertyTypeLabel != null) ...[MutedText('Actual: ${e.propertyTypeLabel}'), const SizedBox(height: 12)],
+        PropertyTypePicker(
+          subtypeId: subtypeId,
+          detail: detail,
+          currentLabel: e.propertyTypeLabel,
+          onChanged: (id, d, _) => setSheet(() {
+            subtypeId = id;
+            detail = d;
+          }),
+        ),
+        const SizedBox(height: 12),
+        AppTextField(label: 'Motivo (opcional)', maxLines: 2, hint: 'Ej. La escritura indica uso habitacional.', onChanged: (v) => reason = v),
+        const SizedBox(height: 8),
+        const MutedText('Queda en el historial. Si el nuevo tipo cambia los documentos o el modelo de contrato, hazlo desde "Corregir datos".'),
+      ]),
+      footer: (ctx, setSheet) => [
+        Btn('Cancelar', variant: BtnVariant.ghost, onPressed: () => Navigator.pop(ctx)),
+        Btn(
+          'Guardar',
+          loading: saving,
+          onPressed: subtypeId == null || (subtypeId == e.propertySubtypeId && detail == (e.propertyTypeDetail ?? ''))
+              ? null
+              : () async {
+                  setSheet(() => saving = true);
+                  await run(() => api.classifyExpedienteProperty(e.id, subtypeId!, detail.trim().isEmpty ? null : detail.trim(), reason.trim()),
+                      'Tipo de inmueble actualizado; quedó en el historial.');
                   if (ctx.mounted) Navigator.pop(ctx);
                 },
         ),

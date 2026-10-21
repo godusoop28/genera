@@ -79,8 +79,8 @@ export function Header({ onMenuClick }: HeaderProps) {
 
       <Link
         href="/configuracion"
-        title="Configuración de la cuenta"
-        aria-label={`${displayName}${roleName ? `, ${roleName}` : ""}. Configuración de la cuenta`}
+        title="Mi perfil y configuración"
+        aria-label={`${displayName}${roleName ? `, ${roleName}` : ""}. Mi perfil y configuración`}
         className="group flex shrink-0 items-center gap-3 rounded-xl py-1.5 pl-1.5 pr-2 transition-colors duration-150 hover:bg-app-bg focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/30"
       >
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gold/25 text-xs font-semibold text-dark-gold">

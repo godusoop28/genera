@@ -20,15 +20,56 @@ Future<Json> login(String email, String password) async => _j(await _c.post('/au
 Future<void> logout(String refreshToken) => _c.post('/auth/logout', {'refreshToken': refreshToken});
 Future<MeResponse> me() async => MeResponse.fromJson(_j(await _c.get('/internal/me')));
 
+/// Control de Cambios #25: "Mi perfil" → cambiar contraseña (pide la actual). Cierra las demás
+/// sesiones y devuelve una nueva (accessToken/refreshToken) para este dispositivo.
+Future<Json> changeOwnPassword(String currentPassword, String newPassword) async =>
+    _j(await _c.post('/internal/me/password', {'currentPassword': currentPassword, 'newPassword': newPassword}));
+
 // --- Usuarios y roles -------------------------------------------------------
 
 Future<PageResponse<UserResponse>> listUsers([int page = 0, int size = 100]) async =>
     PageResponse.fromJson(_j(await _c.get('/internal/users?page=$page&size=$size')), UserResponse.fromJson);
-Future<void> createUser(String name, String email, String password, String roleCode) =>
-    _c.post('/internal/users', {'name': name, 'email': email, 'password': password, 'roleCode': roleCode});
+/// Control de Cambios #25: sin contraseña; devuelve el enlace para que la persona defina la suya.
+Future<({UserResponse user, SetupLink link})> createUser(String name, String email, String roleCode) async {
+  final j = _j(await _c.post('/internal/users', {'name': name, 'email': email, 'roleCode': roleCode}));
+  return (user: UserResponse.fromJson(Json.from(j['user'] as Map)), link: SetupLink.fromJson(Json.from(j['link'] as Map)));
+}
 Future<void> updateUser(String id, String name, String email, String roleCode) => _c.patch('/internal/users/$id', {'name': name, 'email': email, 'roleCode': roleCode});
 Future<void> activateUser(String id) => _c.post('/internal/users/$id/activate');
 Future<void> deactivateUser(String id) => _c.post('/internal/users/$id/deactivate');
+
+/// Baja definitiva (conserva el historial). El servidor exige reasignar antes lo que tenga a su cargo.
+Future<void> offboardUser(String id, String reason) => _c.post('/internal/users/$id/offboard', {'reason': reason});
+
+/// Enlace de restablecimiento (o de alta, si aún no define su contraseña). El administrador nunca ve la contraseña.
+Future<SetupLink> issuePasswordLink(String id) async => SetupLink.fromJson(_j(await _c.post('/internal/users/$id/password-link')));
+Future<void> unlockUser(String id) => _c.post('/internal/users/$id/unlock');
+Future<List<WorkloadItem>> getUserWorkload(String id) async => _l(await _c.get('/internal/users/$id/workload'), WorkloadItem.fromJson);
+Future<PageResponse<AuditEvent>> listAccountEvents([int page = 0, int size = 50]) async =>
+    PageResponse.fromJson(_j(await _c.get('/internal/audit-events/accounts?page=$page&size=$size')), AuditEvent.fromJson);
+
+// --- Catálogo de inmuebles (Control de Cambios #26) ---------------------------
+
+List<CatalogCategory>? _catalog;
+List<CatalogCategory>? _catalogAll;
+
+/// Catálogo vigente (o, con includeInactive, también lo desactivado para filtros). Una vez cargado
+/// se reutiliza durante la sesión (cambia poco).
+Future<List<CatalogCategory>> listPropertyCatalog({bool includeInactive = false}) async {
+  final cached = includeInactive ? _catalogAll : _catalog;
+  if (cached != null) return cached;
+  final loaded = _l(await _c.get('/internal/property-catalog${includeInactive ? '?includeInactive=true' : ''}'), CatalogCategory.fromJson);
+  if (includeInactive) {
+    _catalogAll = loaded;
+  } else {
+    _catalog = loaded;
+  }
+  return loaded;
+}
+
+/// Clasificar el tipo de inmueble sin la corrección completa (no puede cambiar documentos ni contrato).
+Future<void> classifyExpedienteProperty(String id, String subtypeId, String? detail, String reason) =>
+    _c.put('/internal/expedientes/$id/property-type', {'propertySubtypeId': subtypeId, 'propertyTypeDetail': detail, 'reason': reason});
 Future<List<RoleResponse>> listRoles() async => _l(await _c.get('/internal/roles'), RoleResponse.fromJson);
 Future<List<PermissionResponse>> listPermissions() async => _l(await _c.get('/internal/permissions'), PermissionResponse.fromJson);
 
@@ -37,8 +78,13 @@ Future<List<PermissionResponse>> listPermissions() async => _l(await _c.get('/in
 /// Control de Cambios #24: advisorId [unassignedAdvisor] = expedientes sin asesor asignado.
 const unassignedAdvisor = 'none';
 
-Map<String, Object?> _portfolio(String? propertyCaseType, String? operationType, String? advisorId) => {
-  'propertyCaseType': propertyCaseType,
+/// Control de Cambios #26: subtypeId [unclassifiedSubtype] = pendientes de clasificación.
+const unclassifiedSubtype = 'none';
+
+Map<String, Object?> _portfolio(String? categoryId, String? subtypeId, String? operationType, String? advisorId) => {
+  'categoryId': categoryId,
+  'subtypeId': subtypeId == unclassifiedSubtype ? null : subtypeId,
+  'unclassified': subtypeId == unclassifiedSubtype ? 'true' : null,
   'operationType': operationType,
   'advisorId': advisorId == unassignedAdvisor ? null : advisorId,
   'unassigned': advisorId == unassignedAdvisor ? 'true' : null,
@@ -47,7 +93,8 @@ Map<String, Object?> _portfolio(String? propertyCaseType, String? operationType,
 Future<ExpedienteOverview> getExpedienteOverview({
   String? q,
   String? group,
-  String? propertyCaseType,
+  String? categoryId,
+  String? subtypeId,
   String? operationType,
   String? advisorId,
   int page = 0,
@@ -55,12 +102,12 @@ Future<ExpedienteOverview> getExpedienteOverview({
 }) async => ExpedienteOverview.fromJson(
   _j(
     await _c.get(
-      '/internal/expedientes/overview${_q({'page': page, 'size': size, 'sort': 'updatedAt,desc', 'q': q?.trim(), 'group': group, ..._portfolio(propertyCaseType, operationType, advisorId)})}',
+      '/internal/expedientes/overview${_q({'page': page, 'size': size, 'sort': 'updatedAt,desc', 'q': q?.trim(), 'group': group, ..._portfolio(categoryId, subtypeId, operationType, advisorId)})}',
     ),
   ),
 );
-Future<PortfolioReport> getPortfolioReport({String? propertyCaseType, String? operationType, String? advisorId}) async =>
-    PortfolioReport.fromJson(_j(await _c.get('/internal/expedientes/overview/portfolio${_q(_portfolio(propertyCaseType, operationType, advisorId))}')));
+Future<PortfolioReport> getPortfolioReport({String? categoryId, String? subtypeId, String? operationType, String? advisorId}) async =>
+    PortfolioReport.fromJson(_j(await _c.get('/internal/expedientes/overview/portfolio${_q(_portfolio(categoryId, subtypeId, operationType, advisorId))}')));
 Future<List<AdvisorOption>> listAssignableAdvisors() async => _l(await _c.get('/internal/expedientes/advisors'), AdvisorOption.fromJson);
 Future<void> assignAdvisor(String id, String advisorId, String reason) => _c.put('/internal/expedientes/$id/advisor', {'advisorId': advisorId, 'reason': reason});
 Future<List<DuplicateMatch>> checkClientDuplicates(List<String> holderNames) async =>

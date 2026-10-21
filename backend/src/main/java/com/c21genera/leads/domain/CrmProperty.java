@@ -115,6 +115,11 @@ public class CrmProperty extends AuditableEntity {
 
   private UUID advisorUserId;
 
+  private UUID catalogSubtypeId;
+
+  @Column(length = 160)
+  private String propertyTypeDetail;
+
   @Column(nullable = false)
   private UUID createdByUserId;
 
@@ -159,7 +164,10 @@ public class CrmProperty extends AuditableEntity {
       BigDecimal maintenanceFee,
       BigDecimal commission,
       boolean publishOnline,
-      UUID advisorUserId) {}
+      UUID advisorUserId,
+      // Control de Cambios #26: subcategoría del catálogo (de ella salen propertyType/subtype de 21Online).
+      UUID catalogSubtypeId,
+      String propertyTypeDetail) {}
 
   /** Cambia los datos; si ya estaba en 21Online, queda pendiente de mandar la actualización. */
   public void apply(Data d) {
@@ -194,6 +202,8 @@ public class CrmProperty extends AuditableEntity {
     this.commission = d.commission();
     this.publishOnline = d.publishOnline();
     this.advisorUserId = d.advisorUserId();
+    this.catalogSubtypeId = d.catalogSubtypeId();
+    this.propertyTypeDetail = d.propertyTypeDetail();
     this.syncStatus = SyncStatus.PENDING;
     this.syncError = null;
     this.syncUncertain = false;
@@ -203,7 +213,7 @@ public class CrmProperty extends AuditableEntity {
     return new Data(
         operation, propertyType, subtype, contractType, status, headline, description, salePrice, rentPrice, currency, hidePrice, street, extNumber,
         neighborhood, municipality, state, postalCode, hideStreet, hideNumber, bedrooms, bathrooms, halfBathrooms, parking, landM2, builtM2, levels, age,
-        maintenanceFee, commission, publishOnline, advisorUserId);
+        maintenanceFee, commission, publishOnline, advisorUserId, catalogSubtypeId, propertyTypeDetail);
   }
 
   public void markSynced(Long online21Id, Instant at) {

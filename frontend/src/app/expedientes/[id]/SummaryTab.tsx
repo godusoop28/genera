@@ -1,5 +1,6 @@
 "use client";
 
+import { PropertyTypeSelect, propertyTypeError, usePropertyCatalog } from "@/components/property/PropertyTypeSelect";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -13,6 +14,7 @@ import { listDocuments } from "@/lib/api/documents";
 import {
   acceptProperty,
   assignAdvisor,
+  classifyExpedienteProperty,
   correctExpediente,
   getClientData,
   listAssignableAdvisors,
@@ -37,7 +39,7 @@ import {
   signerCharacterLabels,
 } from "@/lib/labels";
 import { useCan } from "@/lib/permissions";
-import { Copy, FileSignature, Link2, Pencil, ShieldOff, ThumbsDown, ThumbsUp, UserCog } from "lucide-react";
+import { Copy, FileSignature, Home, Link2, Pencil, ShieldOff, ThumbsDown, ThumbsUp, UserCog } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { DocumentTimingCard } from "./DocumentTimingCard";
 import { PrivacyCard } from "./PrivacyCard";
@@ -48,6 +50,8 @@ export function SummaryTab({ expediente, participants, reload, freshPublicLink: 
   const can = useCan();
   const [linkStatus, setLinkStatus] = useState<PublicLinkStatusResponse | null>(null);
   const [editing, setEditing] = useState(false);
+  const [classifying, setClassifying] = useState(false);
+  const pendingClassification = !expediente.propertySubtypeId;
   const [changingAdvisor, setChangingAdvisor] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -129,7 +133,7 @@ export function SummaryTab({ expediente, participants, reload, freshPublicLink: 
           <Field label="Tipo de cliente" value={personTypeLabels[expediente.personType]} />
           <Field label="Quién firma" value={signerCharacterLabels[expediente.signerCharacter]} />
           <Field label="Acreditación de la propiedad" value={accreditationLabels[expediente.accreditationType]} />
-          <Field label="Tipo de inmueble" value={propertyTypeLabels[expediente.propertyCaseType]} />
+          <Field label="Tipo de inmueble" value={expediente.propertyTypeLabel ?? propertyTypeLabels[expediente.propertyCaseType]} />
           <Field label="Régimen de condominio" value={expediente.condominiumRegime ? "Sí" : "No"} />
           <Field label="Situación jurídica" value={legalStatusLabels[expediente.declaredLegalStatus]} />
           <Field label="Domicilio del inmueble" value={expediente.propertyAddress || "Se tomará de la escritura o el predial"} />
@@ -147,6 +151,12 @@ export function SummaryTab({ expediente, participants, reload, freshPublicLink: 
           {can("EXPEDIENT_EDIT") && expediente.correctable ? (
             <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
               <Pencil className="h-4 w-4" aria-hidden /> Corregir datos
+            </Button>
+          ) : null}
+          {/* Control de Cambios #26: un registro anterior al catálogo queda pendiente hasta que se clasifica. */}
+          {can("EXPEDIENT_EDIT") ? (
+            <Button variant={pendingClassification ? "primary" : "secondary"} size="sm" onClick={() => setClassifying(true)}>
+              <Home className="h-4 w-4" aria-hidden /> {pendingClassification ? "Clasificar tipo de inmueble" : "Cambiar tipo de inmueble"}
             </Button>
           ) : null}
           {/* Control de Cambios #24: el administrador o directivo cambia el asesor en cualquier etapa. */}
@@ -261,15 +271,30 @@ export function SummaryTab({ expediente, participants, reload, freshPublicLink: 
             signedByAttorney: expediente.signedByAttorney,
             accreditationType: expediente.accreditationType,
             condominiumRegime: expediente.condominiumRegime,
-            propertyCaseType: expediente.propertyCaseType,
+            propertySubtypeId: expediente.propertySubtypeId,
+            propertyTypeDetail: expediente.propertyTypeDetail ?? "",
             operationType: expediente.operationType,
             declaredLegalStatus: expediente.declaredLegalStatus,
             propertyAddress: expediente.propertyAddress ?? "",
           }}
+          currentSubtype={expediente.propertySubtypeId ? { id: expediente.propertySubtypeId, label: expediente.propertyTypeLabel ?? "" } : null}
           onClose={() => setEditing(false)}
           onSave={async (config, reason) => {
             await run(() => correctExpediente(expediente.id, config, reason), "Datos corregidos y registrados en la bitácora.");
             setEditing(false);
+          }}
+        />
+      ) : null}
+
+      {classifying ? (
+        <ClassifyPropertyModal
+          initialSubtypeId={expediente.propertySubtypeId}
+          initialDetail={expediente.propertyTypeDetail ?? ""}
+          currentLabel={expediente.propertyTypeLabel}
+          onClose={() => setClassifying(false)}
+          onSave={async (subtypeId, detail, reason) => {
+            await run(() => classifyExpedienteProperty(expediente.id, subtypeId, detail, reason), "Tipo de inmueble actualizado; quedó en el historial.");
+            setClassifying(false);
           }}
         />
       ) : null}
@@ -364,15 +389,94 @@ function AdvisorModal({
   );
 }
 
+/**
+ * Control de Cambios #26: clasificar (o cambiar) el tipo de inmueble sin la corrección completa. El
+ * servidor lo rechaza si cambia los documentos que se piden o el modelo de contrato.
+ */
+function ClassifyPropertyModal({
+  initialSubtypeId,
+  initialDetail,
+  currentLabel,
+  onClose,
+  onSave,
+}: {
+  initialSubtypeId: string | null;
+  initialDetail: string;
+  currentLabel: string | null;
+  onClose: () => void;
+  onSave: (subtypeId: string, detail: string | undefined, reason: string) => Promise<void>;
+}) {
+  const { catalog } = usePropertyCatalog();
+  const [subtypeId, setSubtypeId] = useState<string | null>(initialSubtypeId);
+  const [detail, setDetail] = useState(initialDetail);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const problem = propertyTypeError(catalog, subtypeId, detail, initialSubtypeId);
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Tipo de inmueble"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button
+            disabled={busy || Boolean(problem) || (subtypeId === initialSubtypeId && detail === initialDetail)}
+            onClick={async () => {
+              if (!subtypeId) return;
+              setBusy(true);
+              try {
+                await onSave(subtypeId, detail.trim() || undefined, reason.trim());
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Guardar
+          </Button>
+        </>
+      }
+    >
+      {currentLabel ? <p className="mb-4 text-sm text-muted">Actual: {currentLabel}</p> : null}
+      <PropertyTypeSelect
+        subtypeId={subtypeId}
+        detail={detail}
+        current={initialSubtypeId && currentLabel ? { id: initialSubtypeId, label: currentLabel } : null}
+        onChange={(v) => {
+          setSubtypeId(v.subtypeId);
+          setDetail(v.detail);
+        }}
+      />
+      <label className="mb-1 mt-4 block text-sm font-medium text-obsessed">Motivo (opcional)</label>
+      <textarea
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        rows={2}
+        placeholder="Ej. La escritura indica uso habitacional."
+        className="w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm outline-none focus:border-gold"
+      />
+      <p className="mt-2 text-xs text-muted">
+        Queda en el historial. Si el nuevo tipo cambia los documentos que se piden o el modelo de contrato, hazlo desde &quot;Corregir datos&quot;.
+      </p>
+    </Modal>
+  );
+}
+
 function CorrectionModal({
   initial,
+  currentSubtype,
   onClose,
   onSave,
 }: {
   initial: ExpedienteConfiguration;
+  currentSubtype: { id: string; label: string } | null;
   onClose: () => void;
   onSave: (config: ExpedienteConfiguration, reason: string) => Promise<void>;
 }) {
+  const { catalog } = usePropertyCatalog();
   const [config, setConfig] = useState(initial);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -390,7 +494,7 @@ function CorrectionModal({
             Cancelar
           </Button>
           <Button
-            disabled={busy || reason.trim().length < 5}
+            disabled={busy || reason.trim().length < 5 || Boolean(config.propertySubtypeId && propertyTypeError(catalog, config.propertySubtypeId, config.propertyTypeDetail ?? "", currentSubtype?.id))}
             onClick={async () => {
               setBusy(true);
               try {
@@ -422,11 +526,11 @@ function CorrectionModal({
           onChange={(e) => set("accreditationType", e.target.value as ExpedienteConfiguration["accreditationType"])}
           options={Object.entries(accreditationLabels).map(([value, label]) => ({ value, label }))}
         />
-        <Select
-          label="Tipo de inmueble"
-          value={config.propertyCaseType}
-          onChange={(e) => set("propertyCaseType", e.target.value as ExpedienteConfiguration["propertyCaseType"])}
-          options={Object.entries(propertyTypeLabels).map(([value, label]) => ({ value, label }))}
+        <PropertyTypeSelect
+          subtypeId={config.propertySubtypeId}
+          detail={config.propertyTypeDetail ?? ""}
+          current={currentSubtype}
+          onChange={(v) => setConfig((c) => ({ ...c, propertySubtypeId: v.subtypeId, propertyTypeDetail: v.detail }))}
         />
         <Select
           label="Operación"

@@ -5,8 +5,13 @@ import com.c21genera.audit.web.AuditDtos.ActivityResponse;
 import com.c21genera.audit.web.AuditDtos.AuditEventResponse;
 import com.c21genera.identity.CurrentUser;
 import com.c21genera.shared.security.ExpedienteAccessPolicy;
+import com.c21genera.shared.web.PageResponse;
+import com.c21genera.shared.web.Pagination;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -31,6 +36,14 @@ public class InternalAuditController {
     CurrentUser user = CurrentUser.from(jwt);
     accessPolicy.requireAccess(expedienteId, user.id(), user.permissions());
     return service.activityOf(expedienteId).stream().map(ActivityResponse::from).toList();
+  }
+
+  /** Control de Cambios #25: bitácora de cuentas (más reciente primero). Requiere AUDIT_VIEW. */
+  @GetMapping("/api/v1/internal/audit-events/accounts")
+  @PreAuthorize("hasAuthority('AUDIT_VIEW')")
+  public PageResponse<AuditEventResponse> accountEvents(@PageableDefault(size = 50) Pageable pageable) {
+    // Sin el orden que mande el cliente: siempre del más reciente al más antiguo.
+    return PageResponse.of(service.accountEvents(Pagination.cap(PageRequest.of(pageable.getPageNumber(), pageable.getPageSize()))).map(AuditEventResponse::from));
   }
 
   /** Rastro técnico, no pensado para el usuario final: requiere AUDIT_VIEW (administrador y director). */

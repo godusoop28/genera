@@ -26,6 +26,7 @@ import com.c21genera.expedientes.infrastructure.ExpedienteChangeRepository;
 import com.c21genera.expedientes.infrastructure.ExpedienteParticipantRepository;
 import com.c21genera.expedientes.infrastructure.ExpedienteRepository;
 import com.c21genera.expedientes.infrastructure.ManualClientDataRepository;
+import com.c21genera.propertycatalog.PropertyCatalog;
 import com.c21genera.shared.domain.ConflictException;
 import com.c21genera.shared.domain.NotFoundException;
 import com.c21genera.shared.domain.RequiredDocumentSpec;
@@ -82,6 +83,7 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
   private final ExpedienteChangeRepository changeRepository;
   private final ApplicationEventPublisher events;
   private final ObjectMapper objectMapper;
+  private final PropertyCatalog propertyCatalog;
   private final Clock clock;
 
   public ExpedienteService(
@@ -91,6 +93,7 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
       ExpedienteChangeRepository changeRepository,
       ApplicationEventPublisher events,
       ObjectMapper objectMapper,
+      PropertyCatalog propertyCatalog,
       Clock clock) {
     this.expedienteRepository = expedienteRepository;
     this.participantRepository = participantRepository;
@@ -98,6 +101,7 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
     this.changeRepository = changeRepository;
     this.events = events;
     this.objectMapper = objectMapper;
+    this.propertyCatalog = propertyCatalog;
     this.clock = clock;
   }
 
@@ -108,7 +112,9 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
       boolean signedByAttorney,
       AccreditationType accreditationType,
       boolean condominiumRegime,
-      PropertyCaseType propertyCaseType,
+      // Control de Cambios #26: subcategoría del catálogo (obligatoria) y detalle si es "Otro".
+      UUID propertySubtypeId,
+      String propertyTypeDetail,
       OperationType operationType,
       PropertyLegalStatus declaredLegalStatus,
       String propertyAddress,
@@ -184,6 +190,7 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
       }
     }
 
+    ResolvedPropertyType propertyType = resolvePropertyType(command.propertySubtypeId(), command.propertyTypeDetail(), null);
     String folio = generateFolio();
     Expediente expediente =
         new Expediente(
@@ -193,7 +200,7 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
             signerCharacterOf(command.personType(), command.signedByAttorney(), command.participants()),
             command.accreditationType(),
             command.condominiumRegime(),
-            command.propertyCaseType(),
+            propertyType.caseType(),
             command.operationType() != null ? command.operationType() : OperationType.SALE,
             command.declaredLegalStatus() != null ? command.declaredLegalStatus() : PropertyLegalStatus.EN_REVISION,
             blankToNull(command.propertyAddress()),
@@ -201,6 +208,7 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
             command.actor().userId(),
             command.assignedAdvisorId(),
             command.assignedAdvisorName());
+    expediente.classifyProperty(propertyType.classification());
     if (command.legalDetails() != null) {
       expediente.replaceLegalDetailsJson(writeLegalDetails(command.legalDetails()));
     }
@@ -243,9 +251,11 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
    * Control de Cambios #24: filtros de cartera (tipo de propiedad, operación y asesor asignado).
    * unassigned = solo los expedientes sin asesor.
    */
-  public record PortfolioFilter(PropertyCaseType propertyCaseType, OperationType operationType, UUID advisorId, boolean unassigned) {
+  public record PortfolioFilter(
+      // Control de Cambios #26: categoría y/o subcategoría del catálogo; unclassified = solo los pendientes de clasificación.
+      UUID categoryId, UUID subtypeId, boolean unclassified, OperationType operationType, UUID advisorId, boolean unassigned) {
 
-    public static final PortfolioFilter NONE = new PortfolioFilter(null, null, null, false);
+    public static final PortfolioFilter NONE = new PortfolioFilter(null, null, false, null, null, false);
   }
 
   /**
@@ -287,8 +297,8 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
   }
 
   /**
-   * Control de Cambios #24: cartera agregada para los reportes (filas: tipo de propiedad,
-   * operación, asesor asignado, nombre del asesor, estatus, total).
+   * Control de Cambios #24: cartera agregada para los reportes (filas: tratamiento del inmueble,
+   * operación, asesor asignado, nombre del asesor, estatus, total, categoría, subcategoría).
    */
   @Transactional(readOnly = true)
   public List<Object[]> portfolioRows(UUID ownerUserId) {
@@ -300,7 +310,13 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
     if (filter == null) {
       return true;
     }
-    if (filter.propertyCaseType() != null && filter.propertyCaseType() != row[0]) {
+    if (filter.categoryId() != null && !filter.categoryId().equals(row[6])) {
+      return false;
+    }
+    if (filter.subtypeId() != null && !filter.subtypeId().equals(row[7])) {
+      return false;
+    }
+    if (filter.unclassified() && row[7] != null) {
       return false;
     }
     if (filter.operationType() != null && filter.operationType() != row[1]) {
@@ -320,8 +336,14 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
     if (filter == null) {
       return spec;
     }
-    if (filter.propertyCaseType() != null) {
-      spec = spec.and((root, q, cb) -> cb.equal(root.get("propertyCaseType"), filter.propertyCaseType()));
+    if (filter.categoryId() != null) {
+      spec = spec.and((root, q, cb) -> cb.equal(root.get("propertyCategoryId"), filter.categoryId()));
+    }
+    if (filter.subtypeId() != null) {
+      spec = spec.and((root, q, cb) -> cb.equal(root.get("propertySubtypeId"), filter.subtypeId()));
+    }
+    if (filter.unclassified()) {
+      spec = spec.and((root, q, cb) -> cb.isNull(root.get("propertySubtypeId")));
     }
     if (filter.operationType() != null) {
       spec = spec.and((root, q, cb) -> cb.equal(root.get("operationType"), filter.operationType()));
@@ -370,7 +392,9 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
       boolean signedByAttorney,
       AccreditationType accreditationType,
       boolean condominiumRegime,
-      PropertyCaseType propertyCaseType,
+      // Control de Cambios #26: null = conserva el tipo actual (solo si sigue pendiente de clasificación).
+      UUID propertySubtypeId,
+      String propertyTypeDetail,
       // null = conserva la operación actual.
       OperationType operationType,
       PropertyLegalStatus declaredLegalStatus,
@@ -383,7 +407,9 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
     List<ParticipantInput> inputs = participants.stream().map(ExpedienteService::toInput).toList();
     validateParticipants(correction.personType(), correction.signedByAttorney(), inputs);
 
+    ResolvedPropertyType propertyType = resolvePropertyType(correction.propertySubtypeId(), correction.propertyTypeDetail(), expediente);
     Map<String, String> before = configurationSnapshot(expediente);
+    expediente.classifyProperty(propertyType.classification());
     expediente.reconfigure(
         new Expediente.Configuration(
             displayNameOf(correction.personType(), inputs),
@@ -391,13 +417,74 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
             signerCharacterOf(correction.personType(), correction.signedByAttorney(), inputs),
             correction.accreditationType(),
             correction.condominiumRegime(),
-            correction.propertyCaseType(),
+            propertyType.caseType(),
             correction.operationType() != null ? correction.operationType() : expediente.getOperationType(),
             correction.declaredLegalStatus(),
             blankToNull(correction.propertyAddress())));
     recordChanges(expediente, "Datos del expediente", before, configurationSnapshot(expediente), actor, reason);
     publishRequirements(expediente);
     return expediente;
+  }
+
+  /**
+   * Control de Cambios #26: clasificar un expediente pendiente (o cambiar su subcategoría) sin pasar
+   * por la corrección completa. Se permite en cualquier etapa siempre que no cambie el tratamiento de
+   * documentos y contrato; si cambia, debe hacerse con la corrección de datos (nueva versión del contrato).
+   */
+  public Expediente classifyProperty(UUID expedienteId, UUID subtypeId, String detail, Actor actor, String reason) {
+    Expediente expediente = get(expedienteId);
+    ResolvedPropertyType propertyType = resolvePropertyType(subtypeId, detail, expediente);
+    if (propertyType.caseType() != expediente.getPropertyCaseType()) {
+      throw new ConflictException(
+          "PROPERTY_TYPE_CHANGES_CONTRACT",
+          "Ese tipo de inmueble cambia los documentos que se piden o el modelo de contrato. Hazlo desde \"Corregir datos del expediente\".");
+    }
+    String previous = expediente.propertyTypeLabel();
+    expediente.classifyProperty(propertyType.classification());
+    String current = expediente.propertyTypeLabel();
+    if (!Objects.equals(previous, current)) {
+      changeRepository.save(
+          new ExpedienteChange(expediente.getId(), clock.instant(), actor, "Datos del expediente", "Tipo de inmueble", previous, current, emptyToNull(reason)));
+      events.publishEvent(new ExpedienteDataCorrected(expediente.getId(), actor, "Datos del expediente", List.of("Tipo de inmueble"), emptyToNull(reason), false));
+    }
+    return expediente;
+  }
+
+  /** Tratamiento de documentos/contrato y clasificación que corresponden a la subcategoría elegida. */
+  private record ResolvedPropertyType(PropertyCaseType caseType, Expediente.PropertyClassification classification) {}
+
+  /**
+   * subtypeId null solo se acepta para conservar un expediente que ya estaba pendiente de
+   * clasificación (current != null y sin subcategoría). Una subcategoría desactivada solo se acepta
+   * si es la que el expediente ya tenía.
+   */
+  private ResolvedPropertyType resolvePropertyType(UUID subtypeId, String detail, Expediente current) {
+    if (subtypeId == null) {
+      if (current != null && current.getPropertySubtypeId() == null) {
+        return new ResolvedPropertyType(current.getPropertyCaseType(), current.propertyClassification());
+      }
+      throw new UnprocessableException("PROPERTY_TYPE_REQUIRED", "Selecciona el tipo de inmueble (la subcategoría, no solo la categoría).");
+    }
+    PropertyCatalog.Subtype subtype =
+        propertyCatalog.subtype(subtypeId).orElseThrow(() -> new UnprocessableException("PROPERTY_TYPE_REQUIRED", "Ese tipo de inmueble no existe en el catálogo."));
+    boolean keepsCurrent = current != null && subtypeId.equals(current.getPropertySubtypeId());
+    if (!subtype.active() && !keepsCurrent) {
+      throw new UnprocessableException("PROPERTY_TYPE_INACTIVE", "\"" + subtype.name() + "\" ya no se ofrece en el catálogo. Elige otro tipo de inmueble.");
+    }
+    String cleanDetail = subtype.requiresDetail() ? blankToNull(detail) : null;
+    if (subtype.requiresDetail() && cleanDetail == null) {
+      throw new UnprocessableException("PROPERTY_TYPE_DETAIL_REQUIRED", "Describe el tipo de inmueble (elegiste \"" + subtype.name() + "\").");
+    }
+    if (cleanDetail != null && cleanDetail.length() > 160) {
+      throw new UnprocessableException("PROPERTY_TYPE_DETAIL_REQUIRED", "La descripción del tipo de inmueble no puede pasar de 160 caracteres.");
+    }
+    // Al conservar la subcategoría de antes se conserva también su nombre tal como estaba.
+    String subtypeName = keepsCurrent ? current.getPropertySubtypeName() : subtype.name();
+    String categoryName = keepsCurrent ? current.getPropertyCategoryName() : subtype.categoryName();
+    // (y su tratamiento: si el administrador cambió después el del catálogo, no se aplica en silencio).
+    return new ResolvedPropertyType(
+        keepsCurrent ? current.getPropertyCaseType() : PropertyCaseType.valueOf(subtype.caseType()),
+        new Expediente.PropertyClassification(subtype.categoryId(), categoryName, subtype.id(), subtypeName, cleanDetail));
   }
 
   /**
@@ -1205,7 +1292,7 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
         "Acreditación de la propiedad",
         e.getAccreditationType() == AccreditationType.ESCRITURA_PUBLICA ? "Escritura pública" : "Contrato privado");
     values.put("Régimen de condominio", e.isCondominiumRegime() ? "Sí" : "No");
-    values.put("Tipo de inmueble", propertyLabel(e.getPropertyCaseType()));
+    values.put("Tipo de inmueble", e.propertyTypeLabel() != null ? e.propertyTypeLabel() : propertyLabel(e.getPropertyCaseType()));
     values.put("Operación", e.getOperationType() == OperationType.RENT ? "Renta" : "Venta");
     values.put("Situación jurídica declarada", e.getDeclaredLegalStatus().name());
     values.put("Domicilio del inmueble", e.getPropertyAddress());

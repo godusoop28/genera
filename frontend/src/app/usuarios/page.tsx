@@ -4,18 +4,15 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { Button } from "@/components/ui/Button";
 import { StateMessage } from "@/components/ui/StateMessage";
 import { Tabs } from "@/components/ui/Tabs";
+import { AccountAuditLog } from "@/components/users/AccountAuditLog";
+import { AccountScheme } from "@/components/users/AccountScheme";
 import { RolePermissionMatrix } from "@/components/users/RolePermissionMatrix";
 import { UsersTable } from "@/components/users/UsersTable";
 import { useCan } from "@/lib/permissions";
 import { Plus } from "lucide-react";
 import { useState } from "react";
 
-const tabs = [
-  { id: "usuarios", label: "Usuarios" },
-  { id: "roles", label: "Roles y permisos" },
-] as const;
-
-type TabId = (typeof tabs)[number]["id"];
+type TabId = "usuarios" | "roles" | "bitacora";
 
 export default function UsuariosPage() {
   const [tab, setTab] = useState<TabId>("usuarios");
@@ -30,11 +27,18 @@ export default function UsuariosPage() {
         <StateMessage
           kind="restricted"
           title="Acceso restringido"
-          description="Solo un administrador puede ver y gestionar los usuarios y sus permisos. Si necesitas acceso, pídeselo a un administrador."
+          description="Solo un administrador puede ver y gestionar los usuarios y sus permisos. Si necesitas acceso, pídeselo a un administrador. Tu contraseña la cambias desde “Mi perfil”."
         />
       </PageContainer>
     );
   }
+
+  // Control de Cambios #25: la bitácora de cuentas requiere además AUDIT_VIEW.
+  const tabs = [
+    { id: "usuarios" as const, label: "Usuarios" },
+    { id: "roles" as const, label: "Roles y permisos" },
+    ...(can("AUDIT_VIEW") ? [{ id: "bitacora" as const, label: "Bitácora" }] : []),
+  ];
 
   return (
     <PageContainer
@@ -56,8 +60,13 @@ export default function UsuariosPage() {
       <div role="tabpanel" id={`usuarios-panel-${tab}`} aria-labelledby={`usuarios-tab-${tab}`}>
         {tab === "usuarios" ? (
           <UsersTable createOpen={createOpen} onCreateOpenChange={setCreateOpen} onShowRoles={() => setTab("roles")} />
+        ) : tab === "roles" ? (
+          <div className="space-y-5">
+            <AccountScheme />
+            <RolePermissionMatrix />
+          </div>
         ) : (
-          <RolePermissionMatrix />
+          <AccountAuditLog />
         )}
       </div>
     </PageContainer>

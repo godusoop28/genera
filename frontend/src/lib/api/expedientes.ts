@@ -5,7 +5,6 @@ import type {
   BackendAccreditationType,
   BackendCivilStatus,
   BackendPersonType,
-  BackendPropertyCaseType,
   BackendPropertyLegalStatus,
   ChangeResponse,
   ExpedienteResponse,
@@ -26,14 +25,21 @@ export interface ExpedienteConfiguration {
   signedByAttorney: boolean;
   accreditationType: BackendAccreditationType;
   condominiumRegime: boolean;
-  propertyCaseType: BackendPropertyCaseType;
+  /**
+   * Control de Cambios #26: subcategoría del catálogo (la categoría sale de ella). En una corrección,
+   * null solo conserva un expediente que sigue pendiente de clasificación.
+   */
+  propertySubtypeId: string | null;
+  /** Solo para "Otro — especificar". */
+  propertyTypeDetail?: string;
   operationType: BackendOperationType;
   declaredLegalStatus: BackendPropertyLegalStatus;
   propertyAddress: string;
 }
 
 /** Al crear, el domicilio y la situación jurídica se omiten: el backend los toma de los documentos del inmueble. */
-export interface CreateExpedienteRequest extends Omit<ExpedienteConfiguration, "declaredLegalStatus" | "propertyAddress"> {
+export interface CreateExpedienteRequest extends Omit<ExpedienteConfiguration, "declaredLegalStatus" | "propertyAddress" | "propertySubtypeId"> {
+  propertySubtypeId: string;
   declaredLegalStatus?: BackendPropertyLegalStatus;
   propertyAddress?: string;
   /** Referencia corta para que el cliente reconozca su liga (no es el domicilio legal). */
@@ -176,17 +182,24 @@ export interface ExpedienteOverview {
   counts: GroupCounts;
 }
 
-/** Control de Cambios #24: filtros de cartera. advisorId "none" = sin asesor asignado. */
+/**
+ * Control de Cambios #24/#26: filtros de cartera. advisorId "none" = sin asesor asignado;
+ * subtypeId "none" = pendientes de clasificación (de la categoría elegida, si hay).
+ */
 export interface PortfolioFilters {
-  propertyCaseType?: BackendPropertyCaseType | null;
+  categoryId?: string | null;
+  subtypeId?: string | null;
   operationType?: BackendOperationType | null;
   advisorId?: string | null;
 }
 
 export const UNASSIGNED_ADVISOR = "none";
+export const UNCLASSIFIED_SUBTYPE = "none";
 
 function setPortfolioParams(search: URLSearchParams, filters: PortfolioFilters) {
-  if (filters.propertyCaseType) search.set("propertyCaseType", filters.propertyCaseType);
+  if (filters.categoryId) search.set("categoryId", filters.categoryId);
+  if (filters.subtypeId === UNCLASSIFIED_SUBTYPE) search.set("unclassified", "true");
+  else if (filters.subtypeId) search.set("subtypeId", filters.subtypeId);
   if (filters.operationType) search.set("operationType", filters.operationType);
   if (filters.advisorId === UNASSIGNED_ADVISOR) search.set("unassigned", "true");
   else if (filters.advisorId) search.set("advisorId", filters.advisorId);
@@ -203,8 +216,18 @@ export function getExpedienteOverview(params: { q?: string; group?: ExpedienteSt
 export interface PortfolioReport {
   /** Con todos los filtros. */
   total: GroupCounts;
-  /** Nivel 1: tipo de propiedad + operación (respeta solo el filtro de asesor). */
-  byTypeOperation: { propertyCaseType: BackendPropertyCaseType; operationType: BackendOperationType; counts: GroupCounts }[];
+  /**
+   * Nivel 1: categoría → subcategoría + operación (respeta solo el filtro de asesor). subtypeId null =
+   * pendientes de clasificación. Solo vienen las combinaciones con expedientes, en orden del catálogo.
+   */
+  byTypeOperation: {
+    categoryId: string | null;
+    categoryName: string;
+    subtypeId: string | null;
+    subtypeName: string;
+    operationType: BackendOperationType;
+    counts: GroupCounts;
+  }[];
   /** Nivel 2: asesor asignado (respeta solo el tipo y la operación); advisorId null = sin asignar. */
   byAdvisor: { advisorId: string | null; name: string; counts: GroupCounts }[];
 }
@@ -213,4 +236,9 @@ export function getPortfolioReport(filters: PortfolioFilters) {
   const search = new URLSearchParams();
   setPortfolioParams(search, filters);
   return apiClient.get<PortfolioReport>(`/internal/expedientes/overview/portfolio?${search.toString()}`);
+}
+
+/** Control de Cambios #26: clasificar el tipo de inmueble sin la corrección completa (no puede cambiar documentos ni contrato). */
+export function classifyExpedienteProperty(id: string, propertySubtypeId: string, propertyTypeDetail?: string, reason?: string) {
+  return apiClient.put<ExpedienteResponse>(`/internal/expedientes/${id}/property-type`, { propertySubtypeId, propertyTypeDetail, reason });
 }

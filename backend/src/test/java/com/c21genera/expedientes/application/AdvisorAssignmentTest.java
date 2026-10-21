@@ -50,6 +50,7 @@ class AdvisorAssignmentTest {
           changeRepository,
           events,
           new ObjectMapper(),
+          mock(com.c21genera.propertycatalog.PropertyCatalog.class),
           Clock.systemUTC());
 
   private final UUID ana = UUID.randomUUID();
@@ -118,16 +119,24 @@ class AdvisorAssignmentTest {
   }
 
   @Test
-  void portfolioFilterMatchesTypeOperationAndAdvisor() {
-    Object[] houseSaleAna = {PropertyCaseType.HOUSING, OperationType.SALE, ana, "Ana", ExpedienteStatus.DRAFT, 2L};
-    Object[] unassignedRent = {PropertyCaseType.DEPARTMENT, OperationType.RENT, null, null, ExpedienteStatus.DRAFT, 1L};
+  void portfolioFilterMatchesCategorySubtypeOperationAndAdvisor() {
+    UUID habitacional = UUID.randomUUID();
+    UUID casa = UUID.randomUUID();
+    UUID terrenos = UUID.randomUUID();
+    Object[] houseSaleAna = {PropertyCaseType.HOUSING, OperationType.SALE, ana, "Ana", ExpedienteStatus.DRAFT, 2L, habitacional, casa};
+    Object[] unassignedRentPendingLand = {PropertyCaseType.RESIDENTIAL_LAND, OperationType.RENT, null, null, ExpedienteStatus.DRAFT, 1L, terrenos, null};
 
-    assertThat(ExpedienteService.matches(houseSaleAna, new PortfolioFilter(PropertyCaseType.HOUSING, OperationType.SALE, ana, false))).isTrue();
-    assertThat(ExpedienteService.matches(houseSaleAna, new PortfolioFilter(PropertyCaseType.HOUSING, OperationType.RENT, null, false))).isFalse();
-    assertThat(ExpedienteService.matches(houseSaleAna, new PortfolioFilter(null, null, luis, false))).isFalse();
-    assertThat(ExpedienteService.matches(unassignedRent, new PortfolioFilter(null, null, null, true))).isTrue();
-    assertThat(ExpedienteService.matches(houseSaleAna, new PortfolioFilter(null, null, null, true))).isFalse();
-    assertThat(ExpedienteService.matches(unassignedRent, PortfolioFilter.NONE)).isTrue();
+    assertThat(ExpedienteService.matches(houseSaleAna, new PortfolioFilter(habitacional, null, false, OperationType.SALE, ana, false))).isTrue();
+    assertThat(ExpedienteService.matches(houseSaleAna, new PortfolioFilter(habitacional, casa, false, null, null, false))).isTrue();
+    assertThat(ExpedienteService.matches(houseSaleAna, new PortfolioFilter(terrenos, null, false, null, null, false))).isFalse();
+    assertThat(ExpedienteService.matches(houseSaleAna, new PortfolioFilter(null, null, false, OperationType.RENT, null, false))).isFalse();
+    assertThat(ExpedienteService.matches(houseSaleAna, new PortfolioFilter(null, null, false, null, luis, false))).isFalse();
+    assertThat(ExpedienteService.matches(unassignedRentPendingLand, new PortfolioFilter(null, null, false, null, null, true))).isTrue();
+    assertThat(ExpedienteService.matches(houseSaleAna, new PortfolioFilter(null, null, false, null, null, true))).isFalse();
+    // Pendientes de clasificación: sin subcategoría.
+    assertThat(ExpedienteService.matches(unassignedRentPendingLand, new PortfolioFilter(terrenos, null, true, null, null, false))).isTrue();
+    assertThat(ExpedienteService.matches(houseSaleAna, new PortfolioFilter(null, null, true, null, null, false))).isFalse();
+    assertThat(ExpedienteService.matches(unassignedRentPendingLand, PortfolioFilter.NONE)).isTrue();
   }
 
   @Test

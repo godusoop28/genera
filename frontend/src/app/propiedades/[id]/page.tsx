@@ -141,7 +141,7 @@ function Summary({ property: p }: { property: CapturedProperty }) {
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
       <Card>
-        <CardHeader title={priceOf(d)} description={`${subtypeLabel(d.subtype)} · ${typeLabels[d.propertyType]} · ${operationLabels[d.operation]}`} action={<ListingStatusBadge status={d.status} />} />
+        <CardHeader title={priceOf(d)} description={`${p.propertyTypeLabel ?? `${subtypeLabel(d.subtype)} · ${typeLabels[d.propertyType]}`} · ${operationLabels[d.operation]}`} action={<ListingStatusBadge status={d.status} />} />
         <Features bedrooms={d.bedrooms} bathrooms={d.bathrooms} builtM2={d.builtM2} landM2={d.landM2} />
         {d.description ? <p className="mt-4 whitespace-pre-line text-sm text-obsessed">{d.description}</p> : <p className="mt-4 text-sm text-muted">Sin descripción.</p>}
       </Card>

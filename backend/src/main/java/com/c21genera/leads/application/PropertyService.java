@@ -13,6 +13,7 @@ import com.c21genera.online21.PropertyListings.ListingDraft;
 import com.c21genera.online21.PropertyListings.ListingFilter;
 import com.c21genera.online21.PropertyListings.ListingPage;
 import com.c21genera.online21.PropertyListings.PublishException;
+import com.c21genera.propertycatalog.PropertyCatalog;
 import com.c21genera.shared.domain.NotFoundException;
 import com.c21genera.shared.domain.UnprocessableException;
 import java.math.BigDecimal;
@@ -67,16 +68,24 @@ public class PropertyService {
   private final AdvisorProfileRepository profiles;
   private final PropertyListings listings;
   private final StaffNames staff;
+  private final PropertyCatalog catalog;
   private final TransactionTemplate tx;
   private final Clock clock;
   private final Set<UUID> inFlight = ConcurrentHashMap.newKeySet();
 
   PropertyService(
-      CrmPropertyRepository properties, AdvisorProfileRepository profiles, PropertyListings listings, StaffNames staff, TransactionTemplate tx, Clock clock) {
+      CrmPropertyRepository properties,
+      AdvisorProfileRepository profiles,
+      PropertyListings listings,
+      StaffNames staff,
+      PropertyCatalog catalog,
+      TransactionTemplate tx,
+      Clock clock) {
     this.properties = properties;
     this.profiles = profiles;
     this.listings = listings;
     this.staff = staff;
+    this.catalog = catalog;
     this.tx = tx;
     this.clock = clock;
   }
@@ -96,7 +105,9 @@ public class PropertyService {
       Person createdBy,
       Instant createdAt,
       Instant updatedAt,
-      boolean canEdit) {}
+      boolean canEdit,
+      // Control de Cambios #26: "Habitacional → Casa en condominio" (null si se capturó antes del catálogo).
+      String propertyTypeLabel) {}
 
   public record InventoryItem(Listing listing, Person advisor, UUID generaId) {}
 
@@ -170,7 +181,7 @@ public class PropertyService {
         s -> {
           CrmProperty p = load(id);
           requireEditable(p, user);
-          Data data = normalize(input, user, p.getAdvisorUserId());
+          Data data = normalize(input, user, p.getAdvisorUserId(), p.data().catalogSubtypeId());
           p.apply(data);
         });
     sync(id);
@@ -264,21 +275,37 @@ public class PropertyService {
   // ---------------------------------------------------------------------------
 
   private Data normalize(Data in, CurrentUser user) {
-    return normalize(in, user, null);
+    return normalize(in, user, null, null);
   }
 
-  /** Valida con las reglas de 21Online y fija el asesor (quien no ve todo solo puede ponerse a sí mismo). */
-  Data normalize(Data in, CurrentUser user, UUID currentAdvisor) {
+  /**
+   * Valida con las reglas de 21Online y fija el asesor (quien no ve todo solo puede ponerse a sí mismo).
+   * Control de Cambios #26: el tipo se elige en el catálogo de inmuebles; el tipo y subtipo de 21Online
+   * salen de la subcategoría. currentSubtype: la que ya tenía (se acepta aunque se haya desactivado).
+   */
+  Data normalize(Data in, CurrentUser user, UUID currentAdvisor, UUID currentSubtype) {
     String operation = lower(in.operation());
     if (!"venta".equals(operation) && !"renta".equals(operation)) {
       throw new UnprocessableException("PROPERTY_INVALID", "Elige si la propiedad es de venta o de renta.");
     }
-    String type = lower(in.propertyType());
+    if (in.catalogSubtypeId() == null) {
+      throw new UnprocessableException("PROPERTY_INVALID", "Selecciona el tipo de inmueble (la subcategoría, no solo la categoría).");
+    }
+    PropertyCatalog.Subtype catalogSubtype =
+        catalog.subtype(in.catalogSubtypeId()).orElseThrow(() -> new UnprocessableException("PROPERTY_INVALID", "Ese tipo de inmueble no existe en el catálogo."));
+    if (!catalogSubtype.active() && !catalogSubtype.id().equals(currentSubtype)) {
+      throw new UnprocessableException("PROPERTY_INVALID", "\"" + catalogSubtype.name() + "\" ya no se ofrece en el catálogo. Elige otro tipo de inmueble.");
+    }
+    String typeDetail = catalogSubtype.requiresDetail() ? blankToNull(in.propertyTypeDetail()) : null;
+    if (catalogSubtype.requiresDetail() && typeDetail == null) {
+      throw new UnprocessableException("PROPERTY_INVALID", "Describe el tipo de inmueble (elegiste \"" + catalogSubtype.name() + "\").");
+    }
+    String type = catalogSubtype.online21Type();
     List<String> subtypes = SUBTYPES.get(type);
     if (subtypes == null) {
       throw new UnprocessableException("PROPERTY_INVALID", "Elige el tipo de propiedad (habitacional o comercial).");
     }
-    String subtype = lower(in.subtype());
+    String subtype = catalogSubtype.online21Subtype();
     if (!subtypes.contains(subtype)) {
       throw new UnprocessableException("PROPERTY_INVALID", "El subtipo no corresponde al tipo de propiedad en 21Online.");
     }
@@ -316,7 +343,7 @@ public class PropertyService {
         currency, in.hidePrice(), blankToNull(in.street()), blankToNull(in.extNumber()), neighborhood, municipality, state, blankToNull(in.postalCode()),
         in.hideStreet(), in.hideNumber(), nonNegative(in.bedrooms()), positive(in.bathrooms()), nonNegative(in.halfBathrooms()), nonNegative(in.parking()),
         positive(in.landM2()), positive(in.builtM2()), nonNegative(in.levels()), nonNegative(in.age()), positive(in.maintenanceFee()), in.commission(),
-        in.publishOnline(), advisor);
+        in.publishOnline(), advisor, catalogSubtype.id(), typeDetail);
   }
 
   private void requireEditable(CrmProperty p, CurrentUser user) {
@@ -340,7 +367,8 @@ public class PropertyService {
     return new PropertyView(
         p.getId(), p.getOnline21Id(), p.getSyncStatus().name(), p.getSyncError(), p.isSyncUncertain(), p.getSyncedAt(), p.data(),
         advisor == null ? null : new Person(advisor, staff.nameOf(advisor, names)), linked,
-        new Person(p.getCreatedByUserId(), staff.nameOf(p.getCreatedByUserId(), names)), p.getCreatedAt(), p.getUpdatedAt(), canEdit(p, user));
+        new Person(p.getCreatedByUserId(), staff.nameOf(p.getCreatedByUserId(), names)), p.getCreatedAt(), p.getUpdatedAt(), canEdit(p, user),
+        catalog.subtype(p.data().catalogSubtypeId()).map(s -> s.label(p.data().propertyTypeDetail())).orElse(null));
   }
 
   /** Asesor de Genera vinculado al usuario de 21Online (Asesores → usuario de 21Online). */

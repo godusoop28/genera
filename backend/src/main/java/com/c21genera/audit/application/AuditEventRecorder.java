@@ -421,6 +421,14 @@ class AuditEventRecorder {
         "No se pudo entregar el aviso \"" + event.kind() + "\" a " + event.maskedRecipient() + ": " + event.error());
   }
 
+  // --- Cuentas de usuario (Control de Cambios #25) ----------------------
+
+  /** Solo rastro técnico (no hay expediente): quién, a qué cuenta, qué y cuándo. Nunca contraseñas. */
+  @ApplicationModuleListener
+  void on(com.c21genera.shared.events.UserAccountEvents.UserAccountChanged event) {
+    record("User" + event.action(), "User", event.userId(), event.actor(), event.userName() + ": " + event.summary());
+  }
+
   // ---------------------------------------------------------------------
 
   private static String reasonLabel(String code) {

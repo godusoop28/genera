@@ -20,6 +20,7 @@ Modulith. Base de paquete: `com.c21genera`.
 | `audit` | Rastro técnico (`AuditEvent`) separado de la línea de tiempo amigable (`Activity`) |
 | `closing` | Seguimiento genérico de cierre tras la aceptación del inmueble |
 | `notary` | Documentos por etapa (comercialización, envío inicial a notaría, cierre con oferta aceptada): paquetes enviados con la versión de cada documento y vigencia de los documentos de cierre |
+| `propertycatalog` | Catálogo de inmuebles (Control de Cambios #26): categorías y subcategorías que el administrador mantiene; cada subcategoría define el tratamiento de documentos/contrato y su tipo en 21Online |
 | `leads` | CRM (Módulo 3): leads, etapas, actividades, ruteo de asesores (asesor de la propiedad o ruleta ponderada) y dashboard |
 | `online21` | Integración con la API REST de 21Online (JWT): inventario para el bot, inventario completo y alta/edición de propiedades para el CRM, registro opcional de prospectos |
 | `assistant` | Asistente de WhatsApp con IA (misma lógica que el panel de Inova): WhatsApp Cloud API, OpenAI con herramientas acotadas, bandeja y simulador |
@@ -69,6 +70,16 @@ hace nada si la variable está vacía, y nunca corre en `prod`).
   `/api/v1/internal/**` (staff, JWT Bearer obligatorio).
 - Permisos con nombre (16, ver `identity.domain.PermissionCode`) verificados
   con `@PreAuthorize("hasAuthority('...')")`, nunca `if (role == ADMIN)`.
+- Cuentas del personal (Control de Cambios #25): nadie conoce la contraseña de
+  otro. El alta y el restablecimiento generan un enlace de un solo uso
+  (`password_setup_token`, solo el hash; `ACCOUNT_LINK_BASE_URL`) que el
+  administrador comparte; cada quien cambia la suya en "Mi perfil" pidiendo la
+  actual. Política NIST (mínimo 10, sin contraseñas comunes), bloqueo de 15 min
+  tras 5 intentos, y `SessionRevocationValidator`: desactivar, dar de baja,
+  cambiar contraseña o rol invalida al momento los access tokens anteriores.
+  "Eliminar" no existe: desactivar (reversible) o dar de baja (definitivo, exige
+  reasignar antes vía `shared.staff.StaffWorkload`). Todo queda en la bitácora
+  (`audit_event` con aggregate_type `User`), nunca contraseñas.
 - Contraseñas con BCrypt; JWT HS256 autoemitido (`JWT_SECRET`, mínimo 32
   bytes, sin valor por defecto fuera de `local`/`test`).
 - Los clientes NUNCA tienen cuenta ni contraseña: usan un

@@ -43,7 +43,7 @@ public class DevAdminSeeder implements ApplicationRunner {
     if (userRepository.existsByEmailIgnoreCase(properties.adminEmail())) {
       return;
     }
-    userService.create(properties.adminName(), properties.adminEmail(), properties.adminPassword(), RoleCode.ADMINISTRATOR);
+    userService.createWithPassword(properties.adminName(), properties.adminEmail(), properties.adminPassword(), RoleCode.ADMINISTRATOR);
     log.info("Usuario administrador de demo creado: {}", properties.adminEmail());
   }
 }

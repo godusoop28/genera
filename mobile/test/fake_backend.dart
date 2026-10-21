@@ -14,6 +14,12 @@ final _expediente = {
   'accreditationType': 'ESCRITURA_PUBLICA',
   'condominiumRegime': true,
   'propertyCaseType': 'HOUSING',
+  'propertyCategoryId': 'cat-1',
+  'propertyCategoryName': 'Habitacional',
+  'propertySubtypeId': 'sub-casa',
+  'propertySubtypeName': 'Casa',
+  'propertyTypeDetail': null,
+  'propertyTypeLabel': 'Habitacional → Casa',
   'operationType': 'SALE',
   'assignedAdvisorId': 'u-2',
   'assignedAdvisorName': 'Ana Sofía Herrera',
@@ -221,8 +227,79 @@ final List<({String method, String path, Object? body})> sentRequests = [];
     if (p == '/internal/expedientes/duplicate-check') return (200, []);
     if (p.startsWith('/internal/leads/lead-1/')) return fakeBackend('GET', Uri.parse('/api/v1/internal/leads/lead-1'));
     if (p == '/internal/properties') return (201, _captured);
+    // Control de Cambios #25: el alta y el restablecimiento devuelven un enlace de un solo uso.
+    final link = {'url': 'https://genera.test/acceso/tok-123', 'expiresAt': '2026-10-17T16:30:00Z'};
+    if (p == '/internal/users') {
+      final b = body as Map;
+      return (
+        201,
+        {
+          'user': {'id': 'u-9', 'name': b['name'], 'email': b['email'], 'roleCode': b['roleCode'], 'roleName': 'Asesor', 'status': 'PENDING', 'lastActivityAt': null, 'locked': false},
+          'link': {...link, 'purpose': 'INVITE'},
+        }
+      );
+    }
+    if (p.startsWith('/internal/users/') && p.endsWith('/password-link')) return (200, {...link, 'purpose': 'RESET'});
     if (p.startsWith('/internal/properties/prop-1')) return (200, {..._captured, 'syncStatus': 'DONE', 'syncError': null, 'online21Id': 700001, 'syncedAt': _now});
     return (200, {});
+  }
+  // Control de Cambios #26: catálogo de inmuebles.
+  if (p == '/internal/property-catalog') {
+    Map<String, Object?> sub(String id, String cat, String catName, String name, String caseType, String type, String subtype, [bool detail = false]) => {
+          'id': id,
+          'categoryId': cat,
+          'categoryName': catName,
+          'name': name,
+          'sortOrder': 10,
+          'active': true,
+          'requiresDetail': detail,
+          'caseType': caseType,
+          'online21Type': type,
+          'online21Subtype': subtype,
+        };
+    return (
+      200,
+      [
+        {
+          'id': 'cat-1',
+          'name': 'Habitacional',
+          'sortOrder': 10,
+          'active': true,
+          'subtypes': [
+            sub('sub-casa', 'cat-1', 'Habitacional', 'Casa', 'HOUSING', 'habitacional', 'casa'),
+            sub('sub-depto', 'cat-1', 'Habitacional', 'Departamento', 'DEPARTMENT', 'habitacional', 'departamento'),
+          ],
+        },
+        {
+          'id': 'cat-3',
+          'name': 'Industrial y logística',
+          'sortOrder': 40,
+          'active': true,
+          'subtypes': [sub('sub-nave', 'cat-3', 'Industrial y logística', 'Nave industrial', 'COMMERCIAL', 'comercial', 'nave')],
+        },
+        {
+          'id': 'cat-8',
+          'name': 'Especiales',
+          'sortOrder': 80,
+          'active': true,
+          'subtypes': [sub('sub-otro', 'cat-8', 'Especiales', 'Otro — especificar', 'COMMERCIAL', 'comercial', 'inmueble-productivo', true)],
+        },
+      ],
+    );
+  }
+  if (p == '/internal/audit-events/accounts') {
+    return (
+      200,
+      {
+        'items': [
+          {'id': 'a-1', 'occurredAt': _now, 'eventType': 'UserCREATED', 'aggregateType': 'User', 'aggregateId': 'u-2', 'actorType': 'STAFF', 'actorName': 'Administrador Demo', 'actorRole': 'ADMINISTRATOR', 'summary': 'Ana Sofía Herrera: Alta de la cuenta con rol Asesor'},
+        ],
+        'page': 0,
+        'size': 100,
+        'totalElements': 1,
+        'totalPages': 1,
+      }
+    );
   }
   if (p == '/internal/me') return (200, {'id': 'u-1', 'name': 'Administrador Demo', 'email': 'admin@demo.local', 'role': 'ADMINISTRATOR', 'permissions': ['*']});
   if (p.startsWith('/internal/drafts/')) return (204, null);
@@ -243,9 +320,9 @@ final List<({String method, String path, Object? body})> sentRequests = [];
       {
         'total': counts(5),
         'byTypeOperation': [
-          {'propertyCaseType': 'HOUSING', 'operationType': 'SALE', 'counts': counts(3)},
-          {'propertyCaseType': 'HOUSING', 'operationType': 'RENT', 'counts': counts(0)},
-          {'propertyCaseType': 'DEPARTMENT', 'operationType': 'RENT', 'counts': counts(2)},
+          {'categoryId': 'cat-1', 'categoryName': 'Habitacional', 'subtypeId': 'sub-casa', 'subtypeName': 'Casa', 'operationType': 'SALE', 'counts': counts(3)},
+          {'categoryId': 'cat-1', 'categoryName': 'Habitacional', 'subtypeId': 'sub-depto', 'subtypeName': 'Departamento', 'operationType': 'RENT', 'counts': counts(1)},
+          {'categoryId': 'cat-2', 'categoryName': 'Terrenos', 'subtypeId': null, 'subtypeName': 'Pendiente de clasificación', 'operationType': 'SALE', 'counts': counts(1)},
         ],
         'byAdvisor': [
           {'advisorId': 'u-2', 'name': 'Ana Sofía Herrera', 'counts': counts(4)},
@@ -511,10 +588,11 @@ final List<({String method, String path, Object? body})> sentRequests = [];
           {'id': 'u-1', 'name': 'Administrador Demo', 'email': 'admin@demo.local', 'roleCode': 'ADMINISTRATOR', 'roleName': 'Administrador', 'status': 'ACTIVE', 'lastActivityAt': _now},
           {'id': 'u-2', 'name': 'Ana Sofía Herrera', 'email': 'ana@c21genera.com', 'roleCode': 'ADVISOR', 'roleName': 'Asesor', 'status': 'ACTIVE', 'lastActivityAt': null},
           {'id': 'u-5', 'name': 'Luis Revisor', 'email': 'luis@c21genera.com', 'roleCode': 'DOCUMENT_REVIEWER', 'roleName': 'Revisor documental', 'status': 'INACTIVE', 'lastActivityAt': null},
+          {'id': 'u-6', 'name': 'Pedro Nuevo', 'email': 'pedro@c21genera.com', 'roleCode': 'ADVISOR', 'roleName': 'Asesor', 'status': 'PENDING', 'lastActivityAt': null, 'locked': false},
         ],
         'page': 0,
         'size': 100,
-        'totalElements': 3,
+        'totalElements': 4,
         'totalPages': 1,
       }
     );

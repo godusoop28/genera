@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../api/api.dart' as api;
 import '../api/client.dart';
+import '../labels.dart';
 import '../state/auth.dart';
 import '../state/settings.dart';
 import '../ui/shell.dart';
@@ -33,11 +34,13 @@ class SettingsScreen extends StatelessWidget {
     final settings = context.watch<SettingsState>();
     final c = context.c;
     return AppScaffold(
-      title: 'Configuración',
+      title: 'Mi perfil y configuración',
       route: '/configuracion',
       body: PageBody(
-        subtitle: 'Preferencias de apariencia y de la cuenta. La apariencia se guarda en este dispositivo.',
+        subtitle: 'Tu cuenta, tu contraseña y las preferencias de apariencia (estas se guardan en este dispositivo).',
         children: spaced([
+          const _AccountCard(),
+          const _ChangePasswordCard(),
           AppCard(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               const CardHeader(title: 'Tema', description: 'Elige la apariencia de la aplicación.'),
@@ -77,7 +80,6 @@ class SettingsScreen extends StatelessWidget {
               ]),
             ]),
           ),
-          const _AccountCard(),
           AppCard(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               const CardHeader(
@@ -98,29 +100,86 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
-class _AccountCard extends StatefulWidget {
+/// Control de Cambios #25: "Mi perfil". Los datos de la cuenta y el rol los administra el
+/// administrador (Usuarios y permisos); aquí solo se consultan.
+class _AccountCard extends StatelessWidget {
   const _AccountCard();
 
   @override
-  State<_AccountCard> createState() => _AccountCardState();
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthState>();
+    final user = auth.user;
+    return AppCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const CardHeader(title: 'Mi perfil', description: 'Datos de la cuenta con la sesión activa.'),
+        FieldGrid(children: [
+          FieldView('Nombre', user?.name ?? '—', upper: true),
+          FieldView('Correo de acceso', user?.email ?? '—', upper: true),
+          FieldView('Rol', user == null ? '—' : label(roleLabels, user.role), upper: true),
+        ]),
+        const SizedBox(height: 12),
+        MutedText(
+          auth.can('USER_MANAGE')
+              ? 'Tu nombre, correo y rol se cambian desde Usuarios y permisos (tu propio rol solo lo puede cambiar otro administrador).'
+              : 'Para cambiar tu nombre, correo o rol, pídeselo al administrador.',
+          size: 13,
+        ),
+      ]),
+    );
+  }
 }
 
-class _AccountCardState extends State<_AccountCard> {
-  late final auth = context.read<AuthState>();
-  late String name = auth.user?.name ?? '';
-  late String email = auth.user?.email ?? '';
-  bool saving = false;
+/// Control de Cambios #25: cada usuario cambia su contraseña escribiendo la actual. Se cierran sus
+/// demás sesiones y este dispositivo continúa con una sesión nueva.
+class _ChangePasswordCard extends StatefulWidget {
+  const _ChangePasswordCard();
+
+  @override
+  State<_ChangePasswordCard> createState() => _ChangePasswordCardState();
+}
+
+class _ChangePasswordCardState extends State<_ChangePasswordCard> {
+  static const _minLength = 10;
+  var current = '';
+  var password = '';
+  var confirm = '';
+  var submitted = false;
+  var saving = false;
+  String? error;
+  int _formKey = 0;
+
+  String? get problem {
+    if (current.isEmpty) return 'Escribe tu contraseña actual.';
+    if (password.length < _minLength) return 'Usa al menos $_minLength caracteres. Una frase corta es fácil de recordar y difícil de adivinar.';
+    if (password.trim().isEmpty) return 'La contraseña no puede ser solo espacios.';
+    final email = context.read<AuthState>().user?.email ?? '';
+    final local = email.split('@').first.toLowerCase();
+    if (local.length >= 4 && password.toLowerCase().contains(local)) return 'La contraseña no debe contener tu correo.';
+    if (password != confirm) return 'Las dos contraseñas no coinciden.';
+    return null;
+  }
 
   Future<void> save() async {
-    final user = auth.user;
-    if (user == null || name.trim().isEmpty || email.trim().isEmpty) return;
-    setState(() => saving = true);
+    setState(() => submitted = true);
+    if (problem != null) return;
+    setState(() {
+      saving = true;
+      error = null;
+    });
     try {
-      await api.updateUser(user.id, name.trim(), email.trim(), user.role);
-      await auth.refreshUser();
-      if (mounted) showToast(context, 'Datos de la cuenta actualizados.');
+      final auth = await api.changeOwnPassword(current, password);
+      await ApiClient.instance.storeTokens('${auth['accessToken']}', auth['refreshToken'] as String?);
+      if (!mounted) return;
+      setState(() {
+        current = '';
+        password = '';
+        confirm = '';
+        submitted = false;
+        _formKey++;
+      });
+      showToast(context, 'Contraseña cambiada. Se cerraron tus sesiones en otros dispositivos.');
     } catch (err) {
-      if (mounted) showToast(context, err is ApiError ? 'No se pudo guardar (${err.status}): ${err.message}' : 'Error de conexión.');
+      setState(() => error = errorText(err));
     } finally {
       if (mounted) setState(() => saving = false);
     }
@@ -129,18 +188,31 @@ class _AccountCardState extends State<_AccountCard> {
   @override
   Widget build(BuildContext context) {
     return AppCard(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const CardHeader(title: 'Cuenta', description: 'Datos del personal interno con la sesión activa.'),
-        AppTextField(label: 'Nombre completo', value: name, onChanged: (v) => setState(() => name = v)),
+      child: Column(key: ValueKey(_formKey), crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const CardHeader(title: 'Cambiar contraseña', description: 'Al cambiarla se cierran tus sesiones abiertas en otros dispositivos.'),
+        AppTextField(label: 'Contraseña actual', obscure: true, autofillHints: const [AutofillHints.password], onChanged: (v) => setState(() => current = v)),
         const SizedBox(height: 12),
-        AppTextField(label: 'Correo electrónico', value: email, keyboardType: TextInputType.emailAddress, hint: 'nombre@c21genera.com', onChanged: (v) => setState(() => email = v)),
-        const SizedBox(height: 12),
-        AppTextField(label: 'Rol', value: auth.user?.role ?? '', readOnly: true, enabled: false),
-        const SizedBox(height: 16),
-        Align(
-          alignment: Alignment.centerRight,
-          child: Btn('Guardar cambios', loading: saving, onPressed: name.trim().isEmpty || email.trim().isEmpty ? null : save),
+        AppTextField(
+          label: 'Nueva contraseña',
+          obscure: true,
+          maxLength: 128,
+          autofillHints: const [AutofillHints.newPassword],
+          helper: 'Mínimo $_minLength caracteres. No necesita símbolos; evita tu nombre o datos obvios.',
+          onChanged: (v) => setState(() => password = v),
         ),
+        const SizedBox(height: 12),
+        AppTextField(
+          label: 'Confirma la contraseña',
+          obscure: true,
+          maxLength: 128,
+          error: submitted ? problem : null,
+          onChanged: (v) => setState(() => confirm = v),
+        ),
+        if (error != null) ...[const SizedBox(height: 12), Notice(tone: Tone.danger, text: error)],
+        const SizedBox(height: 8),
+        const MutedText('¿No recuerdas la actual? Pide al administrador un enlace para restablecerla.', size: 12.5),
+        const SizedBox(height: 12),
+        Align(alignment: Alignment.centerRight, child: Btn('Cambiar contraseña', loading: saving, onPressed: save)),
       ]),
     );
   }
