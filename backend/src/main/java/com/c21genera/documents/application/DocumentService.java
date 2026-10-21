@@ -30,10 +30,12 @@ import com.c21genera.shared.domain.UnprocessableException;
 import com.c21genera.shared.events.Actor;
 import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsApproved;
 import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsUploaded;
+import com.c21genera.shared.events.DocumentEvents.CustomDocumentDeleted;
 import com.c21genera.shared.events.DocumentEvents.DocumentApplicabilityChanged;
 import com.c21genera.shared.events.DocumentEvents.DocumentContentAssessed;
 import com.c21genera.shared.events.DocumentEvents.DocumentDeferralChanged;
 import com.c21genera.shared.events.DocumentEvents.DocumentFileMoved;
+import com.c21genera.shared.events.DocumentEvents.DocumentFileRemoved;
 import com.c21genera.shared.events.DocumentEvents.DocumentFollowUp;
 import com.c21genera.shared.events.DocumentEvents.DocumentFollowUpChanged;
 import com.c21genera.shared.events.DocumentEvents.DocumentReprocessRequested;
@@ -179,7 +181,8 @@ public class DocumentService implements DocumentsApi {
 
   @Transactional(readOnly = true)
   public Optional<DocumentVersion> latestVersion(UUID documentId) {
-    return versionRepository.findByDocumentIdOrderByVersionNumberDesc(documentId).stream().findFirst();
+    // La vigente: la más reciente que no se eliminó.
+    return versionRepository.findByDocumentIdAndRemovedAtIsNullOrderByVersionNumberDesc(documentId).stream().findFirst();
   }
 
   @Transactional(readOnly = true)
@@ -244,6 +247,10 @@ public class DocumentService implements DocumentsApi {
       throw new ConflictException("DOCUMENT_ALREADY_ACCEPTED", "Este documento ya fue aceptado; no es necesario volver a cargarlo.");
     }
     Completeness before = completenessOf(document.getExpedienteId());
+    // El staff puede cargar cuando sea: si estaba en "No aplica", cargarlo es volver a pedirlo.
+    if (via == UploadedVia.INTERNAL && document.getStatus() == DocumentStatus.NOT_APPLICABLE) {
+      document.requestAgain();
+    }
     String previousStatus = document.getStatus().name();
     int versionNumber = document.startNewVersion();
     Instant now = clock.instant();
@@ -403,6 +410,9 @@ public class DocumentService implements DocumentsApi {
       pageRefs.add(new PageRef(page.getPageNumber(), page.getStorageKeyOriginal(), page.getMimeType()));
     }
     source.detachCurrentFile();
+    // El archivo ya es del destino: en el origen ya no queda ninguno vigente.
+    Instant now = clock.instant();
+    versionRepository.findByDocumentIdAndRemovedAtIsNullOrderByVersionNumberDesc(sourceDocumentId).forEach(v -> v.markRemoved(actor.userId(), now));
 
     events.publishEvent(
         new DocumentFileMoved(source.getExpedienteId(), sourceDocumentId, source.getType(), targetDocumentId, target.getType(), actor));
@@ -641,6 +651,44 @@ public class DocumentService implements DocumentsApi {
     documentRepository.flush();
     publishCompletenessChanges(expedienteId, before);
     return document;
+  }
+
+  /**
+   * "Eliminar archivo": el documento vuelve a pendiente para subirlo de nuevo, aunque ya estuviera
+   * aceptado. Sus versiones dejan de ser vigentes pero no se borran (auditoría). Si era obligatorio,
+   * el expediente vuelve a pedirlo (RequiredDocumentsReopened).
+   */
+  public Document removeFile(UUID documentId, Actor actor) {
+    Document document = get(documentId);
+    List<DocumentVersion> active = versionRepository.findByDocumentIdAndRemovedAtIsNullOrderByVersionNumberDesc(documentId);
+    if (active.isEmpty()) {
+      throw new UnprocessableException("NO_FILE", "Este documento no tiene un archivo cargado.");
+    }
+    Completeness before = completenessOf(document.getExpedienteId());
+    boolean wasAccepted = document.getStatus() == DocumentStatus.ACCEPTED;
+    document.fileRemoved();
+    Instant now = clock.instant();
+    active.forEach(v -> v.markRemoved(actor.userId(), now));
+    events.publishEvent(
+        new DocumentFileRemoved(document.getExpedienteId(), documentId, document.getType(), document.displayName(), wasAccepted, actor));
+    documentRepository.flush();
+    publishCompletenessChanges(document.getExpedienteId(), before);
+    return document;
+  }
+
+  /** Quita del expediente un documento agregado a mano, con todo y sus archivos. */
+  public void deleteCustomDocument(UUID documentId, Actor actor) {
+    Document document = get(documentId);
+    if (!document.isCustom()) {
+      throw new ConflictException(
+          "DOCUMENT_NOT_CUSTOM", "Solo se pueden quitar los documentos agregados a mano; los del listado se marcan como \"No aplica\".");
+    }
+    UUID expedienteId = document.getExpedienteId();
+    Completeness before = completenessOf(expedienteId);
+    documentRepository.delete(document);
+    events.publishEvent(new CustomDocumentDeleted(expedienteId, documentId, document.getCustomName(), actor));
+    documentRepository.flush();
+    publishCompletenessChanges(expedienteId, before);
   }
 
   /**
@@ -958,7 +1006,7 @@ public class DocumentService implements DocumentsApi {
   @Override
   @Transactional(readOnly = true)
   public List<VersionView> versionViewsOf(UUID documentId) {
-    return versionRepository.findByDocumentIdOrderByVersionNumberDesc(documentId).stream()
+    return versionRepository.findByDocumentIdAndRemovedAtIsNullOrderByVersionNumberDesc(documentId).stream()
         .map(v -> new VersionView(v.getId(), v.getDocumentId(), v.getVersionNumber(), v.getUploadedAt(), v.getStorageKeyPdf()))
         .toList();
   }

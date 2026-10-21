@@ -4,9 +4,6 @@ import com.c21genera.compliance.domain.ComplianceCheckCode;
 import com.c21genera.compliance.domain.ComplianceChecklist;
 import com.c21genera.compliance.domain.ComplianceChecklist.ComplianceCheckResult;
 import com.c21genera.documents.DocumentsApi;
-import com.c21genera.expedientes.ExpedienteLifecycleApi;
-import com.c21genera.expedientes.ExpedienteStatus;
-import com.c21genera.expedientes.ExpedienteSummary;
 import com.c21genera.extraction.ExtractionApi;
 import com.c21genera.privacy.PrivacyApi;
 import com.c21genera.privacy.PrivacyApi.ConsentView;
@@ -24,14 +21,11 @@ import org.springframework.stereotype.Service;
 @Service
 public class ComplianceChecklistService {
 
-  private final ExpedienteLifecycleApi expedienteApi;
   private final DocumentsApi documentsApi;
   private final PrivacyApi privacyApi;
   private final ExtractionApi extractionApi;
 
-  public ComplianceChecklistService(
-      ExpedienteLifecycleApi expedienteApi, DocumentsApi documentsApi, PrivacyApi privacyApi, ExtractionApi extractionApi) {
-    this.expedienteApi = expedienteApi;
+  public ComplianceChecklistService(DocumentsApi documentsApi, PrivacyApi privacyApi, ExtractionApi extractionApi) {
     this.documentsApi = documentsApi;
     this.privacyApi = privacyApi;
     this.extractionApi = extractionApi;
@@ -65,10 +59,7 @@ public class ComplianceChecklistService {
             documentsApi.allRequiredAccepted(expedienteId),
             "Todos los documentos obligatorios deben estar aceptados"));
 
-    ExpedienteSummary summary = expedienteApi.getSummary(expedienteId);
-    boolean receptionSigned = summary.status().ordinal() >= ExpedienteStatus.RECEPTION_SIGNED.ordinal();
-    items.add(
-        result(ComplianceCheckCode.RECEPTION_SIGNED, receptionSigned, "La recepción de documentos debe estar firmada"));
+    // La firma de la recepción de documentos ya no es requisito para el contrato.
 
     items.add(
         result(

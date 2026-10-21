@@ -66,6 +66,16 @@ export function reprocessAllDocuments(expedienteId: string) {
 }
 
 /** "Cambiar tipo de documento": mueve el archivo vigente a otro requisito del expediente. */
+/** "Eliminar archivo": vuelve a pendiente (aunque estuviera aceptado) para subirlo de nuevo; el historial se conserva. */
+export function removeDocumentFile(documentId: string) {
+  return apiClient.delete<DocumentResponse>(`/internal/documents/${documentId}/file`);
+}
+
+/** Quita un documento agregado a mano. */
+export function deleteCustomDocument(documentId: string) {
+  return apiClient.delete<void>(`/internal/documents/${documentId}`);
+}
+
 export function moveDocumentFile(documentId: string, targetDocumentId: string) {
   return apiClient.post<DocumentResponse>(`/internal/documents/${documentId}/move`, { targetDocumentId });
 }

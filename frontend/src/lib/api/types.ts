@@ -424,6 +424,8 @@ export interface DocumentVersionResponse {
   uploadedByName: string | null;
   processingStatus: BackendProcessingStatus;
   processingError: string | null;
+  /** Se eliminó con "Eliminar archivo": ya no es la vigente (se conserva para auditoría). */
+  removedAt: string | null;
 }
 
 export interface ReviewHistoryResponse {

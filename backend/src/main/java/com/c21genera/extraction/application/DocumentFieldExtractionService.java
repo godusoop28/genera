@@ -25,7 +25,9 @@ import com.c21genera.extraction.infrastructure.DataConflictRepository;
 import com.c21genera.extraction.infrastructure.ExtractedFieldObservationRepository;
 import com.c21genera.shared.domain.DocumentTypeCode;
 import com.c21genera.shared.domain.NotFoundException;
+import com.c21genera.shared.events.DocumentEvents.CustomDocumentDeleted;
 import com.c21genera.shared.events.DocumentEvents.DocumentContentAssessed;
+import com.c21genera.shared.events.DocumentEvents.DocumentFileRemoved;
 import com.c21genera.shared.events.ExpedienteEvents.ExpedienteDataCorrected;
 import com.c21genera.shared.storage.FileStorage;
 import java.io.InputStream;
@@ -258,7 +260,7 @@ public class DocumentFieldExtractionService implements ExtractionApi {
     return documentsApi
         .currentVersionIdOf(documentId)
         .map(current -> all.stream().filter(o -> o.getDocumentVersionId().equals(current)).toList())
-        .orElseGet(() -> latestVersionOnly(all));
+        .orElseGet(List::of);
   }
 
   /** Datos detectados en la versión vigente de cada documento del expediente (sin rechazados ni "No aplica"). */
@@ -338,6 +340,17 @@ public class DocumentFieldExtractionService implements ExtractionApi {
   /** Si se corrige un dato capturado (nombre, domicilio, superficies...) la comparación se repite. */
   @ApplicationModuleListener
   void on(ExpedienteDataCorrected event) {
+    runConsistencyCheck(event.expedienteId());
+  }
+
+  /** Lo leído de un archivo eliminado ya no cuenta: se cierran las diferencias que venían de él. */
+  @ApplicationModuleListener
+  void on(DocumentFileRemoved event) {
+    runConsistencyCheck(event.expedienteId());
+  }
+
+  @ApplicationModuleListener
+  void on(CustomDocumentDeleted event) {
     runConsistencyCheck(event.expedienteId());
   }
 
@@ -504,7 +517,11 @@ public class DocumentFieldExtractionService implements ExtractionApi {
         .filter(
             o -> {
               RequirementStatusView doc = documents.get(o.getDocumentId());
-              return doc == null || doc.currentVersionId() == null || doc.currentVersionId().equals(o.getDocumentVersionId());
+              if (doc == null) {
+                return true;
+              }
+              // Pendiente y sin versión vigente: se eliminó (o movió) su archivo y no cuenta lo leído antes.
+              return doc.currentVersionId() == null ? !"PENDING".equals(doc.status()) : doc.currentVersionId().equals(o.getDocumentVersionId());
             })
         .toList();
   }

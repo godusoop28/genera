@@ -219,7 +219,7 @@ export function SummaryTab({ expediente, participants, reload, freshPublicLink: 
         <Card>
           <CardHeader
             title="Recepción documental"
-            description="Todos los documentos obligatorios están aceptados. Firma la recepción para pasar al contrato."
+            description="Todos los documentos obligatorios están aceptados. Firmar la recepción es opcional: el contrato ya se puede generar sin este paso."
           />
           <Button onClick={() => run(() => signReception(expediente.id), "Recepción firmada.")} disabled={busy}>
             <FileSignature className="h-4 w-4" aria-hidden /> Firmar recepción

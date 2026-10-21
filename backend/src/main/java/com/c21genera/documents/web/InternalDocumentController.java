@@ -342,6 +342,25 @@ public class InternalDocumentController {
     return toResponse(documentService.moveCurrentFile(documentId, request.targetDocumentId(), user.toActor()));
   }
 
+  /** "Eliminar archivo": el documento vuelve a pendiente (aunque estuviera aceptado) para subirlo de nuevo. */
+  @DeleteMapping("/api/v1/internal/documents/{documentId}/file")
+  @PreAuthorize("hasAuthority('DOCUMENT_UPLOAD')")
+  public DocumentResponse removeFile(@PathVariable UUID documentId, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = CurrentUser.from(jwt);
+    requireDocument(documentId, jwt);
+    return toResponse(documentService.removeFile(documentId, user.toActor()));
+  }
+
+  /** Quita un documento agregado a mano (Control de Cambios #1). */
+  @DeleteMapping("/api/v1/internal/documents/{documentId}")
+  @PreAuthorize("hasAnyAuthority('EXPEDIENT_EDIT', 'DOCUMENT_UPLOAD')")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void deleteCustom(@PathVariable UUID documentId, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = CurrentUser.from(jwt);
+    requireDocument(documentId, jwt);
+    documentService.deleteCustomDocument(documentId, user.toActor());
+  }
+
   @PostMapping("/api/v1/internal/expedientes/{expedienteId}/reception/sign")
   @PreAuthorize("hasAuthority('RECEPTION_SIGN')")
   public void signReception(@PathVariable UUID expedienteId, @AuthenticationPrincipal Jwt jwt) {

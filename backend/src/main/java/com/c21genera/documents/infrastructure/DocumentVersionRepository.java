@@ -10,5 +10,8 @@ public interface DocumentVersionRepository extends JpaRepository<DocumentVersion
 
   List<DocumentVersion> findByDocumentIdOrderByVersionNumberDesc(UUID documentId);
 
+  /** Sin las eliminadas: la primera es la vigente. */
+  List<DocumentVersion> findByDocumentIdAndRemovedAtIsNullOrderByVersionNumberDesc(UUID documentId);
+
   Optional<DocumentVersion> findByDocumentIdAndVersionNumber(UUID documentId, int versionNumber);
 }

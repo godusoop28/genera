@@ -138,6 +138,24 @@ public class Document extends AuditableEntity {
     return document;
   }
 
+  /**
+   * Se eliminó el archivo (todas sus versiones dejan de ser vigentes): vuelve a pendiente para
+   * subirlo de nuevo, sin importar si ya estaba aceptado. Lo decidido sobre el archivo eliminado
+   * (aceptado, devuelto, actualización pedida) ya no aplica.
+   */
+  public void fileRemoved() {
+    if (status == DocumentStatus.NOT_APPLICABLE) {
+      throw new ConflictException("DOCUMENT_NOT_APPLICABLE", "Este documento está marcado como \"No aplica\"; no tiene archivo que eliminar.");
+    }
+    this.status = DocumentStatus.PENDING;
+    this.lastReviewDecision = null;
+    this.lastReviewReasonCode = null;
+    this.lastReviewComment = null;
+    this.lastReviewedAt = null;
+    this.updateRequestNote = null;
+    this.updateRequestedAt = null;
+  }
+
   public int startNewVersion() {
     if (status == DocumentStatus.NOT_APPLICABLE) {
       throw new ConflictException(

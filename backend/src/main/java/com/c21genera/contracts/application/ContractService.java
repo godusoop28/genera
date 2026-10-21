@@ -54,8 +54,7 @@ import org.springframework.transaction.annotation.Transactional;
  * Generación del contrato (retroalimentación 25/09, hallazgos 1 y 13).
  *
  * <p>Antes de generar un contrato para firma se valida TODO: documentos
- * obligatorios aceptados (o "No aplica" justificado), recepción firmada,
- * aviso de privacidad aceptado, sin diferencias sin resolver entre
+ * obligatorios aceptados (o "No aplica" justificado), aviso de privacidad aceptado, sin diferencias sin resolver entre
  * documentos, precio mayor a cero y todos los datos que el modelo registrado
  * necesita para la variante del expediente. Si falta algo, solo se puede
  * generar un BORRADOR INCOMPLETO: marcado así en cada página y bloqueado para
@@ -115,7 +114,7 @@ public class ContractService {
    * Tres grupos, para no bloquear por lo que no es indispensable:
    * <ul>
    *   <li>blockers + missingData: lo jurídicamente indispensable (documentos
-   *       obligatorios, recepción, aviso de privacidad, firmantes, datos del
+   *       obligatorios, aviso de privacidad, firmantes, datos del
    *       contrato e inconsistencias CRÍTICAS). Solo esto impide enviar a firma.</li>
    *   <li>reviewItems: datos secundarios sin capturar; quedan en blanco en el
    *       contrato para llenarse a mano.</li>
@@ -320,10 +319,7 @@ public class ContractService {
       blockers.add("Documento obligatorio sin aceptar: " + doc.displayName() + who + " (" + statusLabel(doc.status()) + ")");
     }
 
-    if (summary.status().ordinal() < ExpedienteStatus.RECEPTION_SIGNED.ordinal()
-        || summary.status() == ExpedienteStatus.CORRECTIONS_REQUESTED) {
-      blockers.add("Firmar la recepción de documentos (requiere todos los documentos obligatorios aceptados)");
-    }
+    // La firma de la recepción de documentos ya no es requisito: con los obligatorios aceptados basta.
 
     boolean consent = privacyApi.consentOf(summary.id()).map(c -> c.mainPurposesAccepted()).orElse(false);
     if (!consent) {

@@ -15,10 +15,12 @@ import com.c21genera.shared.events.ContractEvents.ContractSignatureRecorded;
 import com.c21genera.shared.events.ContractEvents.ContractSuperseded;
 import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsApproved;
 import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsUploaded;
+import com.c21genera.shared.events.DocumentEvents.CustomDocumentDeleted;
 import com.c21genera.shared.events.DocumentEvents.DocumentApplicabilityChanged;
 import com.c21genera.shared.events.DocumentEvents.DocumentDeferralChanged;
 import com.c21genera.shared.events.DocumentEvents.DocumentContentAssessed;
 import com.c21genera.shared.events.DocumentEvents.DocumentFileMoved;
+import com.c21genera.shared.events.DocumentEvents.DocumentFileRemoved;
 import com.c21genera.shared.events.DocumentEvents.DocumentFollowUpChanged;
 import com.c21genera.shared.events.DocumentEvents.DocumentReprocessRequested;
 import com.c21genera.shared.events.DocumentEvents.DocumentQualityFailed;
@@ -313,6 +315,20 @@ class AuditEventRecorder {
     record("DocumentApplicabilityChanged", "Document", event.documentId(), event.actor(), message);
     activity(event.expedienteId(), ActivityCategory.DOCUMENT, event.notApplicable() ? "DOCUMENT_NOT_APPLICABLE" : "DOCUMENT_REQUESTED_AGAIN",
         event.actor(), event.documentId(), label, message);
+  }
+
+  @ApplicationModuleListener
+  void on(DocumentFileRemoved event) {
+    String message = "Eliminó el archivo de " + event.name() + (event.wasAccepted() ? " (estaba aceptado)" : "") + "; queda pendiente de subir de nuevo";
+    record("DocumentFileRemoved", "Document", event.documentId(), event.actor(), message);
+    activity(event.expedienteId(), ActivityCategory.DOCUMENT, "DOCUMENT_FILE_REMOVED", event.actor(), event.documentId(), event.name(), message);
+  }
+
+  @ApplicationModuleListener
+  void on(CustomDocumentDeleted event) {
+    String message = "Quitó el documento " + event.name() + " del expediente";
+    record("CustomDocumentDeleted", "Document", event.documentId(), event.actor(), message);
+    activity(event.expedienteId(), ActivityCategory.DOCUMENT, "DOCUMENT_DELETED", event.actor(), event.documentId(), event.name(), message);
   }
 
   @ApplicationModuleListener

@@ -136,6 +136,12 @@ public final class DocumentEvents {
   public record DocumentFileMoved(
       UUID expedienteId, UUID fromDocumentId, DocumentTypeCode fromType, UUID toDocumentId, DocumentTypeCode toType, Actor actor) {}
 
+  /** El staff eliminó el archivo de un documento: vuelve a pendiente para subirlo de nuevo (las versiones se conservan). */
+  public record DocumentFileRemoved(UUID expedienteId, UUID documentId, DocumentTypeCode type, String name, boolean wasAccepted, Actor actor) {}
+
+  /** El staff quitó del expediente un documento agregado a mano (Control de Cambios #1). */
+  public record CustomDocumentDeleted(UUID expedienteId, UUID documentId, String name, Actor actor) {}
+
   /** Confirmación explícita de staff (ver AGENTS §87); expedientes escucha para transicionar a RECEPTION_SIGNED. */
   public record ReceptionSigned(UUID expedienteId, UUID signedByUserId, Actor actor) {}
 

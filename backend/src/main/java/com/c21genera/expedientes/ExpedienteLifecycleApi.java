@@ -80,7 +80,7 @@ public interface ExpedienteLifecycleApi {
   /** DOCUMENTS_APPROVED -> RECEPTION_SIGNED. Idempotente. */
   void recordReceptionSigned(UUID expedienteId);
 
-  /** RECEPTION_SIGNED -> CONTRACT_PREPARATION. Idempotente. */
+  /** RECEPTION_SIGNED o DOCUMENTS_APPROVED -> CONTRACT_PREPARATION. Idempotente. */
   void recordContractPreparation(UUID expedienteId);
 
   /** CONTRACT_PREPARATION -> READY_FOR_SIGNATURE. Idempotente. */

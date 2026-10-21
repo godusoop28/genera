@@ -16,7 +16,8 @@ import java.util.UUID;
 /**
  * Una carga concreta (un conjunto de páginas ordenadas) de un {@link
  * Document}. Nunca se sobrescribe ni se borra al reemplazarse (ver AGENTS
- * §25): el reemplazo crea una versión nueva.
+ * §25): el reemplazo crea una versión nueva. "Eliminar archivo" solo la marca
+ * como eliminada: deja de ser la vigente, pero se conserva para auditoría.
  */
 @Entity
 @Table(name = "document_version")
@@ -73,6 +74,9 @@ public class DocumentVersion {
   private Integer aiPagesTotal;
   private Integer aiFieldsExpected;
   private Integer aiFieldsFound;
+
+  private Instant removedAt;
+  private UUID removedByUserId;
 
   protected DocumentVersion() {}
 
@@ -219,6 +223,25 @@ public class DocumentVersion {
   public void fail(String reason) {
     this.processingStatus = ProcessingStatus.FAILED;
     this.processingError = reason;
+  }
+
+  public void markRemoved(UUID byUserId, Instant when) {
+    if (removedAt == null) {
+      this.removedAt = when;
+      this.removedByUserId = byUserId;
+    }
+  }
+
+  public boolean isRemoved() {
+    return removedAt != null;
+  }
+
+  public Instant getRemovedAt() {
+    return removedAt;
+  }
+
+  public UUID getRemovedByUserId() {
+    return removedByUserId;
   }
 
   public UUID getId() {

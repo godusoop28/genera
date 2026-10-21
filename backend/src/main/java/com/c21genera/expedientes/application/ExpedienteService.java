@@ -1074,6 +1074,11 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
   @Override
   public void recordReadyForSignature(UUID expedienteId) {
     Expediente expediente = get(expedienteId);
+    // El contrato para firma ya validó que los obligatorios están aceptados: si el expediente se quedó
+    // en un paso anterior (sin "Enviar" del cliente, en correcciones o sin firmar la recepción), se recorre.
+    expediente.transitionToIfAllowed(ExpedienteStatus.DOCUMENTS_RECEIVED);
+    expediente.transitionToIfAllowed(ExpedienteStatus.UNDER_REVIEW);
+    expediente.transitionToIfAllowed(ExpedienteStatus.DOCUMENTS_APPROVED);
     expediente.transitionToIfAllowed(ExpedienteStatus.CONTRACT_PREPARATION);
     expediente.transitionToIfAllowed(ExpedienteStatus.READY_FOR_SIGNATURE);
   }

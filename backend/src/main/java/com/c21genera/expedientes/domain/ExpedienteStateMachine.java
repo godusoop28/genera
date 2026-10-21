@@ -49,7 +49,11 @@ public final class ExpedienteStateMachine {
     map.put(
         ExpedienteStatus.DOCUMENTS_APPROVED,
         EnumSet.of(
-            ExpedienteStatus.RECEPTION_SIGNED, ExpedienteStatus.CORRECTIONS_REQUESTED, ExpedienteStatus.PROPERTY_REJECTED));
+            ExpedienteStatus.RECEPTION_SIGNED,
+            // Firmar la recepción es opcional: el contrato se puede preparar directo.
+            ExpedienteStatus.CONTRACT_PREPARATION,
+            ExpedienteStatus.CORRECTIONS_REQUESTED,
+            ExpedienteStatus.PROPERTY_REJECTED));
     map.put(
         ExpedienteStatus.RECEPTION_SIGNED,
         EnumSet.of(

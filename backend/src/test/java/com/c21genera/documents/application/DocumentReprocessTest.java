@@ -66,7 +66,71 @@ class DocumentReprocessTest {
     document.startNewVersion();
     when(documents.findById(document.getId())).thenReturn(Optional.of(document));
     when(versions.findByDocumentIdOrderByVersionNumberDesc(document.getId())).thenReturn(version == null ? List.of() : List.of(version));
+    when(versions.findByDocumentIdAndRemovedAtIsNullOrderByVersionNumberDesc(document.getId()))
+        .thenReturn(version == null ? List.of() : List.of(version));
     return document;
+  }
+
+  @Test
+  void removingTheFileOfAnAcceptedDocumentLeavesItPendingToUploadAgain() {
+    DocumentVersion version = new DocumentVersion(UUID.randomUUID(), 1, Instant.now(), UploadedVia.PUBLIC_PORTAL, null, null);
+    version.completeProcessing("doc.pdf", "m.json");
+    Document deed = documentWithVersion(DocumentTypeCode.DEED, version);
+    deed.markReadyForReview();
+    deed.applyReview(com.c21genera.shared.domain.ReviewDecision.ACCEPTED, null, null, Instant.now());
+    when(documents.findByExpedienteId(expedienteId)).thenReturn(List.of(deed));
+
+    service.removeFile(deed.getId(), staff);
+
+    assertThat(deed.getStatus()).isEqualTo(DocumentStatus.PENDING);
+    assertThat(deed.getLastReviewDecision()).isNull();
+    // No se borra: queda marcada para auditoría y deja de ser la vigente.
+    assertThat(version.isRemoved()).isTrue();
+    assertThat(published)
+        .anySatisfy(e -> assertThat(e).isInstanceOf(com.c21genera.shared.events.DocumentEvents.DocumentFileRemoved.class))
+        .anySatisfy(e -> assertThat(e).isInstanceOf(com.c21genera.shared.events.DocumentEvents.RequiredDocumentsReopened.class));
+  }
+
+  @Test
+  void aDocumentWithoutFileHasNothingToRemove() {
+    Document deed = documentWithVersion(DocumentTypeCode.DEED, null);
+
+    assertThatThrownBy(() -> service.removeFile(deed.getId(), staff))
+        .isInstanceOf(com.c21genera.shared.domain.UnprocessableException.class);
+  }
+
+  @Test
+  void onlyCustomDocumentsCanBeDeleted() {
+    Document deed = documentWithVersion(DocumentTypeCode.DEED, null);
+    Document custom = Document.custom(expedienteId, "Carta de no adeudo", null);
+    when(documents.findById(custom.getId())).thenReturn(Optional.of(custom));
+
+    assertThatThrownBy(() -> service.deleteCustomDocument(deed.getId(), staff)).isInstanceOf(ConflictException.class);
+    service.deleteCustomDocument(custom.getId(), staff);
+
+    org.mockito.Mockito.verify(documents).delete(custom);
+  }
+
+  @Test
+  void staffCanUploadOverANotApplicableDocument() {
+    Document acta = documentWithVersion(DocumentTypeCode.MARRIAGE_CERTIFICATE, null);
+    acta.markNotApplicable("Soltero", null, Instant.now());
+    when(versions.save(any())).thenAnswer(inv -> inv.getArgument(0));
+    FileStorage storage = mock(FileStorage.class);
+    FileValidator validator = mock(FileValidator.class);
+    when(validator.validateInternal(org.mockito.ArgumentMatchers.anyLong(), any())).thenReturn("application/pdf");
+    when(storage.store(any(), any(), org.mockito.ArgumentMatchers.anyLong(), any()))
+        .thenReturn(new FileStorage.StoredObjectMetadata("k", 3, "sha"));
+    service =
+        new DocumentService(
+            documents, versions, pages, mock(DocumentReviewRepository.class), storage, validator, published::add,
+            Clock.fixed(Instant.parse("2026-10-01T12:00:00Z"), ZoneOffset.UTC),
+            new AiProperties(false, "openai", "", "", "", Duration.ofSeconds(30), 0, 0, 0),
+            documentsLock);
+
+    service.uploadVersion(acta.getId(), List.of(DocumentService.UploadedFileContent.of(new byte[] {1, 2, 3}, "acta.pdf")), UploadedVia.INTERNAL, staff);
+
+    assertThat(acta.getStatus()).isEqualTo(DocumentStatus.UPLOADED);
   }
 
   @Test

@@ -247,7 +247,8 @@ public final class DocumentDtos {
       String uploadedVia,
       String uploadedByName,
       ProcessingStatus processingStatus,
-      String processingError) {
+      String processingError,
+      Instant removedAt) {
 
     public static DocumentVersionResponse from(DocumentVersion v) {
       return new DocumentVersionResponse(
@@ -258,7 +259,8 @@ public final class DocumentDtos {
           v.getUploadedVia().name(),
           v.getUploadedByName(),
           v.getProcessingStatus(),
-          v.getProcessingError());
+          v.getProcessingError(),
+          v.getRemovedAt());
     }
   }
 

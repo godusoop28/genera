@@ -13,6 +13,7 @@ import {
   approveException,
   cancelDocumentUpdate,
   clearDocumentPending,
+  deleteCustomDocument,
   listDocuments,
   listReviews,
   listVersions,
@@ -22,6 +23,7 @@ import {
   rejectDocument,
   renameDocument,
   reprocessAllDocuments,
+  removeDocumentFile,
   reprocessDocument,
   requestAgain,
   requestDocumentUpdate,
@@ -58,7 +60,7 @@ import {
 import { useCan } from "@/lib/permissions";
 import { ACCEPTED_FILE_TYPES, UploadValidationError } from "@/lib/upload-limits";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, ArrowRightLeft, Bot, Check, Clock, Eye, History, Info, Layers, Loader2, Pencil, Plus, RefreshCw, Upload, X } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, Bot, Check, Clock, Eye, History, Info, Layers, Loader2, Pencil, Plus, RefreshCw, Trash2, Upload, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { NotaryStagesPanel } from "./NotaryStagesPanel";
 import type { ExpedienteContext } from "./page";
@@ -121,7 +123,7 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
   const pendingCount = visible.filter(isPending).length;
   const markedPendingCount = (documents ?? []).filter((d) => d.markedPending).length;
   const requiredCount = visible.filter((d) => d.required).length;
-  const withFiles = (documents ?? []).filter((d) => d.currentVersionNumber > 0 && d.status !== "NOT_APPLICABLE");
+  const withFiles = (documents ?? []).filter((d) => d.latestVersion && d.status !== "NOT_APPLICABLE");
   const filtered = visible.filter(statusFilters[filter].matches);
   // Un expediente con varios copropietarios llega a 20+ requisitos: se agrupan por persona
   // (en el orden del alta) y al final lo del inmueble y la empresa, para no recorrer una sola lista.
@@ -351,6 +353,8 @@ function DocumentRow({
   const [updateOpen, setUpdateOpen] = useState(false);
   const [pendingOpen, setPendingOpen] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<"file" | "document" | null>(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
   const v = doc.latestVersion;
   const issues = v?.blockingIssues ?? [];
   const warnings = v?.warnings ?? [];
@@ -440,6 +444,26 @@ function DocumentRow({
   };
 
   const moveTargets = allDocuments.filter((d) => d.id !== doc.id && d.status !== "ACCEPTED");
+
+  const confirmRemove = async () => {
+    setRemoveBusy(true);
+    try {
+      if (removing === "document") {
+        await deleteCustomDocument(doc.id);
+        showToast(`Se quitó ${docLabel} del expediente.`);
+        await onChanged();
+      } else {
+        const updated = await removeDocumentFile(doc.id);
+        showToast("Archivo eliminado: el documento quedó pendiente y puedes subirlo de nuevo.");
+        await onChanged(updated);
+      }
+      setRemoving(null);
+    } catch (err) {
+      showToast(errorText(err));
+    } finally {
+      setRemoveBusy(false);
+    }
+  };
 
   /** Control de Cambios #18: corrige el nombre de un documento agregado a mano (el archivo no cambia). */
   const saveName = async () => {
@@ -633,16 +657,28 @@ function DocumentRow({
             Rechazar
           </Button>
         ) : null}
-        {canUpload && doc.status !== "NOT_APPLICABLE" && doc.status !== "ACCEPTED" ? (
+        {canUpload ? (
           <Button variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
             {uploading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4" aria-hidden />}
             {uploading
               ? progress !== null && progress < 100
                 ? `Subiendo ${progress}%`
                 : "Preparando…"
-              : doc.currentVersionNumber > 0
-                ? "Cargar nueva versión"
+              : v
+                ? doc.status === "ACCEPTED"
+                  ? "Reemplazar archivo"
+                  : "Cargar nueva versión"
                 : "Cargar en nombre del cliente"}
+          </Button>
+        ) : null}
+        {canUpload && v ? (
+          <Button variant="ghost" size="sm" onClick={() => setRemoving("file")}>
+            <Trash2 className="h-4 w-4" aria-hidden /> Eliminar archivo
+          </Button>
+        ) : null}
+        {canUpload && doc.customName ? (
+          <Button variant="ghost" size="sm" onClick={() => setRemoving("document")}>
+            <Trash2 className="h-4 w-4" aria-hidden /> Quitar documento
           </Button>
         ) : null}
         {/* La identificación no se omite: si no hay INE se carga otra identificación oficial y se acepta con justificación. */}
@@ -676,7 +712,7 @@ function DocumentRow({
             Retirar excepción
           </Button>
         ) : null}
-        {canRequestUpdate && doc.currentVersionNumber > 0 && !doc.updateRequestedAt && doc.status !== "NOT_APPLICABLE" ? (
+        {canRequestUpdate && v && !doc.updateRequestedAt && doc.status !== "NOT_APPLICABLE" ? (
           <Button variant="ghost" size="sm" onClick={() => setUpdateOpen(true)}>
             Requiere actualización…
           </Button>
@@ -729,7 +765,8 @@ function DocumentRow({
             <li key={ver.id} className="flex flex-wrap items-center justify-between gap-2">
               <span>
                 <strong className="text-obsessed">V{ver.versionNumber}</strong>
-                {ver.versionNumber === doc.currentVersionNumber ? <span className="ml-1.5 font-medium text-success-text">(activa)</span> : null} · cargada{" "}
+                {ver.id === v?.id ? <span className="ml-1.5 font-medium text-success-text">(activa)</span> : null}
+                {ver.removedAt ? <span className="ml-1.5 font-medium text-danger-text">(eliminada {formatDateTime(ver.removedAt)})</span> : null} · cargada{" "}
                 {formatDateTime(ver.uploadedAt)} por {ver.uploadedVia === "PUBLIC_PORTAL" ? "el cliente" : ver.uploadedByName ?? "el staff"}
               </span>
               <button
@@ -741,7 +778,7 @@ function DocumentRow({
               </button>
             </li>
           ))}
-          <li className="pt-1">Ninguna versión se elimina: las anteriores quedan para trazabilidad y auditoría.</li>
+          <li className="pt-1">Las versiones anteriores y las eliminadas se conservan para trazabilidad y auditoría.</li>
         </ul>
       ) : null}
 
@@ -774,6 +811,28 @@ function DocumentRow({
           }}
         />
       ) : null}
+
+      <Modal
+        open={removing !== null}
+        onClose={() => setRemoving(null)}
+        title={removing === "document" ? `Quitar ${docLabel}` : `Eliminar el archivo de ${docLabel}`}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setRemoving(null)} disabled={removeBusy}>
+              Cancelar
+            </Button>
+            <Button variant="danger" onClick={confirmRemove} disabled={removeBusy}>
+              {removeBusy ? "Eliminando…" : removing === "document" ? "Quitar documento" : "Eliminar archivo"}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-muted">
+          {removing === "document"
+            ? "Se quita del expediente con sus archivos. Si lo necesitas después, agrégalo de nuevo."
+            : `El documento vuelve a pendiente${doc.status === "ACCEPTED" ? " (aunque ya estaba aceptado)" : ""} y puedes subirlo de nuevo cuando quieras, tú o el cliente desde su liga. Lo leído de este archivo deja de usarse; la versión queda en el historial.`}
+        </p>
+      </Modal>
 
       {moving ? (
         <MoveModal
@@ -1145,7 +1204,7 @@ function MoveModal({
           <option key={d.id} value={d.id}>
             {documentName(d)}
             {d.participantId && names[d.participantId] ? ` — ${names[d.participantId]}` : ""}
-            {d.currentVersionNumber > 0 ? " (ya tiene archivo: se agrega como versión nueva)" : ""}
+            {d.latestVersion ? " (ya tiene archivo: se agrega como versión nueva)" : ""}
           </option>
         ))}
       </select>
