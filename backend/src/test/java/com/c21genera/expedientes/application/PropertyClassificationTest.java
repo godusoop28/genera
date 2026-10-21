@@ -112,6 +112,21 @@ class PropertyClassificationTest {
     assertThat(e.propertyTypeLabel()).isEqualTo("Especiales → Otro: Capilla");
   }
 
+  /**
+   * Caso real (EXP-2026-000030): el personal aceptó o marcó "No aplica" todo sin que el cliente oprimiera
+   * "Enviar" en su liga. Antes se quedaba en "Esperando documentos" y no se podía firmar la recepción.
+   */
+  @Test
+  void approvingEverythingWhileStillWaitingForTheClientReachesDocumentsApproved() {
+    Expediente e = pendingLand();
+    e.transitionToIfAllowed(com.c21genera.expedientes.ExpedienteStatus.WAITING_PRIVACY);
+    e.transitionToIfAllowed(com.c21genera.expedientes.ExpedienteStatus.WAITING_DOCUMENTS);
+
+    service.recordDocumentsApproved(e.getId());
+
+    assertThat(e.getStatus()).isEqualTo(com.c21genera.expedientes.ExpedienteStatus.DOCUMENTS_APPROVED);
+  }
+
   @Test
   void aSubtypeIsRequired() {
     Expediente e = pendingLand();

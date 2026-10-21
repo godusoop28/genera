@@ -191,6 +191,41 @@ class DocumentFieldExtractionServiceTest {
         .completePropertyDataFromDocuments(expedienteId, "Calle Río Balsas 12, Col. Vista Hermosa, Cuernavaca", PropertyLegalStatus.LIBRE_GRAVAMEN);
   }
 
+  /** Caso real (EXP-2026-000030): una inconsistencia autorizada volvía a pedir autorización al volver a comparar. */
+  @Test
+  void anAuthorizedInconsistencyDoesNotComeBackWhileTheDataStaysTheSame() {
+    UUID taxId = UUID.randomUUID();
+    ExpedienteSummary summary = mock(ExpedienteSummary.class);
+    when(summary.participants()).thenReturn(List.of());
+    when(summary.propertyAddress()).thenReturn("Predio denominado parcelas del Ejido Palmira, Temixco, Morelos");
+    when(expedienteApi.getSummary(expedienteId)).thenReturn(summary);
+    when(documentsApi.requirementStatusOf(expedienteId))
+        .thenReturn(List.of(new DocumentsApi.RequirementStatusView(taxId, DocumentTypeCode.PROPERTY_TAX, null, true, "UPLOADED")));
+    when(observations.findByExpedienteIdOrderByFieldNameAsc(expedienteId))
+        .thenReturn(List.of(observation(taxId, "propertyAddress", "MZA 23 LT 2 COND DORADO EDIF 1 DEPTO 602, COLINAS DE ALTAR III, TEMIXCO")));
+    List<com.c21genera.extraction.domain.DataConflict> stored = new ArrayList<>();
+    when(conflicts.save(any())).thenAnswer(inv -> {
+      stored.add(inv.getArgument(0));
+      return inv.getArgument(0);
+    });
+    when(conflicts.findByExpedienteIdOrderByDetectedAtDesc(expedienteId)).thenAnswer(inv -> List.copyOf(stored));
+
+    service.runConsistencyCheck(expedienteId);
+    assertThat(stored).hasSize(1);
+    stored.getFirst().resolve(UUID.randomUUID(), "Jorge Ricardo Jurado Espinal", "La dirección larga es la de la escritura", Instant.EPOCH);
+
+    // Se vuelve a comparar (otra versión de un documento, reproceso con IA...): la misma diferencia sigue autorizada.
+    service.runConsistencyCheck(expedienteId);
+    assertThat(stored).hasSize(1);
+
+    // Si la diferencia cambia, sí se vuelve a pedir autorización.
+    when(observations.findByExpedienteIdOrderByFieldNameAsc(expedienteId))
+        .thenReturn(List.of(observation(taxId, "propertyAddress", "Calle Otra 99, Cuernavaca")));
+    service.runConsistencyCheck(expedienteId);
+    assertThat(stored).hasSize(2);
+    assertThat(stored.get(1).isResolved()).isFalse();
+  }
+
   @Test
   void theLienAnswerIsOnlyInterpretedWhenItIsClear() {
     assertThat(DocumentFieldExtractionService.legalStatusOf("NO")).isEqualTo(PropertyLegalStatus.LIBRE_GRAVAMEN);

@@ -20,6 +20,8 @@ public interface ExpedienteRepository extends JpaRepository<Expediente, UUID>, J
 
   Page<Expediente> findByStatus(ExpedienteStatus status, Pageable pageable);
 
+  List<Expediente> findByStatusIn(java.util.Collection<ExpedienteStatus> statuses);
+
   /**
    * Control de Cambios #24/#26: cartera agregada (filas: tratamiento del inmueble, operación, asesor
    * asignado, nombre del asesor, estatus, total, categoría, subcategoría).

@@ -37,7 +37,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -370,20 +369,46 @@ public class DocumentFieldExtractionService implements ExtractionApi {
     List<Finding> findings = DocumentConsistencyChecker.check(facts, declared);
     Instant now = clock.instant();
 
+    List<DataConflict> all = conflictRepository.findByExpedienteIdOrderByDetectedAtDesc(expedienteId);
     Map<String, DataConflict> open =
-        conflictRepository.findByExpedienteIdAndResolvedFalse(expedienteId).stream()
-            .collect(Collectors.toMap(DataConflict::getFieldName, c -> c, (a, b) -> a));
+        all.stream().filter(c -> !c.isResolved()).collect(Collectors.toMap(DataConflict::getFieldName, c -> c, (a, b) -> a));
+    // Diferencias que un directivo ya autorizó (no las que se cerraron solas), por clave y descripción.
+    Set<String> authorized =
+        all.stream()
+            .filter(c -> c.isResolved() && !c.isResolvedAutomatically())
+            .map(c -> c.getFieldName() + "\n" + c.getDescription())
+            .collect(Collectors.toSet());
     Set<String> currentKeys = findings.stream().map(Finding::key).collect(Collectors.toSet());
 
     for (Finding finding : findings) {
-      Optional.ofNullable(open.get(finding.key()))
-          .ifPresentOrElse(
-              existing -> existing.refresh(finding.description(), finding.severity()),
-              () -> conflictRepository.save(new DataConflict(expedienteId, finding.key(), finding.description(), finding.severity(), now)));
+      DataConflict existing = open.get(finding.key());
+      if (existing != null) {
+        existing.refresh(finding.description(), finding.severity());
+      } else if (!authorized.contains(finding.key() + "\n" + finding.description())) {
+        // Volver a comparar (otra versión de un documento, reproceso con IA, corrección de datos) no
+        // debe volver a pedir autorización de la MISMA diferencia ya autorizada; solo si cambió.
+        conflictRepository.save(new DataConflict(expedienteId, finding.key(), finding.description(), finding.severity(), now));
+      }
     }
+    // Una abierta que repite exactamente una ya autorizada (quedó así antes de esta regla) se da por autorizada.
+    open.values().stream()
+        .filter(c -> currentKeys.contains(c.getFieldName()) && authorized.contains(c.getFieldName() + "\n" + c.getDescription()))
+        .forEach(c -> markAsPreviouslyAuthorized(c, all, now));
     open.values().stream().filter(c -> !currentKeys.contains(c.getFieldName())).forEach(c -> c.closeBecauseDataNowMatches(now));
 
     return conflictRepository.findByExpedienteIdOrderByDetectedAtDesc(expedienteId);
+  }
+
+  /** Copia quién la autorizó y su motivo de la autorización más reciente de esa misma diferencia. */
+  private static void markAsPreviouslyAuthorized(DataConflict conflict, List<DataConflict> all, Instant now) {
+    all.stream()
+        .filter(c -> c.isResolved() && !c.isResolvedAutomatically())
+        .filter(c -> c.getFieldName().equals(conflict.getFieldName()) && c.getDescription().equals(conflict.getDescription()))
+        .max(java.util.Comparator.comparing(DataConflict::getResolvedAt, java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())))
+        .ifPresent(
+            previous ->
+                conflict.resolve(
+                    previous.getResolvedByUserId(), previous.getResolvedByName(), "Ya autorizada antes: " + previous.getResolutionNote(), now));
   }
 
   /**

@@ -1024,6 +1024,10 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
   @Override
   public void recordDocumentsApproved(UUID expedienteId) {
     Expediente expediente = get(expedienteId);
+    // Si el personal aceptó (o marcó "No aplica") todo sin que el cliente oprimiera "Enviar" en su
+    // liga, el expediente sigue en WAITING_DOCUMENTS: se recorren los pasos intermedios, porque
+    // WAITING_DOCUMENTS -> UNDER_REVIEW no es una transición válida y antes se quedaba ahí atorado.
+    expediente.transitionToIfAllowed(ExpedienteStatus.DOCUMENTS_RECEIVED);
     // Tras una corrección, el expediente puede venir de CORRECTIONS_REQUESTED.
     expediente.transitionToIfAllowed(ExpedienteStatus.UNDER_REVIEW);
     expediente.transitionToIfAllowed(ExpedienteStatus.DOCUMENTS_APPROVED);
