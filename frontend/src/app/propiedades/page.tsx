@@ -1,14 +1,15 @@
 "use client";
 
-import { AdvisorChip, LoadError, Segmented, useApi } from "@/components/crm/CrmUi";
+import { AdvisorChip, LoadError, Segmented, errorText, useApi } from "@/components/crm/CrmUi";
+import { TagChips } from "@/components/crm/PropertyNotes";
 import { Features, ListingStatusBadge, NotConfiguredNotice, SyncBadge } from "@/components/crm/PropertyUi";
 import { PageContainer } from "@/components/layout/PageContainer";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { Select } from "@/components/ui/Select";
 import { StateMessage } from "@/components/ui/StateMessage";
-import { listCaptured, listInventory, type CapturedProperty, type InventoryItem, type ListingStatus, type Operation } from "@/lib/api/properties";
+import { useToast } from "@/components/ui/Toast";
+import { importInventory, listCaptured, listInventory, type CapturedProperty, type InventoryItem, type ListingStatus, type Operation } from "@/lib/api/properties";
 import { timeAgo } from "@/lib/crm/labels";
 import { listingStatusLabels, operationLabels, priceOf, subtypeLabel } from "@/lib/crm/property-labels";
 import { useCan } from "@/lib/permissions";
@@ -59,7 +60,7 @@ function PropertiesScreen() {
           onChange={setTab}
           options={[
             { id: "inventory", label: "Inventario 21Online" },
-            { id: "captured", label: "Capturadas en Genera", count: captured.data ? captured.data.captured.length : undefined },
+            { id: "captured", label: "En Genera", count: captured.data ? captured.data.captured.length : undefined },
           ]}
         />
         {pendingCount > 0 && tab === "inventory" ? (
@@ -74,7 +75,12 @@ function PropertiesScreen() {
       {tab === "inventory" ? (
         <InventoryView configured={captured.data?.configured ?? true} />
       ) : (
-        <CapturedView data={captured.data?.captured ?? null} error={captured.error} onRetry={captured.reload} />
+        <CapturedView
+          data={captured.data?.captured ?? null}
+          error={captured.error}
+          onRetry={captured.reload}
+          canImport={can("PROPERTY_MANAGE") && can("LEAD_VIEW_ALL") && (captured.data?.configured ?? false)}
+        />
       )}
     </PageContainer>
   );
@@ -202,7 +208,6 @@ function ListingCard({ item }: { item: InventoryItem }) {
         )}
         <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
           <ListingStatusBadge status={l.status} />
-          {item.generaId ? <Badge tone="gold">Capturada en Genera</Badge> : null}
         </div>
       </div>
       <div className="flex flex-1 flex-col gap-2 p-4">
@@ -222,47 +227,134 @@ function ListingCard({ item }: { item: InventoryItem }) {
   );
 }
 
-function CapturedView({ data, error, onRetry }: { data: CapturedProperty[] | null; error: string | null; onRetry: () => void }) {
+/** Trae ya todo el inventario de 21Online (el backend también lo hace solo cada pocos minutos). */
+function ImportBar({ onDone }: { onDone: () => void }) {
+  const { showToast } = useToast();
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-sm text-muted">Todo el inventario de la oficina en 21Online se trae solo cada pocos minutos, con sus fotos y características.</p>
+      <Button
+        variant="secondary"
+        disabled={busy}
+        className="shrink-0"
+        onClick={async () => {
+          setBusy(true);
+          try {
+            const r = await importInventory();
+            showToast(r.imported || r.updated ? `21Online: ${r.imported} nuevas y ${r.updated} actualizadas de ${r.total}.` : `Todo al día: ${r.total} propiedades en 21Online.`);
+            onDone();
+          } catch (err) {
+            showToast(errorText(err));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <RefreshCw className="h-4 w-4" aria-hidden /> {busy ? "Trayendo de 21Online…" : "Traer de 21Online ahora"}
+      </Button>
+    </div>
+  );
+}
+
+function CapturedView({ data, error, onRetry, canImport }: { data: CapturedProperty[] | null; error: string | null; onRetry: () => void; canImport: boolean }) {
   if (error && !data) return <LoadError message={error} onRetry={onRetry} />;
   if (!data) return <StateMessage kind="loading" title="Cargando propiedades…" />;
   if (data.length === 0) {
-    return <StateMessage kind="empty" title="Aún no hay propiedades capturadas" description="Las que des de alta en Genera aparecerán aquí con su estado de envío a 21Online." />;
+    return (
+      <>
+        {canImport ? <ImportBar onDone={onRetry} /> : null}
+        <StateMessage kind="empty" title="Aún no hay propiedades en Genera" description="Aquí aparecen las que des de alta en Genera y todo el inventario que se trae de 21Online." />
+      </>
+    );
   }
   const cols = "lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.1fr)_auto]";
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-[0_1px_2px_rgba(36,39,35,0.04)]">
-      <div className={cn("hidden gap-4 border-b border-border bg-app-bg px-5 py-3 text-xs font-medium uppercase tracking-wide text-muted lg:grid", cols)}>
-        <span>Propiedad</span>
-        <span>Precio</span>
-        <span>Asesor</span>
-        <span>21Online</span>
-        <span className="sr-only">Acción</span>
+    <>
+      {canImport ? <ImportBar onDone={onRetry} /> : null}
+      <CapturedTable data={data} cols={cols} />
+    </>
+  );
+}
+
+function CapturedTable({ data, cols }: { data: CapturedProperty[]; cols: string }) {
+  const [query, setQuery] = useState("");
+  const [tag, setTag] = useState("");
+  const allTags = [...new Set(data.flatMap((p) => p.tags ?? []))].sort((a, b) => a.localeCompare(b, "es"));
+  const q = query.trim().toLowerCase();
+  const visible = data.filter(
+    (p) =>
+      (!tag || (p.tags ?? []).includes(tag)) &&
+      (!q ||
+        [p.data.headline, p.data.neighborhood, p.data.municipality, p.advisor?.name, p.online21Id?.toString(), ...(p.tags ?? [])].some((v) => v?.toLowerCase().includes(q))),
+  );
+  return (
+    <>
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end">
+        <SearchInput value={query} onChange={setQuery} label="Buscar por título, colonia, asesor, número o etiqueta" className="lg:max-w-md lg:flex-1" />
+        {allTags.length > 0 ? (
+          <Select
+            aria-label="Filtrar por etiqueta"
+            value={tag}
+            onChange={(e) => setTag(e.target.value)}
+            options={[{ value: "", label: "Todas las etiquetas" }, ...allTags.map((t) => ({ value: t, label: t }))]}
+            containerClassName="lg:w-56"
+            className="h-11"
+          />
+        ) : null}
       </div>
-      <ul className="divide-y divide-border">
-        {data.map((p) => (
-          <li key={p.id} className={cn("grid grid-cols-1 gap-3 px-4 py-4 sm:px-5 lg:items-center lg:gap-4", cols)}>
-            <div className="min-w-0">
-              <p className="truncate font-semibold text-obsessed">{p.data.headline}</p>
-              <p className="truncate text-xs text-muted">
-                {subtypeLabel(p.data.subtype)} · {p.data.neighborhood}, {p.data.municipality} · {timeAgo(p.createdAt)}
-              </p>
-            </div>
-            <p className="text-sm font-medium tabular-nums text-obsessed">{priceOf(p.data)}</p>
-            <AdvisorChip advisor={p.advisor} emptyLabel="Sin asesor" />
-            <div className="min-w-0 space-y-1">
-              <SyncBadge status={p.syncStatus} />
-              {p.online21Id ? <p className="text-xs text-muted">Núm. {p.online21Id}</p> : null}
-            </div>
-            <Link
-              href={`/propiedades/${p.id}`}
-              className="inline-flex min-h-9 items-center gap-1 justify-self-start rounded-lg text-sm font-medium text-dark-gold hover:text-obsessed focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/30 lg:justify-self-end"
-              aria-label={`Ver ${p.data.headline}`}
-            >
-              Ver <ArrowRight className="h-4 w-4" aria-hidden />
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </div>
+      {visible.length === 0 ? (
+        <StateMessage kind="no-results" title="Sin resultados" description="Ninguna propiedad coincide con la búsqueda." />
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-[0_1px_2px_rgba(36,39,35,0.04)]">
+          <div className={cn("hidden gap-4 border-b border-border bg-app-bg px-5 py-3 text-xs font-medium uppercase tracking-wide text-muted lg:grid", cols)}>
+            <span>Propiedad</span>
+            <span>Precio</span>
+            <span>Asesor</span>
+            <span>21Online</span>
+            <span className="sr-only">Acción</span>
+          </div>
+          <ul className="divide-y divide-border">
+            {visible.map((p) => (
+              <li key={p.id} className={cn("grid grid-cols-1 gap-3 px-4 py-4 sm:px-5 lg:items-center lg:gap-4", cols)}>
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="h-12 w-16 shrink-0 overflow-hidden rounded-lg bg-app-bg">
+                    {p.photos?.[0] ? (
+                      // Las fotos viven en el CDN de 21Online; no pasan por el optimizador de Next.
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={p.photos[0]} alt="" loading="lazy" className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-muted">
+                        <ImageOff className="h-4 w-4" aria-hidden />
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-obsessed">{p.data.headline}</p>
+                    <p className="truncate text-xs text-muted">
+                      {subtypeLabel(p.data.subtype)} · {p.data.neighborhood}, {p.data.municipality} · {p.origin === "ONLINE21" ? "de 21Online" : "capturada"} {timeAgo(p.createdAt)}
+                    </p>
+                    <TagChips tags={p.tags ?? []} className="mt-1 flex flex-wrap gap-1" />
+                  </div>
+                </div>
+                <p className="text-sm font-medium tabular-nums text-obsessed">{priceOf(p.data)}</p>
+                <AdvisorChip advisor={p.advisor} emptyLabel="Sin asesor" />
+                <div className="min-w-0 space-y-1">
+                  <SyncBadge status={p.syncStatus} />
+                  {p.online21Id ? <p className="text-xs text-muted">Núm. {p.online21Id}</p> : null}
+                </div>
+                <Link
+                  href={`/propiedades/${p.id}`}
+                  className="inline-flex min-h-9 items-center gap-1 justify-self-start rounded-lg text-sm font-medium text-dark-gold hover:text-obsessed focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/30 lg:justify-self-end"
+                  aria-label={`Ver ${p.data.headline}`}
+                >
+                  Ver <ArrowRight className="h-4 w-4" aria-hidden />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
   );
 }

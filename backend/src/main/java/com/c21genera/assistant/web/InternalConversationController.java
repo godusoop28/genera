@@ -4,6 +4,8 @@ import com.c21genera.assistant.application.ConversationAdminService;
 import com.c21genera.assistant.application.ConversationAdminService.ConversationDetail;
 import com.c21genera.assistant.application.ConversationAdminService.ConversationItem;
 import com.c21genera.assistant.application.ConversationAdminService.Status;
+import com.c21genera.assistant.application.SavedReplyService;
+import com.c21genera.assistant.application.SavedReplyService.SavedReplyView;
 import com.c21genera.assistant.domain.Conversation;
 import com.c21genera.identity.CurrentUser;
 import jakarta.validation.Valid;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -31,14 +34,18 @@ import org.springframework.web.bind.annotation.RestController;
 public class InternalConversationController {
 
   private final ConversationAdminService service;
+  private final SavedReplyService savedReplies;
 
-  public InternalConversationController(ConversationAdminService service) {
+  public InternalConversationController(ConversationAdminService service, SavedReplyService savedReplies) {
     this.service = service;
+    this.savedReplies = savedReplies;
   }
 
   public record ControlRequest(@NotNull Conversation.Control control) {}
 
   public record TextRequest(@NotBlank @Size(max = 2000) String text) {}
+
+  public record SavedReplyRequest(@NotBlank @Size(max = 80) String title, @NotBlank @Size(max = 2000) String text) {}
 
   @GetMapping("/api/v1/internal/assistant/status")
   public Status status() {
@@ -88,5 +95,31 @@ public class InternalConversationController {
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public void resetSimulation(@AuthenticationPrincipal Jwt jwt) {
     service.resetSimulation(CurrentUser.from(jwt).id());
+  }
+
+  /** Respuestas guardadas: las ve quien ve conversaciones; las crea y edita quien puede responder. */
+  @GetMapping("/api/v1/internal/conversations/saved-replies")
+  public List<SavedReplyView> savedReplies() {
+    return savedReplies.list();
+  }
+
+  @PostMapping("/api/v1/internal/conversations/saved-replies")
+  @PreAuthorize("hasAuthority('CONVERSATION_MANAGE')")
+  @ResponseStatus(HttpStatus.CREATED)
+  public SavedReplyView createSavedReply(@Valid @RequestBody SavedReplyRequest request, @AuthenticationPrincipal Jwt jwt) {
+    return savedReplies.create(request.title(), request.text(), CurrentUser.from(jwt).name());
+  }
+
+  @PutMapping("/api/v1/internal/conversations/saved-replies/{id}")
+  @PreAuthorize("hasAuthority('CONVERSATION_MANAGE')")
+  public SavedReplyView updateSavedReply(@PathVariable UUID id, @Valid @RequestBody SavedReplyRequest request) {
+    return savedReplies.update(id, request.title(), request.text());
+  }
+
+  @DeleteMapping("/api/v1/internal/conversations/saved-replies/{id}")
+  @PreAuthorize("hasAuthority('CONVERSATION_MANAGE')")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public void deleteSavedReply(@PathVariable UUID id) {
+    savedReplies.delete(id);
   }
 }

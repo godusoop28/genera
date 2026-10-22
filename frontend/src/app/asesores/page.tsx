@@ -26,7 +26,7 @@ import {
   type OwnerOffShiftPolicy,
   type RoundMode,
 } from "@/lib/api/crm";
-import { BUSINESS_TIMEZONE_LABEL, advisorStatusLabels, advisorStatusTones, formatLocal, hhmm } from "@/lib/crm/labels";
+import { BUSINESS_TIMEZONE_LABEL, advisorStatusLabels, advisorStatusTones, formatDateTime, formatLocal, hhmm } from "@/lib/crm/labels";
 import { roleLabels } from "@/lib/labels";
 import { useCan } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
@@ -157,13 +157,35 @@ export default function AsesoresPage() {
                     )}
                   >
                     <div className="flex min-w-0 items-center gap-3 sm:col-span-2 xl:col-span-1">
-                      <Avatar name={a.name} />
+                      <Avatar name={a.name} photoUrl={a.online21?.photoUrl} />
                       <div className="min-w-0">
                         <p className="truncate font-semibold text-obsessed">{a.name}</p>
                         <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted">
                           <span>{roleLabels[a.roleCode] ?? a.roleCode}</span>
-                          {a.online21UserId ? <span>21Online #{a.online21UserId}</span> : <span className="text-warning-text">Sin usuario de 21Online</span>}
+                          {a.online21UserId ? (
+                            a.online21?.profileUrl ? (
+                              <a href={a.online21.profileUrl} target="_blank" rel="noreferrer" className="hover:text-obsessed">
+                                21Online #{a.online21UserId}
+                              </a>
+                            ) : (
+                              <span>21Online #{a.online21UserId}</span>
+                            )
+                          ) : (
+                            <span className="text-warning-text">Sin usuario de 21Online</span>
+                          )}
                         </p>
+                        {a.online21 ? (
+                          <p className="truncate text-xs text-muted" title={`Datos de 21Online, actualizados ${formatDateTime(a.online21.syncedAt)}`}>
+                            {[
+                              a.online21.name && a.online21.name !== a.name ? a.online21.name : null,
+                              a.online21.position,
+                              a.online21.mobilePhone ?? a.online21.officePhone,
+                              a.online21.email && a.online21.email.toLowerCase() !== a.email.toLowerCase() ? a.online21.email : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                        ) : null}
                       </div>
                     </div>
                     <div className="min-w-0 space-y-1">

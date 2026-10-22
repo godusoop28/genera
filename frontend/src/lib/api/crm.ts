@@ -88,6 +88,8 @@ export interface LeadQuery {
   advisorId?: string;
   source?: LeadSource | "";
   from?: string;
+  /** Número de 21Online de la propiedad por la que preguntaron. */
+  propertyId?: number;
   page?: number;
   size?: number;
 }
@@ -187,6 +189,21 @@ export interface AdvisorRouting {
   assignedToday: number;
   openLeads: number;
   wonLeads: number;
+  /** Copia de su usuario de 21Online (21Online manda); null si no está vinculado o aún no se sincroniza. */
+  online21: Online21Snapshot | null;
+}
+
+export interface Online21Snapshot {
+  name: string | null;
+  email: string | null;
+  mobilePhone: string | null;
+  officePhone: string | null;
+  whatsapp: string | null;
+  photoUrl: string | null;
+  position: string | null;
+  /** Su ficha pública en century21mexico.com. */
+  profileUrl: string | null;
+  syncedAt: string;
 }
 
 export type AdvisorRoutingInput = Pick<AdvisorRouting, "receivesLeads" | "weight" | "dailyLimit" | "online21UserId" | "whatsappPhone">;
@@ -438,6 +455,30 @@ export function replyToConversation(id: string, text: string) {
   return apiClient.post<ConversationDetail>(`/internal/conversations/${id}/reply`, { text });
 }
 
+export interface SavedReply {
+  id: string;
+  title: string;
+  text: string;
+  createdBy: string | null;
+  updatedAt: string;
+}
+
+export function listSavedReplies() {
+  return apiClient.get<SavedReply[]>("/internal/conversations/saved-replies");
+}
+
+export function createSavedReply(title: string, text: string) {
+  return apiClient.post<SavedReply>("/internal/conversations/saved-replies", { title, text });
+}
+
+export function updateSavedReply(id: string, title: string, text: string) {
+  return apiClient.put<SavedReply>(`/internal/conversations/saved-replies/${id}`, { title, text });
+}
+
+export function deleteSavedReply(id: string) {
+  return apiClient.delete<void>(`/internal/conversations/saved-replies/${id}`);
+}
+
 export function resolveEscalation(escalationId: string) {
   return apiClient.post<void>(`/internal/conversations/escalations/${escalationId}/resolve`);
 }
@@ -459,6 +500,7 @@ export interface Online21User {
   position: string | null;
   mobilePhone: string | null;
   whatsapp: string | null;
+  photoUrl: string | null;
   /** Con quién de Genera está vinculado (null = nadie). */
   linkedUserId: string | null;
   linkedUserName: string | null;

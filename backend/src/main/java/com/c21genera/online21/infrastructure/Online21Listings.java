@@ -29,6 +29,9 @@ class Online21Listings implements PropertyListings {
 
   private static final Logger log = LoggerFactory.getLogger(Online21Listings.class);
 
+  /** Tope de páginas del inventario completo (30 por página). */
+  private static final int INVENTORY_MAX_PAGES = 40;
+
   private final Online21Client client;
   private final Online21Catalog catalog;
   private final ObjectMapper objectMapper;
@@ -126,7 +129,36 @@ class Online21Listings implements PropertyListings {
     if (node == null) {
       return Optional.empty();
     }
-    return Optional.of(new RemoteListing(id, Online21ListingMapper.toDraft(node), instant(node.get("fechaModificacion"))));
+    return Optional.of(remote(node));
+  }
+
+  /** Las páginas del inventario ya traen la ficha completa: 30 propiedades por llamada. */
+  @Override
+  public List<RemoteListing> officeInventory() {
+    if (!available()) {
+      return List.of();
+    }
+    List<RemoteListing> out = new ArrayList<>();
+    for (int page = 1; page <= INVENTORY_MAX_PAGES; page++) {
+      JsonNode root = client.listingsPage(Map.of(), page);
+      List<JsonNode> members = client.membersOf(root);
+      for (JsonNode n : members) {
+        if (n.hasNonNull("id")) {
+          out.add(remote(n));
+        }
+      }
+      JsonNode view = root == null ? null : root.has("hydra:view") ? root.get("hydra:view") : root.get("view");
+      boolean hasNext = view != null && (view.hasNonNull("hydra:next") || view.hasNonNull("next"));
+      // Sin JSON-LD no hay "siguiente": se sigue mientras lleguen páginas llenas.
+      if (members.isEmpty() || (view != null ? !hasNext : members.size() < 30)) {
+        break;
+      }
+    }
+    return out;
+  }
+
+  private static RemoteListing remote(JsonNode node) {
+    return new RemoteListing(node.path("id").asLong(), Online21ListingMapper.toDraft(node), instant(node.get("fechaModificacion")), Online21ListingMapper.photos(node));
   }
 
   /** Consulta ligera (solo id y fecha) en lotes de 30 con el filtro id[] de 21Online. */

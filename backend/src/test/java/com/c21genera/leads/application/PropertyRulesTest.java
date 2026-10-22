@@ -55,7 +55,7 @@ class PropertyRulesTest {
   private static Data data(String operation, UUID subtypeId, String detail, BigDecimal sale, BigDecimal rent, UUID advisor) {
     return new Data(
         operation, null, null, null, null, " Casa en Burgos ", "", sale, rent, null, false, null, null, "Burgos", "Temixco", "Morelos", null,
-        false, true, 3, BigDecimal.valueOf(2), null, -1, null, null, null, null, null, null, true, advisor, subtypeId, detail);
+        false, true, 3, BigDecimal.valueOf(2), null, -1, null, null, null, null, null, null, true, advisor, subtypeId, detail, null);
   }
 
   @Test

@@ -1,7 +1,10 @@
 "use client";
 
 import { AdvisorChip, LoadError, errorText, useApi } from "@/components/crm/CrmUi";
+import { PropertyAttributesSummary, PropertyPhotos, usePropertyAttributes } from "@/components/crm/PropertyAttributes";
 import { PropertyForm } from "@/components/crm/PropertyForm";
+import { PropertyLeads } from "@/components/crm/PropertyLeads";
+import { PropertyNotes } from "@/components/crm/PropertyNotes";
 import { Features, ListingStatusBadge, SyncBadge } from "@/components/crm/PropertyUi";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Button } from "@/components/ui/Button";
@@ -127,7 +130,7 @@ export default function CapturedPropertyPage({ params }: PageProps<"/propiedades
           }}
         />
       ) : (
-        <Summary property={p} />
+        <Summary property={p} onChange={detail.setData} />
       )}
     </PageContainer>
   );
@@ -197,8 +200,9 @@ function SyncCard({ property: p, onChange }: { property: CapturedProperty; onCha
   );
 }
 
-function Summary({ property: p }: { property: CapturedProperty }) {
+function Summary({ property: p, onChange }: { property: CapturedProperty; onChange: (p: CapturedProperty) => void }) {
   const d = p.data;
+  const attributes = usePropertyAttributes();
   const address = [d.street && (d.extNumber ? `${d.street} ${d.extNumber}` : d.street), d.neighborhood, d.municipality, d.state, d.postalCode].filter(Boolean).join(", ");
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
@@ -226,11 +230,18 @@ function Summary({ property: p }: { property: CapturedProperty }) {
           {d.levels !== null ? <Row label="Niveles">{d.levels}</Row> : null}
           {d.age !== null ? <Row label="Antigüedad">{d.age} años</Row> : null}
           {d.maintenanceFee !== null ? <Row label="Mantenimiento">{priceOf({ operation: "venta", salePrice: d.maintenanceFee, rentPrice: null, currency: d.currency })}</Row> : null}
-          <Row label={p.origin === "ONLINE21" ? "Vinculó" : "Capturó"}>
-            {p.createdBy.name} · {formatDateTime(p.createdAt)}
+          <Row label={p.origin === "ONLINE21" ? (p.createdBy ? "Vinculó" : "Importada") : "Capturó"}>
+            {p.createdBy ? `${p.createdBy.name} · ` : "De 21Online · "}
+            {formatDateTime(p.createdAt)}
           </Row>
         </dl>
       </Card>
+      <div className="space-y-5 lg:col-span-2">
+        <PropertyNotes property={p} onChange={onChange} />
+        {p.online21Id ? <PropertyLeads online21Id={p.online21Id} /> : null}
+        <PropertyPhotos photos={p.photos ?? []} />
+        {attributes.data ? <PropertyAttributesSummary catalog={attributes.data} extras={d.extras ?? {}} /> : null}
+      </div>
     </div>
   );
 }

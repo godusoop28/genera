@@ -301,9 +301,54 @@ Administrador, Director y Asesor tienen ambos).
 - Las fotos se suben en 21Online (su API de fotos no recibe archivos) y el
   cierre ("cerrada") se registra allá con sus datos de cierre.
 
+### Sincronización completa con 21Online (V041)
+
+- **Todo el inventario en Genera:** cada `app.online21.pull-interval` (10 min)
+  `PropertyService` lee el inventario de la oficina (`GET /api/propiedades`,
+  30 por página, ya con la ficha completa), importa lo nuevo
+  (`origin = ONLINE21`, `created_by_user_id` NULL, a nombre de su asesor si
+  está vinculado) y trae lo que cambió allá. Las vinculadas que ya no
+  aparecen (canceladas, cerradas) se siguen revisando con `id[]`. A mano:
+  `POST /api/v1/internal/properties/import` (directivos).
+- **Atributos adicionales** (`online21.ListingAttributes`, catálogo en
+  `GET /api/v1/internal/properties/attributes`): características (cocina,
+  conservación, terreno, regaderas, elevadores, alberca, mascotas…), contrato
+  (firma y duración del contrato de servicios, precio y moneda en contrato,
+  comisión a compartir, compartida con C21, rótulo, situación jurídica) y
+  publicación (inglés, video, lat/lon, créditos, mantenimiento incluido).
+  Se guardan en `crm_property.extra_attributes` con la clave y forma de
+  21Online y al editar solo viajan los que cambiaron. Los de contrato
+  marcados `writeOnly` 21Online los acepta pero su API no los devuelve:
+  se conserva lo último capturado en Genera. Una petición sin `extras`
+  (p. ej. la app móvil) conserva los que ya tenía.
+- **Amenidades:** el `caracteristicasJSON` de 21Online trae ~380 campos
+  (acabados, alturas, tipo de edificio…), no solo las 75 casillas
+  documentadas. Se guarda tal cual en `features_template` y al editar solo se
+  cambia el valor de las casillas y del recorrido virtual. Si una propiedad
+  vinculada aún no tiene plantilla, se trae antes de mandar; sin ella no se
+  mandan amenidades.
+- **Fotos:** las URLs de 21Online (en su orden) en `photo_urls`, solo lectura.
+- **Asesores** (`Online21AdvisorSync`, cada hora): además de vincular por
+  correo, guarda de cada vinculado su nombre, correo, teléfonos, WhatsApp,
+  foto (base del CDN de `path` + `fotoPath`), puesto y ficha pública. 21Online
+  manda: Genera solo lo muestra y nunca cambia el WhatsApp de avisos.
+
 Pendiente de validar con una llave real: qué valores exactos acepta 21Online
 al crear (validaciones 422 se muestran tal cual), si `match_ubicacion` busca
-como se espera y la forma de `fotos` en la respuesta.
+como se espera, si acepta `caracteristicasJSON` como texto al escribir (así lo
+devuelve) y los campos de contrato que no devuelve.
+
+### Notas internas y respuestas guardadas (V042, V043)
+
+- **Notas internas y etiquetas de propiedad** (`crm_property.private_notes`,
+  `tags`): `PUT /api/v1/internal/properties/{id}/notes`. Solo existen en
+  Genera: no forman parte del borrador que se compara y manda a 21Online.
+- **Leads por propiedad:** `GET /api/v1/internal/leads?propertyId=<núm. de
+  21Online>` (respeta la visibilidad de siempre: el asesor solo ve los suyos).
+- **Respuestas guardadas** (`wa_saved_reply`, compartidas por la oficina):
+  `GET|POST /api/v1/internal/conversations/saved-replies` y
+  `PUT|DELETE .../saved-replies/{id}`. Leer: `CONVERSATION_VIEW`; crear,
+  editar y borrar: `CONVERSATION_MANAGE`.
 
 ### Calendario de turnos, guardias y rondas (V028)
 

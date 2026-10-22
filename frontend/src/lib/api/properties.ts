@@ -111,6 +111,42 @@ export interface PropertyData {
   /** Control de Cambios #26: subcategoría del catálogo (de ella salen propertyType/subtype de 21Online). */
   catalogSubtypeId: string | null;
   propertyTypeDetail: string | null;
+  /**
+   * Atributos adicionales con la clave de 21Online (ver PropertyAttributeCatalog). Las amenidades van en
+   * extras.amenidades como { nombre: true }. Omitido o null al guardar = se conservan los que ya tenía.
+   */
+  extras?: Record<string, unknown> | null;
+}
+
+export type AttributeGroup = "FEATURES" | "CONTRACT" | "PUBLISHING";
+export type AttributeKind = "TEXT" | "LONG_TEXT" | "URL" | "NUMBER" | "INTEGER" | "BOOLEAN" | "DATE" | "CHOICE";
+
+export interface PropertyAttribute {
+  key: string;
+  label: string;
+  group: AttributeGroup;
+  kind: AttributeKind;
+  options: Array<{ value: string; label: string }>;
+  /** 21Online lo acepta pero su API no lo devuelve: se conserva lo capturado en Genera. */
+  writeOnly: boolean;
+  apiInteger: boolean;
+  maxLength: number;
+}
+
+export interface PropertyAttributeCatalog {
+  attributes: PropertyAttribute[];
+  amenities: Array<{ key: string; label: string }>;
+}
+
+/** Clave de las amenidades dentro de extras y del recorrido virtual dentro de ellas. */
+export const AMENITIES_KEY = "amenidades";
+export const VIRTUAL_TOUR_KEY = "matterport";
+
+export interface ImportResult {
+  configured: boolean;
+  imported: number;
+  updated: number;
+  total: number;
 }
 
 export interface CapturedProperty {
@@ -125,7 +161,8 @@ export interface CapturedProperty {
   advisor: Person | null;
   /** El asesor tiene vinculado su usuario de 21Online (si no, 21Online la asigna al dueño de la llave). */
   advisorLinked: boolean;
-  createdBy: Person;
+  /** null: la importó el proceso programado desde 21Online. */
+  createdBy: Person | null;
   createdAt: string;
   updatedAt: string;
   canEdit: boolean;
@@ -135,6 +172,11 @@ export interface CapturedProperty {
   origin: "GENERA" | "ONLINE21";
   /** Cuándo se trajeron por última vez los cambios hechos en 21Online. */
   remoteModifiedAt: string | null;
+  /** Fotos de 21Online, en su orden (se suben allá). */
+  photos: string[];
+  /** Notas internas y etiquetas: solo en Genera, nunca se mandan a 21Online. */
+  privateNotes: string | null;
+  tags: string[];
 }
 
 export interface CapturedOverview {
@@ -163,6 +205,15 @@ export function listCaptured() {
   return apiClient.get<CapturedOverview>("/internal/properties");
 }
 
+export function getPropertyAttributes() {
+  return apiClient.get<PropertyAttributeCatalog>("/internal/properties/attributes");
+}
+
+/** Trae ya todo el inventario de la oficina desde 21Online (también se hace solo cada pocos minutos). */
+export function importInventory() {
+  return apiClient.post<ImportResult>("/internal/properties/import");
+}
+
 export function getCaptured(id: string) {
   return apiClient.get<CapturedProperty>(`/internal/properties/${id}`);
 }
@@ -173,6 +224,11 @@ export function createProperty(data: PropertyData) {
 
 export function updateProperty(id: string, data: PropertyData) {
   return apiClient.put<CapturedProperty>(`/internal/properties/${id}`, data);
+}
+
+/** Notas internas y etiquetas (no se sincronizan con 21Online). */
+export function updatePropertyNotes(id: string, privateNotes: string, tags: string[]) {
+  return apiClient.put<CapturedProperty>(`/internal/properties/${id}/notes`, { privateNotes, tags });
 }
 
 export function retryPropertySync(id: string) {

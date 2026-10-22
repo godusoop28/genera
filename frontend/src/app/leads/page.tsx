@@ -1,6 +1,7 @@
 "use client";
 
 import { AdvisorChip, LoadError, PropertyMini, Segmented, SourceLabel, StageBadge, StatCard, useApi } from "@/components/crm/CrmUi";
+import { LeadBoard } from "@/components/crm/LeadBoard";
 import { NewLeadModal } from "@/components/crm/NewLeadModal";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Badge } from "@/components/ui/Badge";
@@ -9,10 +10,10 @@ import { SearchInput } from "@/components/ui/SearchInput";
 import { Select } from "@/components/ui/Select";
 import { StateMessage } from "@/components/ui/StateMessage";
 import { listAdvisors, listLeads, type LeadGroup, type LeadItem, type LeadSource } from "@/lib/api/crm";
-import { interestLabels, sourceLabels, stageLabels, stageOrder, timeAgo } from "@/lib/crm/labels";
+import { interestLabels, sourceLabels, timeAgo, whatsappLink } from "@/lib/crm/labels";
 import { useCan } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-import { ArrowRight, CheckCircle2, Columns3, Inbox, List, Plus, RefreshCw, UserPlus, Users } from "lucide-react";
+import { ArrowRight, CheckCircle2, Columns3, Inbox, List, MessageCircle, Plus, RefreshCw, UserPlus, Users } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
@@ -49,6 +50,8 @@ function LeadsScreen() {
   const [group, setGroup] = useState<LeadGroup>(() => initialGroup(params.get("grupo")));
   const [advisorId, setAdvisorId] = useState(params.get("asesor") ?? "");
   const [source, setSource] = useState<LeadSource | "">((params.get("fuente") as LeadSource | null) ?? "");
+  // ?propiedad=<núm. de 21Online>: viene de "Leads de esta propiedad".
+  const [propertyId, setPropertyId] = useState<number | undefined>(() => Number(params.get("propiedad")) || undefined);
   const [view, setView] = useState<"list" | "board">("list");
   const [creating, setCreating] = useState(false);
 
@@ -58,12 +61,12 @@ function LeadsScreen() {
   }, [query]);
 
   const leads = useApi(
-    () => listLeads({ q: debounced, group: view === "board" ? "ALL" : group, advisorId, source, size: 100 }),
-    [debounced, group, advisorId, source, view],
+    () => listLeads({ q: debounced, group: view === "board" ? "ALL" : group, advisorId, source, propertyId, size: 100 }),
+    [debounced, group, advisorId, source, view, propertyId],
   );
   const advisors = useApi(() => (seesAll ? listAdvisors() : Promise.resolve([])), [seesAll]);
   const counts = leads.data?.counts;
-  const filtering = debounced !== "" || advisorId !== "" || source !== "" || group !== "ALL";
+  const filtering = debounced !== "" || advisorId !== "" || source !== "" || group !== "ALL" || propertyId !== undefined;
 
   return (
     <PageContainer
@@ -114,6 +117,14 @@ function LeadsScreen() {
           className="h-11"
         />
       </div>
+      {propertyId !== undefined ? (
+        <p className="-mt-1 mb-4 flex flex-wrap items-center gap-2 text-sm text-muted">
+          Solo los que preguntaron por la propiedad {propertyId} de 21Online.
+          <button type="button" className="font-medium text-dark-gold underline hover:text-obsessed" onClick={() => setPropertyId(undefined)}>
+            Ver todos
+          </button>
+        </p>
+      ) : null}
 
       {view === "list" ? (
         <div className="mb-5">
@@ -144,6 +155,7 @@ function LeadsScreen() {
                   setAdvisorId("");
                   setSource("");
                   setGroup("ALL");
+                  setPropertyId(undefined);
                 }}
               >
                 Quitar filtros
@@ -161,7 +173,11 @@ function LeadsScreen() {
           ) : null}
         </>
       ) : (
-        <LeadBoard leads={leads.data.items} />
+        <LeadBoard
+          leads={leads.data.items}
+          canMove={can("LEAD_MANAGE")}
+          onMoved={(moved) => leads.setData((page) => (page ? { ...page, items: page.items.map((l) => (l.id === moved.id ? moved : l)) } : page))}
+        />
       )}
 
       {creating ? <NewLeadModal open={creating} onClose={() => setCreating(false)} advisors={advisors.data ?? []} /> : null}
@@ -200,52 +216,30 @@ function LeadTable({ leads }: { leads: LeadItem[] }) {
               <StageBadge stage={lead.stage} />
             </div>
             <SourceLabel source={lead.source} detail={lead.sourceDetail} />
-            <Link
-              href={`/leads/${lead.id}`}
-              className="inline-flex min-h-9 items-center gap-1 justify-self-start rounded-lg text-sm font-medium text-dark-gold hover:text-obsessed focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/30 lg:justify-self-end"
-              aria-label={`Ver lead de ${lead.name}`}
-            >
-              Ver <ArrowRight className="h-4 w-4" aria-hidden />
-            </Link>
+            <div className="flex items-center gap-1 justify-self-start lg:justify-self-end">
+              {lead.phone ? (
+                <a
+                  href={whatsappLink(lead.phone)}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`WhatsApp a ${lead.name}`}
+                  title="WhatsApp"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-app-bg hover:text-success-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/30"
+                >
+                  <MessageCircle className="h-4 w-4" aria-hidden />
+                </a>
+              ) : null}
+              <Link
+                href={`/leads/${lead.id}`}
+                className="inline-flex min-h-9 items-center gap-1 rounded-lg text-sm font-medium text-dark-gold hover:text-obsessed focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/30"
+                aria-label={`Ver lead de ${lead.name}`}
+              >
+                Ver <ArrowRight className="h-4 w-4" aria-hidden />
+              </Link>
+            </div>
           </li>
         ))}
       </ul>
-    </div>
-  );
-}
-
-/** Tablero por etapa (solo lectura: el cambio de etapa se hace en el detalle del lead). */
-function LeadBoard({ leads }: { leads: LeadItem[] }) {
-  return (
-    <div className="-mx-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
-      <div className="grid min-w-[1100px] grid-cols-7 gap-3">
-        {stageOrder.map((stage) => {
-          const items = leads.filter((l) => l.stage === stage);
-          return (
-            <section key={stage} aria-label={stageLabels[stage]} className="flex min-w-0 flex-col rounded-xl border border-border bg-app-bg/60">
-              <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5">
-                <StageBadge stage={stage} />
-                <span className="text-xs tabular-nums text-muted">{items.length}</span>
-              </header>
-              <ul className="flex flex-col gap-2 p-2">
-                {items.map((lead) => (
-                  <li key={lead.id}>
-                    <Link
-                      href={`/leads/${lead.id}`}
-                      className="block rounded-lg border border-border bg-card p-3 text-left shadow-[0_1px_2px_rgba(36,39,35,0.04)] transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/30"
-                    >
-                      <p className="truncate text-sm font-semibold text-obsessed">{lead.name}</p>
-                      <p className="mt-0.5 truncate text-xs text-muted">{lead.property?.title ?? interestLabels[lead.interest]}</p>
-                      <p className={cn("mt-2 truncate text-xs", lead.advisor ? "text-muted" : "font-medium text-warning-text")}>{lead.advisor?.name ?? "Sin asignar"}</p>
-                    </Link>
-                  </li>
-                ))}
-                {items.length === 0 ? <li className="px-1 py-4 text-center text-xs text-muted">Sin leads</li> : null}
-              </ul>
-            </section>
-          );
-        })}
-      </div>
     </div>
   );
 }

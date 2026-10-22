@@ -14,5 +14,6 @@ public interface Online21Users {
   /** Todos los usuarios de la oficina (todas las páginas). Lanza si 21Online no responde. */
   List<RemoteUser> list();
 
-  record RemoteUser(long id, String name, String email, String position, String mobilePhone, String whatsapp) {}
+  /** photoUrl: foto de perfil en el CDN de 21Online; profileUrl: su ficha pública en century21mexico.com. */
+  record RemoteUser(long id, String name, String email, String position, String mobilePhone, String whatsapp, String officePhone, String photoUrl, String profileUrl) {}
 }

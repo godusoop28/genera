@@ -43,6 +43,12 @@ public interface PropertyListings {
   /** Ficha completa para editarla desde Genera (sin dueño ni datos de cierre); vacío si no existe. */
   Optional<RemoteListing> editable(long id);
 
+  /**
+   * Todo el inventario de la oficina en 21Online como fichas editables (todas las páginas, hasta un
+   * tope). Lanza si 21Online no responde.
+   */
+  List<RemoteListing> officeInventory();
+
   /** Última modificación en 21Online de cada id (los que no existen o no se ven no vienen). */
   Map<Long, Instant> modifiedAt(Collection<Long> ids);
 
@@ -52,7 +58,8 @@ public interface PropertyListings {
    */
   void cancel(long id);
 
-  record RemoteListing(long id, ListingDraft draft, Instant updatedAt) {}
+  /** photos: URLs de las fotos en el orden de 21Online (solo lectura: se suben allá). */
+  record RemoteListing(long id, ListingDraft draft, Instant updatedAt, List<String> photos) {}
 
   record ListingFilter(String query, String status, String operation, String subtype, String municipality, int page) {}
 
@@ -129,7 +136,14 @@ public interface PropertyListings {
       BigDecimal commission,
       boolean publishOnline,
       Long advisorOnline21Id,
-      String integratorId) {}
+      String integratorId,
+      // Atributos adicionales con clave y forma de 21Online (ver ListingAttributes).
+      Map<String, Object> extras) {
+
+    public ListingDraft {
+      extras = extras == null ? Map.of() : extras;
+    }
+  }
 
   /**
    * 21Online rechazó la propiedad o no respondió. {@code message} es apto

@@ -1,21 +1,33 @@
 package com.c21genera.online21.infrastructure;
 
+import com.c21genera.online21.ListingAttributes;
+import com.c21genera.online21.ListingAttributes.Attribute;
 import com.c21genera.online21.PropertyListings.Listing;
 import com.c21genera.online21.PropertyListings.ListingDraft;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * Traducción pura entre Genera y el esquema "Propiedades" de 21Online para
  * la pantalla interna. Al leer NO copia dueño (idClientesVendedor), clave
  * catastral ni datos de cierre. Al escribir manda los números como texto,
- * igual que los devuelve 21Online ("330.00").
+ * igual que los devuelve 21Online ("330.00"). Los atributos adicionales
+ * (ver {@link ListingAttributes}) viajan con su misma clave de 21Online.
  */
 final class Online21ListingMapper {
+
+  private static final ObjectMapper JSON = new ObjectMapper();
+
+  /** Campo de 21Online con las amenidades: {"campos":[{"nombre","label","tipo","required","valor"}]} como texto. */
+  static final String FEATURES_FIELD = ListingAttributes.FEATURES_TEMPLATE;
 
   private Online21ListingMapper() {}
 
@@ -98,7 +110,165 @@ final class Online21ListingMapper {
       p.put("usuarios", "/api/usuarios/" + d.advisorOnline21Id());
     }
     put(p, "idIntegrador", d.integratorId());
+    d.extras()
+        .forEach(
+            (key, value) -> {
+              if (ListingAttributes.BY_KEY.containsKey(key)) {
+                put(p, key, value);
+              }
+            });
+    Object amenities = d.extras().get(ListingAttributes.AMENITIES_KEY);
+    Object template = d.extras().get(FEATURES_FIELD);
+    if (template instanceof String || (amenities instanceof Map<?, ?> m && !m.isEmpty())) {
+      p.put(FEATURES_FIELD, featuresJson(template instanceof String s ? s : null, amenities instanceof Map<?, ?> m ? m : Map.of()));
+    }
     return p;
+  }
+
+  /**
+   * caracteristicasJSON para 21Online. Con template (el que trae 21Online: ~380 campos, muchos que Genera
+   * no maneja, como acabados o alturas) solo cambia el valor de las casillas y del recorrido virtual; lo
+   * demás viaja tal cual. Sin template (propiedad nueva) se arma con el catálogo de amenidades.
+   */
+  static String featuresJson(String template, Map<?, ?> amenities) {
+    Map<String, Object> values = new TreeMap<>();
+    amenities.forEach((k, v) -> values.put(String.valueOf(k), v));
+    Object tour = values.get(ListingAttributes.VIRTUAL_TOUR);
+    JsonNode root = null;
+    if (template != null) {
+      try {
+        root = JSON.readTree(template);
+      } catch (java.io.IOException e) {
+        root = null;
+      }
+    }
+    List<Object> fields = new ArrayList<>();
+    java.util.Set<String> present = new java.util.HashSet<>();
+    if (root != null && root.get("campos") != null && root.get("campos").isArray()) {
+      for (JsonNode f : root.get("campos")) {
+        Map<String, Object> copy = JSON.convertValue(f, new com.fasterxml.jackson.core.type.TypeReference<LinkedHashMap<String, Object>>() {});
+        String name = Online21PropertyMapper.text(f, "nombre");
+        if (name != null) {
+          present.add(name);
+          if (ListingAttributes.VIRTUAL_TOUR.equals(name)) {
+            copy.put("valor", tour == null ? "" : tour.toString());
+          } else if ("checkbox".equals(Online21PropertyMapper.text(f, "tipo"))) {
+            copy.put("valor", Boolean.TRUE.equals(values.get(name)));
+          }
+        }
+        fields.add(copy);
+      }
+    }
+    Map<String, String> labels = new LinkedHashMap<>();
+    ListingAttributes.AMENITIES.forEach(a -> labels.put(a.key(), a.label()));
+    for (String key : ListingAttributes.amenityOrder(values)) {
+      if (!present.contains(key) && (root == null || Boolean.TRUE.equals(values.get(key)))) {
+        fields.add(field(key, labels.getOrDefault(key, key), "checkbox", Boolean.TRUE.equals(values.get(key))));
+      }
+    }
+    if (!present.contains(ListingAttributes.VIRTUAL_TOUR)) {
+      fields.add(field(ListingAttributes.VIRTUAL_TOUR, "URL Recorrido virtual", "input", tour == null ? "" : tour.toString()));
+    }
+    try {
+      return JSON.writeValueAsString(Map.of("campos", fields));
+    } catch (java.io.IOException e) {
+      throw new IllegalStateException("No se pudieron armar las amenidades para 21Online", e);
+    }
+  }
+
+  private static Map<String, Object> field(String name, String label, String type, Object value) {
+    Map<String, Object> f = new LinkedHashMap<>();
+    f.put("nombre", name);
+    f.put("label", label);
+    f.put("tipo", type);
+    f.put("required", false);
+    f.put("valor", value);
+    return f;
+  }
+
+  /**
+   * Atributos adicionales de la ficha de 21Online en forma canónica. Los que 21Online no devuelve
+   * (writeOnly) no vienen; un valor ilegible se ignora (no impide traer la propiedad).
+   */
+  static Map<String, Object> extras(JsonNode n) {
+    Map<String, Object> raw = new LinkedHashMap<>();
+    for (Attribute a : ListingAttributes.ATTRIBUTES) {
+      JsonNode v = n.get(a.key());
+      if (a.writeOnly() || v == null || v.isNull()) {
+        continue;
+      }
+      raw.put(a.key(), v.isBoolean() ? v.asBoolean() : v.isNumber() ? v.numberValue().toString() : v.asText());
+    }
+    Map<String, Object> amenities = amenities(n.get(FEATURES_FIELD));
+    if (!amenities.isEmpty()) {
+      raw.put(ListingAttributes.AMENITIES_KEY, amenities);
+    }
+    Map<String, Object> out = new TreeMap<>();
+    raw.forEach(
+        (k, v) -> {
+          try {
+            out.putAll(ListingAttributes.normalize(Map.of(k, v)));
+          } catch (IllegalArgumentException ignored) {
+            // Un valor que 21Online guardó en otra forma no detiene la sincronización.
+          }
+        });
+    // El caracteristicasJSON original se conserva como plantilla para no perder sus demás campos al editar.
+    JsonNode features = n.get(FEATURES_FIELD);
+    if (features != null && !features.isNull()) {
+      out.put(FEATURES_FIELD, features.isTextual() ? features.asText() : features.toString());
+    }
+    return out;
+  }
+
+  /** nombre → valor de "caracteristicasJSON" (texto con JSON o ya como objeto). */
+  static Map<String, Object> amenities(JsonNode features) {
+    Map<String, Object> out = new TreeMap<>();
+    if (features == null || features.isNull()) {
+      return out;
+    }
+    JsonNode root = features;
+    if (features.isTextual()) {
+      try {
+        root = JSON.readTree(features.asText());
+      } catch (java.io.IOException e) {
+        return out;
+      }
+    }
+    JsonNode fields = root == null ? null : root.get("campos");
+    if (fields == null || !fields.isArray()) {
+      return out;
+    }
+    for (JsonNode f : fields) {
+      String name = Online21PropertyMapper.text(f, "nombre");
+      JsonNode value = f.get("valor");
+      if (name == null || value == null || value.isNull()) {
+        continue;
+      }
+      if (value.isBoolean()) {
+        out.put(name, value.asBoolean());
+      } else if (ListingAttributes.VIRTUAL_TOUR.equals(name)) {
+        out.put(name, value.asText());
+      }
+    }
+    return out;
+  }
+
+  /** URLs de las fotos en el orden de 21Online. */
+  static List<String> photos(JsonNode n) {
+    JsonNode photos = n.get("fotos");
+    List<JsonNode> sorted = new ArrayList<>();
+    if (photos != null && photos.isArray()) {
+      photos.forEach(sorted::add);
+    }
+    sorted.sort(java.util.Comparator.comparingInt(p -> p.path("orden").asInt(Integer.MAX_VALUE)));
+    List<String> out = new ArrayList<>();
+    for (JsonNode photo : sorted) {
+      String url = photo.isTextual() ? photo.asText() : Online21PropertyMapper.text(photo, "path");
+      if (url != null && url.startsWith("http")) {
+        out.add(url);
+      }
+    }
+    return out;
   }
 
   /** Subtipos que en 21Online solo existen como comerciales (los ambiguos, como terreno, se toman como habitacionales). */
@@ -151,13 +321,14 @@ final class Online21ListingMapper {
         commission,
         flag(n, "enInternet"),
         Online21PropertyMapper.advisorId(n),
-        Online21PropertyMapper.text(n, "idIntegrador"));
+        Online21PropertyMapper.text(n, "idIntegrador"),
+        extras(n));
   }
 
   /**
    * Solo los campos que cambiaron entre lo último que se vio/mandó (baseline) y lo nuevo. Un campo que
    * se vació se manda como null. Así un PUT desde Genera nunca pisa lo que se editó en 21Online en otros
-   * campos (ni lo que Genera no maneja: fotos, dueño, características…).
+   * campos (ni lo que Genera no maneja: fotos, dueño, datos de cierre…).
    */
   static Map<String, Object> changes(ListingDraft baseline, ListingDraft draft) {
     Map<String, Object> before = toPayload(baseline);

@@ -45,6 +45,25 @@ public class AdvisorProfile extends AuditableEntity {
   @Column(nullable = false)
   private int roundCurrentWeight;
 
+  // Copia de su usuario de 21Online (21Online manda; se actualiza en cada sincronización).
+  private String online21Name;
+
+  private String online21Email;
+
+  private String online21MobilePhone;
+
+  private String online21OfficePhone;
+
+  private String online21Whatsapp;
+
+  private String online21PhotoUrl;
+
+  private String online21Position;
+
+  private String online21ProfileUrl;
+
+  private Instant online21SyncedAt;
+
   protected AdvisorProfile() {}
 
   public AdvisorProfile(UUID userId) {
@@ -55,13 +74,46 @@ public class AdvisorProfile extends AuditableEntity {
     this.receivesLeads = receivesLeads;
     this.weight = Math.max(0, Math.min(100, weight));
     this.dailyLimit = dailyLimit != null && dailyLimit > 0 ? dailyLimit : null;
-    this.online21UserId = online21UserId;
+    linkOnline21(online21UserId);
     this.whatsappPhone = whatsappPhone == null || whatsappPhone.isBlank() ? null : whatsappPhone.replaceAll("[^0-9+]", "");
   }
 
   /** Vínculo con su usuario de 21Online (sincronización por correo); no toca lo demás del perfil. */
   public void linkOnline21(Long online21UserId) {
+    if (!java.util.Objects.equals(this.online21UserId, online21UserId)) {
+      // Otro usuario (o ninguno): la copia anterior ya no corresponde.
+      online21Snapshot(new Online21Snapshot(null, null, null, null, null, null, null, null, null));
+    }
     this.online21UserId = online21UserId;
+  }
+
+  /** Datos de su usuario de 21Online tal como están allá. */
+  public record Online21Snapshot(
+      String name, String email, String mobilePhone, String officePhone, String whatsapp, String photoUrl, String position, String profileUrl, Instant syncedAt) {}
+
+  public void online21Snapshot(Online21Snapshot s) {
+    this.online21Name = cut(s.name(), 200);
+    this.online21Email = cut(s.email(), 200);
+    this.online21MobilePhone = cut(s.mobilePhone(), 40);
+    this.online21OfficePhone = cut(s.officePhone(), 40);
+    this.online21Whatsapp = cut(s.whatsapp(), 40);
+    this.online21PhotoUrl = cut(s.photoUrl(), 500);
+    this.online21Position = cut(s.position(), 80);
+    this.online21ProfileUrl = cut(s.profileUrl(), 500);
+    this.online21SyncedAt = s.syncedAt();
+  }
+
+  /** null si nunca se ha sincronizado con 21Online. */
+  public Online21Snapshot getOnline21Snapshot() {
+    if (online21SyncedAt == null) {
+      return null;
+    }
+    return new Online21Snapshot(
+        online21Name, online21Email, online21MobilePhone, online21OfficePhone, online21Whatsapp, online21PhotoUrl, online21Position, online21ProfileUrl, online21SyncedAt);
+  }
+
+  private static String cut(String s, int max) {
+    return s == null || s.length() <= max ? s : s.substring(0, max);
   }
 
   public void pauseUntil(Instant until) {

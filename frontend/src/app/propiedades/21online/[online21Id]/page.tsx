@@ -2,6 +2,7 @@
 
 import { AdvisorChip, LoadError, useApi } from "@/components/crm/CrmUi";
 import { BarList, ColumnChart, type ChartDatum } from "@/components/crm/PropertyCharts";
+import { PropertyLeads } from "@/components/crm/PropertyLeads";
 import { Features, ListingStatusBadge } from "@/components/crm/PropertyUi";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Badge } from "@/components/ui/Badge";
@@ -37,12 +38,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { use, useEffect, useRef, useState, type ReactNode } from "react";
 
-type TabId = "datos" | "portales" | "clientes" | "seguimientos" | "resumen";
+type TabId = "datos" | "portales" | "clientes" | "leads" | "seguimientos" | "resumen";
 
 const tabs: { id: TabId; label: string }[] = [
   { id: "datos", label: "Datos generales" },
   { id: "portales", label: "Portales" },
   { id: "clientes", label: "Clientes relacionados" },
+  { id: "leads", label: "Leads en Genera" },
   { id: "seguimientos", label: "Seguimientos" },
   { id: "resumen", label: "Resumen" },
 ];
@@ -107,6 +109,7 @@ export default function Online21PropertyPage({ params }: { params: Promise<{ onl
         {tab === "datos" ? <GeneralTab data={data} online21Id={online21Id} /> : null}
         {tab === "portales" ? <PortalsTab online21Id={online21Id} publicUrl={data.details.publicUrl} /> : null}
         {tab === "clientes" ? <ClientsTab online21Id={online21Id} /> : null}
+        {tab === "leads" ? <PropertyLeads online21Id={Number(online21Id)} /> : null}
         {tab === "seguimientos" ? <FollowUpsTab online21Id={online21Id} /> : null}
         {tab === "resumen" ? <SummaryTab online21Id={online21Id} details={data} /> : null}
       </div>

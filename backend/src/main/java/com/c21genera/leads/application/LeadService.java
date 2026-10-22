@@ -62,7 +62,7 @@ public class LeadService {
     }
   }
 
-  public record Filter(String q, Group group, UUID advisorId, LeadSource source, Instant from) {}
+  public record Filter(String q, Group group, UUID advisorId, LeadSource source, Instant from, Long propertyOnline21Id) {}
 
   public record PropertyView(Long online21Id, String key, String title) {}
 
@@ -323,6 +323,9 @@ public class LeadService {
       }
       if (f.from() != null) {
         p.add(cb.greaterThanOrEqualTo(root.get("createdAt"), f.from()));
+      }
+      if (f.propertyOnline21Id() != null) {
+        p.add(cb.equal(root.get("propertyOnline21Id"), f.propertyOnline21Id()));
       }
       if (f.q() != null && !f.q().isBlank()) {
         String like = "%" + f.q().trim().toLowerCase(Locale.ROOT) + "%";

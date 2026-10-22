@@ -6,6 +6,7 @@ import com.c21genera.leads.infrastructure.AdvisorProfileRepository;
 import com.c21genera.online21.Online21Users;
 import com.c21genera.online21.Online21Users.RemoteUser;
 import com.c21genera.shared.domain.UnprocessableException;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -27,6 +28,10 @@ import org.springframework.transaction.support.TransactionTemplate;
  * edición desde el CRM). Vincula solo por correo (sin distinguir mayúsculas)
  * a quien aún no está vinculado; nunca cambia un vínculo puesto a mano ni el
  * WhatsApp del aviso de leads (el de 21Online se muestra como sugerencia).
+ *
+ * <p>De cada asesor vinculado se guarda una copia de su usuario de 21Online
+ * (nombre, correo, teléfonos, WhatsApp, foto, puesto y ficha pública):
+ * 21Online manda y Genera solo la muestra.
  */
 @Service
 public class Online21AdvisorSync {
@@ -40,16 +45,19 @@ public class Online21AdvisorSync {
   private final AdvisorProfileRepository profiles;
   private final StaffNames staff;
   private final TransactionTemplate tx;
+  private final Clock clock;
 
-  Online21AdvisorSync(Online21Users users, AdvisorProfileRepository profiles, StaffNames staff, TransactionTemplate tx) {
+  Online21AdvisorSync(Online21Users users, AdvisorProfileRepository profiles, StaffNames staff, TransactionTemplate tx, Clock clock) {
     this.users = users;
     this.profiles = profiles;
     this.staff = staff;
     this.tx = tx;
+    this.clock = clock;
   }
 
   /** Usuario de 21Online y con quién de Genera está vinculado (null = nadie). */
-  public record Online21UserView(long id, String name, String email, String position, String mobilePhone, String whatsapp, UUID linkedUserId, String linkedUserName) {}
+  public record Online21UserView(
+      long id, String name, String email, String position, String mobilePhone, String whatsapp, String photoUrl, UUID linkedUserId, String linkedUserName) {}
 
   /**
    * linked: vínculos nuevos (nombre de Genera → usuario de 21Online). brokenLinks: personal vinculado a
@@ -65,8 +73,8 @@ public class Online21AdvisorSync {
     return run(true);
   }
 
-  /** Cada 6 horas: vincula a quien se haya dado de alta en ambos sistemas con el mismo correo. */
-  @Scheduled(fixedDelayString = "${app.online21.advisor-sync-interval:PT6H}", initialDelayString = "PT4M")
+  /** Cada hora: vincula por correo a quien se dio de alta en ambos sistemas y actualiza la copia de 21Online. */
+  @Scheduled(fixedDelayString = "${app.online21.advisor-sync-interval:PT1H}", initialDelayString = "PT4M")
   void scheduledSync() {
     if (!users.available()) {
       return;
@@ -94,7 +102,11 @@ public class Online21AdvisorSync {
     List<StaffMember> active = staff.activeStaff();
     List<String> linked = new ArrayList<>();
     if (link) {
-      tx.executeWithoutResult(s -> linked.addAll(linkByEmail(remote, active)));
+      tx.executeWithoutResult(
+          s -> {
+            linked.addAll(linkByEmail(remote, active));
+            refreshSnapshots(remote);
+          });
     }
     Map<UUID, AdvisorProfile> byUser = profiles.findAll().stream().collect(Collectors.toMap(AdvisorProfile::getUserId, Function.identity()));
     Map<Long, UUID> linkOf = new HashMap<>();
@@ -121,10 +133,26 @@ public class Online21AdvisorSync {
             .map(
                 u -> {
                   UUID who = linkOf.get(u.id());
-                  return new Online21UserView(u.id(), u.name(), u.email(), u.position(), u.mobilePhone(), u.whatsapp(), who, who == null ? null : staff.nameOf(who, names));
+                  return new Online21UserView(
+                      u.id(), u.name(), u.email(), u.position(), u.mobilePhone(), u.whatsapp(), u.photoUrl(), who, who == null ? null : staff.nameOf(who, names));
                 })
             .toList();
     return new SyncResult(true, linked, broken, unmatched, views);
+  }
+
+  /** Copia de 21Online en cada perfil vinculado; un usuario que ya no aparece conserva su última copia. */
+  private void refreshSnapshots(List<RemoteUser> remote) {
+    Map<Long, RemoteUser> byId = remote.stream().collect(Collectors.toMap(RemoteUser::id, Function.identity(), (a, b) -> a));
+    for (AdvisorProfile p : profiles.findAll()) {
+      RemoteUser u = p.getOnline21UserId() == null ? null : byId.get(p.getOnline21UserId());
+      if (u != null) {
+        p.online21Snapshot(snapshotOf(u, clock.instant()));
+      }
+    }
+  }
+
+  static AdvisorProfile.Online21Snapshot snapshotOf(RemoteUser u, java.time.Instant at) {
+    return new AdvisorProfile.Online21Snapshot(u.name(), u.email(), u.mobilePhone(), u.officePhone(), u.whatsapp(), u.photoUrl(), u.position(), u.profileUrl(), at);
   }
 
   /** Vincula por correo a quien no tenga vínculo, sin repetir un usuario de 21Online ya vinculado. */

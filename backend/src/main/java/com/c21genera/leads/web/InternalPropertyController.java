@@ -9,7 +9,9 @@ import com.c21genera.leads.application.PropertyService.InventoryItem;
 import com.c21genera.leads.application.PropertyService.InventoryPage;
 import com.c21genera.leads.application.PropertyService.Overview;
 import com.c21genera.leads.application.PropertyService.PropertyView;
+import com.c21genera.leads.application.PropertyService.ImportResult;
 import com.c21genera.leads.domain.CrmProperty.Data;
+import com.c21genera.online21.ListingAttributes;
 import com.c21genera.online21.PropertyDossier.FollowUp;
 import com.c21genera.online21.PropertyDossier.PortalListing;
 import com.c21genera.online21.PropertyDossier.SheetVariant;
@@ -22,6 +24,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -93,13 +96,15 @@ public class InternalPropertyController {
       boolean publishOnline,
       UUID advisorUserId,
       UUID catalogSubtypeId,
-      @Size(max = 160) String propertyTypeDetail) {
+      @Size(max = 160) String propertyTypeDetail,
+      // Atributos con clave de 21Online; se validan en PropertyService (ListingAttributes).
+      @Size(max = 80) Map<String, Object> extras) {
 
     Data toData() {
       return new Data(
           operation, propertyType, subtype, contractType, status, headline, description, salePrice, rentPrice, currency, hidePrice, street, extNumber,
           neighborhood, municipality, state, postalCode, hideStreet, hideNumber, bedrooms, bathrooms, halfBathrooms, parking, landM2, builtM2, levels, age,
-          maintenanceFee, commission, publishOnline, advisorUserId, catalogSubtypeId, propertyTypeDetail);
+          maintenanceFee, commission, publishOnline, advisorUserId, catalogSubtypeId, propertyTypeDetail, extras);
     }
   }
 
@@ -156,6 +161,21 @@ public class InternalPropertyController {
         .body(sheet.pdf());
   }
 
+  public record AttributeCatalog(List<ListingAttributes.Attribute> attributes, List<ListingAttributes.Amenity> amenities) {}
+
+  /** Atributos adicionales de 21Online que se capturan en el formulario (características, contrato, publicación). */
+  @GetMapping("/api/v1/internal/properties/attributes")
+  public AttributeCatalog attributes() {
+    return new AttributeCatalog(ListingAttributes.ATTRIBUTES, ListingAttributes.AMENITIES);
+  }
+
+  /** Trae ya todo el inventario de la oficina (el proceso programado lo hace cada pocos minutos). */
+  @PostMapping("/api/v1/internal/properties/import")
+  @PreAuthorize("hasAuthority('PROPERTY_MANAGE') and hasAuthority('LEAD_VIEW_ALL')")
+  public ImportResult importInventory() {
+    return service.importOfficeInventory();
+  }
+
   /** Propiedades capturadas en Genera, con su estado de envío a 21Online. */
   @GetMapping("/api/v1/internal/properties")
   public Overview captured(@AuthenticationPrincipal Jwt jwt) {
@@ -178,6 +198,15 @@ public class InternalPropertyController {
   @PreAuthorize("hasAuthority('PROPERTY_MANAGE')")
   public PropertyView update(@PathVariable UUID id, @Valid @RequestBody PropertyRequest r, @AuthenticationPrincipal Jwt jwt) {
     return service.update(id, r.toData(), CurrentUser.from(jwt));
+  }
+
+  public record NotesRequest(@Size(max = 4000) String privateNotes, @Size(max = 15) List<@NotBlank @Size(max = 40) String> tags) {}
+
+  /** Notas internas y etiquetas: se guardan solo en Genera (no se mandan a 21Online). */
+  @PutMapping("/api/v1/internal/properties/{id}/notes")
+  @PreAuthorize("hasAuthority('PROPERTY_MANAGE')")
+  public PropertyView notes(@PathVariable UUID id, @Valid @RequestBody NotesRequest r, @AuthenticationPrincipal Jwt jwt) {
+    return service.annotate(id, r.privateNotes(), r.tags(), CurrentUser.from(jwt));
   }
 
   @PostMapping("/api/v1/internal/properties/{id}/sync")

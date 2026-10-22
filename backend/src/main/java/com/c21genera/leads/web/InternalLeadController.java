@@ -92,10 +92,11 @@ public class InternalLeadController {
       @RequestParam(required = false) UUID advisorId,
       @RequestParam(required = false) LeadSource source,
       @RequestParam(required = false) Instant from,
+      @RequestParam(required = false) Long propertyId,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "50") int size,
       @AuthenticationPrincipal Jwt jwt) {
-    return leads.list(new Filter(q, group, advisorId, source, from), CurrentUser.from(jwt), Math.max(0, page), size);
+    return leads.list(new Filter(q, group, advisorId, source, from, propertyId), CurrentUser.from(jwt), Math.max(0, page), size);
   }
 
   @GetMapping("/api/v1/internal/leads/{id}")

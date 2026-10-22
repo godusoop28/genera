@@ -51,7 +51,9 @@ public class AdvisorRoutingService {
       String legacyShift,
       int assignedToday,
       long openLeads,
-      long wonLeads) {}
+      long wonLeads,
+      // Copia de su usuario de 21Online (null si no está vinculado o aún no se sincroniza).
+      AdvisorProfile.Online21Snapshot online21) {}
 
   public record UpdateRouting(boolean receivesLeads, int weight, Integer dailyLimit, Long online21UserId, String whatsappPhone) {}
 
@@ -148,6 +150,7 @@ public class AdvisorRoutingService {
         p != null ? p.getLegacyShift() : null,
         st.assignedToday(),
         stages.stream().filter(LeadStage::isOpen).count(),
-        stages.stream().filter(x -> x == LeadStage.WON).count());
+        stages.stream().filter(x -> x == LeadStage.WON).count(),
+        p != null ? p.getOnline21Snapshot() : null);
   }
 }

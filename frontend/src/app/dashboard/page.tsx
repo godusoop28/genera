@@ -19,10 +19,11 @@ import {
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { StateMessage } from "@/components/ui/StateMessage";
-import { getCrmDashboard, type CrmDashboard, type LeadSource } from "@/lib/api/crm";
+import { getCrmDashboard, listAdvisors, type CrmDashboard, type LeadSource } from "@/lib/api/crm";
+import { listCaptured } from "@/lib/api/properties";
 import { sourceLabels, stageLabels, stageOrder, timeAgo } from "@/lib/crm/labels";
 import { useCan } from "@/lib/permissions";
-import { AlertTriangle, ArrowRight, CheckCircle2, Clock, TrendingUp, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, Clock, ClipboardCheck, TrendingUp, Users } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -106,6 +107,8 @@ function DashboardContent({ data }: { data: CrmDashboard }) {
           </Link>
         </div>
       ) : null}
+
+      {can("LEAD_VIEW_ALL") ? <ReviewCard canSeeProperties={can("PROPERTY_VIEW")} /> : null}
 
       <section aria-label="Indicadores" className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
         <StatCard icon={Users} value={data.total} label="Leads del periodo" hint={`${data.open} siguen en seguimiento`} href="/leads" />
@@ -231,5 +234,55 @@ function DashboardContent({ data }: { data: CrmDashboard }) {
         </Card>
       </div>
     </div>
+  );
+}
+
+/** Pendientes de datos que conviene corregir (no bloquean nada; solo se muestran si hay alguno). */
+function ReviewCard({ canSeeProperties }: { canSeeProperties: boolean }) {
+  const properties = useApi(() => (canSeeProperties ? listCaptured() : Promise.resolve(null)), [canSeeProperties]);
+  const advisors = useApi(() => listAdvisors(), []);
+  const captured = properties.data?.captured ?? [];
+  const routed = (advisors.data ?? []).filter((a) => a.receivesLeads);
+  const rows = [
+    { key: "sync", count: captured.filter((p) => p.syncStatus === "FAILED").length, label: "con error al sincronizar con 21Online", noun: "Propiedad", href: "/propiedades?vista=capturadas" },
+    {
+      key: "photos",
+      count: captured.filter((p) => p.online21Id && p.data.status === "enPromocion" && (p.photos ?? []).length === 0).length,
+      label: "en promoción sin fotos",
+      noun: "Propiedad",
+      href: "/propiedades?vista=capturadas",
+    },
+    { key: "link", count: routed.filter((a) => a.online21UserId === null).length, label: "sin usuario de 21Online vinculado", noun: "Asesor", href: "/asesores" },
+    { key: "wa", count: routed.filter((a) => !a.whatsappPhone).length, label: "sin WhatsApp para recibir avisos de leads", noun: "Asesor", href: "/asesores" },
+  ].filter((r) => r.count > 0);
+
+  if (rows.length === 0) return null;
+  const plural = (noun: string, n: number) => (n === 1 ? noun.toLowerCase() : noun === "Asesor" ? "asesores" : "propiedades");
+  return (
+    <Card>
+      <CardHeader
+        title={
+          <span className="inline-flex items-center gap-2">
+            <ClipboardCheck className="h-5 w-5 text-warning-text" aria-hidden /> Requiere revisión
+          </span>
+        }
+        description="Datos incompletos o con error. No detienen nada, pero conviene corregirlos."
+      />
+      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {rows.map((r) => (
+          <li key={r.key}>
+            <Link
+              href={r.href}
+              className="flex h-full items-start gap-3 rounded-xl border border-border p-3 transition-colors hover:border-gold/60 hover:bg-app-bg/50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/30"
+            >
+              <span className="text-2xl font-semibold tabular-nums leading-none text-warning-text">{r.count}</span>
+              <span className="text-sm text-obsessed">
+                {plural(r.noun, r.count)} {r.label}
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }

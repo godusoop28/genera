@@ -17,7 +17,7 @@ class Online21ListingMapperTest {
     return new ListingDraft(
         operation, "habitacional", "casa", "exclusiva", null, "Casa con jardín", "Descripción", sale, rent, null, "Av. Siempre Viva", "S/N",
         "Centro", "Cuernavaca", "Morelos", "62000", false, true, false, 3, new BigDecimal("2.5"), 1, 2, new BigDecimal("300.00"), new BigDecimal("220"),
-        2, 5, null, new BigDecimal("5"), true, advisor, "genera:abc");
+        2, 5, null, new BigDecimal("5"), true, advisor, "genera:abc", Map.of());
   }
 
   @Test
@@ -72,7 +72,7 @@ class Online21ListingMapperTest {
         new ListingDraft(
             "venta", "habitacional", "casa", "exclusiva", null, "Casa con jardín", "Descripción", new BigDecimal("4200000.00"), null, null, null,
             "S/N", "Centro", "Cuernavaca", "Morelos", "62000", false, true, false, 3, new BigDecimal("2.50"), 1, 2, new BigDecimal("300"),
-            new BigDecimal("220"), 2, 5, null, new BigDecimal("5"), true, 41388L, "genera:otro");
+            new BigDecimal("220"), 2, 5, null, new BigDecimal("5"), true, 41388L, "genera:otro", Map.of());
 
     Map<String, Object> changes = Online21ListingMapper.changes(before, after);
 

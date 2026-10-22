@@ -58,6 +58,29 @@ class Online21UserDirectory implements Online21Users {
         Online21PropertyMapper.text(n, "email"),
         Online21PropertyMapper.text(n, "puesto"),
         Online21PropertyMapper.text(n, "telMovil"),
-        Online21PropertyMapper.text(n, "whatsapp"));
+        Online21PropertyMapper.text(n, "whatsapp"),
+        Online21PropertyMapper.text(n, "telOfna"),
+        photoUrl(n),
+        Online21PropertyMapper.text(n, "urlUsuarioActivo"));
+  }
+
+  /**
+   * fotoPath es relativo ("/uploads/649/usuarios/41388/x.jpg"); path es la base del CDN que termina en
+   * ".../uploads/649/usuarios/". La foto es la base del CDN (hasta "/uploads/") + fotoPath.
+   */
+  static String photoUrl(JsonNode n) {
+    String photo = Online21PropertyMapper.text(n, "fotoPath");
+    if (photo == null) {
+      return null;
+    }
+    if (photo.startsWith("http")) {
+      return photo;
+    }
+    String base = Online21PropertyMapper.text(n, "path");
+    int cut = base == null ? -1 : base.indexOf("/uploads/");
+    if (cut < 0 || !base.startsWith("http")) {
+      return null;
+    }
+    return base.substring(0, cut) + (photo.startsWith("/") ? photo : "/" + photo);
   }
 }

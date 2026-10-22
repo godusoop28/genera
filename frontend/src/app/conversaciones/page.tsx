@@ -1,6 +1,7 @@
 "use client";
 
 import { Avatar, LoadError, Segmented, errorText, useApi } from "@/components/crm/CrmUi";
+import { SavedRepliesButton } from "@/components/crm/SavedReplies";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -347,6 +348,7 @@ function ChatPane({ detail, onBack, onUpdate }: { detail: ConversationDetail; on
             placeholder={asClient ? "Escribe como si fueras el cliente…" : "Responder como equipo (pausa la IA en esta conversación)"}
             className="max-h-32 min-h-10 flex-1 resize-none rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm text-obsessed focus:border-gold focus:outline-none focus:ring-4 focus:ring-gold/20"
           />
+          {asClient ? null : <SavedRepliesButton draft={text} onPick={(reply) => setText((current) => (current.trim() ? `${current.trimEnd()}\n${reply}` : reply))} />}
           <Button type="submit" disabled={!text.trim() || sending} aria-label="Enviar">
             <Send className="h-4 w-4" aria-hidden />
           </Button>

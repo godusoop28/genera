@@ -1,6 +1,7 @@
 "use client";
 
 import { errorText } from "@/components/crm/CrmUi";
+import { PropertyAttributesFields, usePropertyAttributes, type Extras } from "@/components/crm/PropertyAttributes";
 import { PropertyTypeSelect, propertyTypeError, usePropertyCatalog } from "@/components/property/PropertyTypeSelect";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -48,6 +49,8 @@ type FormState = {
   commission: string;
   publishOnline: boolean;
   advisorUserId: string;
+  /** Atributos adicionales de 21Online (características, contrato, publicación y amenidades). */
+  extras: Extras;
 };
 
 const text = (v: number | string | null | undefined) => (v === null || v === undefined ? "" : String(v));
@@ -86,6 +89,7 @@ function initialState(data?: PropertyData): FormState {
     commission: text(data?.commission),
     publishOnline: data?.publishOnline ?? true,
     advisorUserId: data?.advisorUserId ?? "",
+    extras: data?.extras ?? {},
   };
 }
 
@@ -132,6 +136,7 @@ function toData(f: FormState): PropertyData {
     advisorUserId: f.advisorUserId || null,
     catalogSubtypeId: f.catalogSubtypeId,
     propertyTypeDetail: f.propertyTypeDetail.trim() || null,
+    extras: f.extras,
   };
 }
 
@@ -163,6 +168,7 @@ export function PropertyForm({
   const set = <K extends keyof FormState>(key: K) => (value: FormState[K]) => setForm((f) => ({ ...f, [key]: value }));
 
   const { catalog } = usePropertyCatalog();
+  const attributes = usePropertyAttributes();
   const typeProblem = propertyTypeError(catalog, form.catalogSubtypeId, form.propertyTypeDetail, initial?.catalogSubtypeId);
   const missing: string[] = [];
   if (typeProblem) missing.push("tipo de inmueble");
@@ -327,8 +333,14 @@ export function PropertyForm({
             </>
           ) : null}
         </div>
-        <p className="mt-4 text-xs text-muted">Las fotos se suben en 21Online: su API no recibe archivos de imagen.</p>
+        <p className="mt-4 text-xs text-muted">Las fotos se suben en 21Online (su API no recibe archivos de imagen) y aquí se ven en la ficha.</p>
       </Card>
+
+      {attributes.data ? (
+        <PropertyAttributesFields catalog={attributes.data} value={form.extras} onChange={set("extras")} />
+      ) : attributes.error ? (
+        <p className="text-sm text-warning-text">No se pudieron cargar los campos adicionales de 21Online; al guardar se conservan los que ya tenía.</p>
+      ) : null}
 
       {error ? (
         <p role="alert" className="rounded-xl bg-danger-bg px-4 py-3 text-sm text-danger-text">

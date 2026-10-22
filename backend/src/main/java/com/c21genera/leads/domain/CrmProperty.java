@@ -1,7 +1,10 @@
 package com.c21genera.leads.domain;
 
 import com.c21genera.shared.jpa.AuditableEntity;
+import com.c21genera.shared.jpa.JsonMapConverter;
+import com.c21genera.shared.jpa.JsonStringListConverter;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -9,6 +12,10 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
 
 /**
@@ -120,8 +127,25 @@ public class CrmProperty extends AuditableEntity {
   @Column(length = 160)
   private String propertyTypeDetail;
 
-  @Column(nullable = false)
+  /** Null en las importadas de 21Online por el proceso programado (nadie las vinculó a mano). */
   private UUID createdByUserId;
+
+  /** Atributos adicionales con clave y forma de 21Online (ver online21.ListingAttributes). */
+  @Convert(converter = JsonMapConverter.class)
+  private Map<String, Object> extraAttributes = new TreeMap<>();
+
+  /** URLs de las fotos en 21Online (solo lectura: se suben allá). */
+  @Convert(converter = JsonStringListConverter.class)
+  private List<String> photoUrls = new ArrayList<>();
+
+  /** caracteristicasJSON de 21Online: al editar las amenidades se conservan sus demás campos. */
+  private String featuresTemplate;
+
+  /** Notas internas: solo en Genera, nunca se mandan a 21Online. */
+  private String privateNotes;
+
+  @Convert(converter = JsonStringListConverter.class)
+  private List<String> tags = new ArrayList<>();
 
   /** GENERA (capturada aquí) u ONLINE21 (dada de alta en 21Online y vinculada desde Genera). */
   @Column(nullable = false, length = 16)
@@ -146,13 +170,14 @@ public class CrmProperty extends AuditableEntity {
   }
 
   /** Propiedad que ya existe en 21Online, vinculada para editarla desde Genera (queda sincronizada). */
-  public static CrmProperty linked(UUID createdByUserId, long online21Id, Data data, Instant remoteModifiedAt, Instant now) {
+  public static CrmProperty linked(UUID createdByUserId, long online21Id, Data data, List<String> photos, Instant remoteModifiedAt, Instant now) {
     CrmProperty p = new CrmProperty();
     p.id = UUID.randomUUID();
     p.createdByUserId = createdByUserId;
     p.online21Id = online21Id;
     p.origin = ORIGIN_ONLINE21;
     p.assign(data);
+    p.photos(photos);
     p.syncStatus = SyncStatus.DONE;
     p.syncedAt = now;
     p.remoteModifiedAt = remoteModifiedAt;
@@ -194,7 +219,15 @@ public class CrmProperty extends AuditableEntity {
       UUID advisorUserId,
       // Control de Cambios #26: subcategoría del catálogo (de ella salen propertyType/subtype de 21Online).
       UUID catalogSubtypeId,
-      String propertyTypeDetail) {}
+      String propertyTypeDetail,
+      // Características, contrato y publicación con clave de 21Online (ver online21.ListingAttributes).
+      // null al guardar = no vinieron (p. ej. la app móvil): se conservan los que ya tenía.
+      Map<String, Object> extras) {
+
+    public Data {
+      extras = extras == null ? null : new TreeMap<>(extras);
+    }
+  }
 
   /** Cambia los datos; si ya estaba en 21Online, queda pendiente de mandar la actualización. */
   public void apply(Data d) {
@@ -208,8 +241,9 @@ public class CrmProperty extends AuditableEntity {
    * Trae lo que se cambió en 21Online (solo si aquí no hay cambios pendientes de mandar): queda
    * sincronizada con lo de allá.
    */
-  public void applyRemote(Data d, String syncedDraft, Instant remoteModifiedAt, Instant now) {
+  public void applyRemote(Data d, List<String> photos, String syncedDraft, Instant remoteModifiedAt, Instant now) {
     assign(d);
+    photos(photos);
     this.syncStatus = SyncStatus.DONE;
     this.syncError = null;
     this.syncUncertain = false;
@@ -218,9 +252,17 @@ public class CrmProperty extends AuditableEntity {
     this.syncedAt = now;
   }
 
-  /** Se vio un cambio en 21Online pero aquí hay cambios sin mandar: se mandan primero (solo los campos tocados). */
-  public void noteRemote(Instant remoteModifiedAt) {
+  /**
+   * Se vio un cambio en 21Online pero aquí hay cambios sin mandar: se mandan primero (solo los campos
+   * tocados). Las fotos sí se actualizan: solo se editan allá.
+   */
+  public void noteRemote(List<String> photos, Instant remoteModifiedAt) {
+    photos(photos);
     this.remoteModifiedAt = remoteModifiedAt;
+  }
+
+  private void photos(List<String> photos) {
+    this.photoUrls = photos == null ? new ArrayList<>() : new ArrayList<>(photos);
   }
 
   public void baseline(String syncedDraft) {
@@ -271,13 +313,45 @@ public class CrmProperty extends AuditableEntity {
     this.advisorUserId = d.advisorUserId();
     this.catalogSubtypeId = d.catalogSubtypeId();
     this.propertyTypeDetail = d.propertyTypeDetail();
+    if (d.extras() != null) {
+      this.extraAttributes = new TreeMap<>(d.extras());
+    }
   }
 
   public Data data() {
     return new Data(
         operation, propertyType, subtype, contractType, status, headline, description, salePrice, rentPrice, currency, hidePrice, street, extNumber,
         neighborhood, municipality, state, postalCode, hideStreet, hideNumber, bedrooms, bathrooms, halfBathrooms, parking, landM2, builtM2, levels, age,
-        maintenanceFee, commission, publishOnline, advisorUserId, catalogSubtypeId, propertyTypeDetail);
+        maintenanceFee, commission, publishOnline, advisorUserId, catalogSubtypeId, propertyTypeDetail,
+        extraAttributes == null ? new TreeMap<>() : extraAttributes);
+  }
+
+  public List<String> getPhotoUrls() {
+    return List.copyOf(photoUrls);
+  }
+
+  /** Cambia solo las notas internas: no toca lo que se sincroniza con 21Online. */
+  public void annotate(String notes, List<String> tags) {
+    this.privateNotes = notes == null || notes.isBlank() ? null : notes.strip();
+    this.tags = tags == null ? new ArrayList<>() : new ArrayList<>(tags);
+  }
+
+  public String getPrivateNotes() {
+    return privateNotes;
+  }
+
+  public List<String> getTags() {
+    return tags == null ? List.of() : List.copyOf(tags);
+  }
+
+  public void featuresTemplate(String template) {
+    if (template != null) {
+      this.featuresTemplate = template;
+    }
+  }
+
+  public String getFeaturesTemplate() {
+    return featuresTemplate;
   }
 
   public void markSynced(Long online21Id, Instant at, String syncedDraft) {

@@ -7,6 +7,7 @@ import com.c21genera.leads.domain.CrmProperty.Data;
 import com.c21genera.leads.domain.SyncStatus;
 import com.c21genera.leads.infrastructure.AdvisorProfileRepository;
 import com.c21genera.leads.infrastructure.CrmPropertyRepository;
+import com.c21genera.online21.ListingAttributes;
 import com.c21genera.online21.PropertyListings;
 import com.c21genera.online21.PropertyListings.Listing;
 import com.c21genera.online21.PropertyListings.ListingDraft;
@@ -21,7 +22,9 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -121,7 +124,15 @@ public class PropertyService {
       String propertyTypeLabel,
       // GENERA (capturada aquí) u ONLINE21 (dada de alta allá y vinculada); cuándo se trajo lo de 21Online.
       String origin,
-      Instant remoteModifiedAt) {}
+      Instant remoteModifiedAt,
+      // Fotos de 21Online (solo lectura).
+      List<String> photos,
+      // Notas internas y etiquetas: solo en Genera, nunca se mandan a 21Online.
+      String privateNotes,
+      List<String> tags) {}
+
+  /** Resultado de importar el inventario de la oficina. */
+  public record ImportResult(boolean configured, int imported, int updated, int total) {}
 
   public record InventoryItem(Listing listing, Person advisor, UUID generaId) {}
 
@@ -190,6 +201,31 @@ public class PropertyService {
     return get(id, user);
   }
 
+  /** Notas internas y etiquetas: no se sincronizan con 21Online. */
+  public PropertyView annotate(UUID id, String notes, List<String> tags, CurrentUser user) {
+    tx.executeWithoutResult(
+        s -> {
+          CrmProperty p = load(id);
+          requireEditable(p, user);
+          p.annotate(notes, tags(tags));
+        });
+    return get(id, user);
+  }
+
+  static List<String> tags(List<String> in) {
+    if (in == null) {
+      return List.of();
+    }
+    Map<String, String> unique = new LinkedHashMap<>();
+    for (String t : in) {
+      String tag = t == null ? "" : t.strip().replaceAll("\\s+", " ");
+      if (!tag.isEmpty()) {
+        unique.putIfAbsent(tag.toLowerCase(Locale.ROOT), tag);
+      }
+    }
+    return List.copyOf(unique.values());
+  }
+
   public PropertyView update(UUID id, Data input, CurrentUser user) {
     tx.executeWithoutResult(
         s -> {
@@ -235,8 +271,16 @@ public class PropertyService {
         tx.executeWithoutResult(s -> load(id).markWaiting(WAITING));
         return;
       }
+      if (p.getOnline21Id() != null && p.getFeaturesTemplate() == null) {
+        p = withTemplate(id, p);
+      }
       ListingDraft draft = draft(p);
       ListingDraft baseline = baselineOf(p);
+      if (p.getOnline21Id() != null && p.getFeaturesTemplate() == null) {
+        // Sin el caracteristicasJSON de 21Online no se mandan amenidades: se perderían sus demás campos.
+        draft = withoutAmenities(draft);
+        baseline = baseline == null ? null : withoutAmenities(baseline);
+      }
       Long createdId = null;
       String error = null;
       boolean uncertain = false;
@@ -254,12 +298,13 @@ public class PropertyService {
       Long savedId = createdId;
       String savedError = error;
       boolean savedUncertain = uncertain;
+      ListingDraft sent = draft;
       try {
         tx.executeWithoutResult(
             s -> {
               CrmProperty fresh = load(id);
               if (savedError == null) {
-                fresh.markSynced(savedId, clock.instant(), json(draft));
+                fresh.markSynced(savedId, clock.instant(), json(sent));
               } else {
                 fresh.markFailed(savedError, savedUncertain);
               }
@@ -300,7 +345,8 @@ public class PropertyService {
       id =
           tx.execute(
               s -> {
-                CrmProperty p = CrmProperty.linked(user.id(), online21Id, fromRemote(remote.draft(), null), remote.updatedAt(), clock.instant());
+                CrmProperty p = CrmProperty.linked(user.id(), online21Id, fromRemote(remote.draft(), null), remote.photos(), remote.updatedAt(), clock.instant());
+                p.featuresTemplate(templateOf(remote));
                 p.baseline(json(draft(p)));
                 return properties.save(p).getId();
               });
@@ -355,13 +401,137 @@ public class PropertyService {
     return remove(linked.id(), user);
   }
 
-  /** Trae a Genera lo que se cambió en 21Online en las propiedades vinculadas. */
+  /**
+   * Importa a mano todo el inventario de la oficina (el proceso programado hace lo mismo cada pocos
+   * minutos). Lanza si 21Online no responde.
+   */
+  public ImportResult importOfficeInventory() {
+    if (!listings.available()) {
+      return new ImportResult(false, 0, 0, 0);
+    }
+    InventorySync r;
+    try {
+      r = syncInventory();
+    } catch (RuntimeException e) {
+      log.warn("No se pudo importar el inventario de 21Online ({})", e.getClass().getSimpleName());
+      throw new UnprocessableException("ONLINE21_UNAVAILABLE", "21Online no respondió. Intenta de nuevo en un momento.");
+    }
+    return new ImportResult(true, r.imported(), r.updated(), r.seen().size());
+  }
+
+  private record InventorySync(Set<Long> seen, int imported, int updated) {}
+
+  /**
+   * Todo el inventario de la oficina queda en Genera: lo nuevo en 21Online se importa y lo que cambió allá
+   * se trae (con la misma regla que una propiedad vinculada: si aquí hay cambios sin mandar, se conservan).
+   */
+  private InventorySync syncInventory() {
+    List<RemoteListing> remote = listings.officeInventory();
+    Map<Long, CrmProperty> local =
+        remote.isEmpty()
+            ? Map.of()
+            : properties.findByOnline21IdIn(remote.stream().map(RemoteListing::id).toList()).stream()
+                .collect(Collectors.toMap(CrmProperty::getOnline21Id, p -> p, (a, b) -> a));
+    Set<Long> seen = new java.util.HashSet<>();
+    int imported = 0;
+    int updated = 0;
+    for (RemoteListing r : remote) {
+      seen.add(r.id());
+      CrmProperty p = local.get(r.id());
+      try {
+        if (p == null) {
+          if (importNew(r)) {
+            imported++;
+          }
+        } else if (changedRemotely(p, r) || missingRemoteData(p, r)) {
+          if (applyRemote(p.getId(), r)) {
+            updated++;
+          }
+        }
+      } catch (RuntimeException e) {
+        log.warn("No se pudo importar de 21Online la propiedad {} ({})", r.id(), e.getClass().getSimpleName());
+      }
+    }
+    if (imported > 0 || updated > 0) {
+      log.info("Inventario de 21Online: {} propiedad(es) nuevas y {} actualizadas", imported, updated);
+    }
+    return new InventorySync(seen, imported, updated);
+  }
+
+  /** Trae de 21Online la plantilla de amenidades de una propiedad vinculada antes de guardarlas; si falla, sigue sin ella. */
+  private CrmProperty withTemplate(UUID id, CrmProperty p) {
+    try {
+      String template = listings.editable(p.getOnline21Id()).map(PropertyService::templateOf).orElse(null);
+      if (template != null) {
+        tx.executeWithoutResult(s -> load(id).featuresTemplate(template));
+        return load(id);
+      }
+    } catch (RuntimeException e) {
+      log.warn("No se pudo traer de 21Online la plantilla de amenidades de {} ({})", p.getOnline21Id(), e.getClass().getSimpleName());
+    }
+    return p;
+  }
+
+  private static ListingDraft withoutAmenities(ListingDraft d) {
+    Map<String, Object> extras = new java.util.TreeMap<>(d.extras());
+    extras.remove(ListingAttributes.AMENITIES_KEY);
+    extras.remove(ListingAttributes.FEATURES_TEMPLATE);
+    return new ListingDraft(
+        d.operation(), d.propertyType(), d.subtype(), d.contractType(), d.status(), d.headline(), d.description(), d.salePrice(), d.rentPrice(),
+        d.currency(), d.street(), d.number(), d.neighborhood(), d.municipality(), d.state(), d.postalCode(), d.hideStreet(), d.hideNumber(),
+        d.hidePrice(), d.bedrooms(), d.bathrooms(), d.halfBathrooms(), d.parking(), d.landM2(), d.builtM2(), d.levels(), d.age(), d.maintenanceFee(),
+        d.commission(), d.publishOnline(), d.advisorOnline21Id(), d.integratorId(), extras);
+  }
+
+  private static String templateOf(RemoteListing r) {
+    return r.draft().extras().get(ListingAttributes.FEATURES_TEMPLATE) instanceof String s ? s : null;
+  }
+
+  private static boolean changedRemotely(CrmProperty p, RemoteListing r) {
+    return r.updatedAt() != null && (p.getRemoteModifiedAt() == null || r.updatedAt().isAfter(p.getRemoteModifiedAt()));
+  }
+
+  /** Vinculadas antes de sincronizar fotos y atributos adicionales: se completan una vez aunque no cambien allá. */
+  private static boolean missingRemoteData(CrmProperty p, RemoteListing r) {
+    return (p.getPhotoUrls().isEmpty() && !r.photos().isEmpty())
+        || (ListingAttributes.writeOnly(p.data().extras()).size() == p.data().extras().size() && !r.draft().extras().isEmpty());
+  }
+
+  /** Propiedad de 21Online que aún no está en Genera; queda a nombre de su asesor (si está vinculado). */
+  private boolean importNew(RemoteListing r) {
+    try {
+      tx.executeWithoutResult(
+          s -> {
+            Data data = fromRemote(r.draft(), null);
+            CrmProperty p = CrmProperty.linked(data.advisorUserId(), r.id(), data, r.photos(), r.updatedAt(), clock.instant());
+            p.featuresTemplate(templateOf(r));
+            p.baseline(json(draft(p)));
+            properties.save(p);
+          });
+      return true;
+    } catch (DataIntegrityViolationException e) {
+      // Alguien la vinculó al mismo tiempo.
+      return false;
+    }
+  }
+
+  /**
+   * Trae a Genera lo que se cambió en 21Online: importa el inventario de la oficina y revisa las vinculadas
+   * que ya no aparecen en él (canceladas, cerradas…).
+   */
   @Scheduled(fixedDelayString = "${app.online21.pull-interval:PT10M}", initialDelayString = "PT3M")
   void pullRemoteChanges() {
     if (!listings.available()) {
       return;
     }
-    List<CrmProperty> linked = properties.findByOnline21IdNotNull();
+    Set<Long> seen = Set.of();
+    try {
+      seen = syncInventory().seen();
+    } catch (RuntimeException e) {
+      log.warn("No se pudo importar el inventario de 21Online ({})", e.getClass().getSimpleName());
+    }
+    Set<Long> inInventory = seen;
+    List<CrmProperty> linked = properties.findByOnline21IdNotNull().stream().filter(p -> !inInventory.contains(p.getOnline21Id())).toList();
     if (linked.isEmpty()) {
       return;
     }
@@ -403,23 +573,40 @@ public class PropertyService {
       if (remote.isEmpty()) {
         return;
       }
-      RemoteListing r = remote.get();
-      try {
-        tx.executeWithoutResult(
-            s -> {
-              CrmProperty fresh = load(id);
-              if (fresh.getSyncStatus() == SyncStatus.DONE) {
-                fresh.applyRemote(fromRemote(r.draft(), fresh), null, r.updatedAt(), clock.instant());
-                fresh.baseline(json(draft(fresh)));
-              } else {
-                fresh.noteRemote(r.updatedAt());
-              }
-            });
-      } catch (OptimisticLockingFailureException e) {
-        // Se editó en Genera al mismo tiempo: en la siguiente pasada se vuelve a comparar.
-      }
+      store(id, remote.get());
     } finally {
       inFlight.remove(id);
+    }
+  }
+
+  /** Igual que refresh, con la ficha ya leída (importación del inventario). false si estaba ocupada. */
+  private boolean applyRemote(UUID id, RemoteListing r) {
+    if (!inFlight.add(id)) {
+      return false;
+    }
+    try {
+      store(id, r);
+      return true;
+    } finally {
+      inFlight.remove(id);
+    }
+  }
+
+  private void store(UUID id, RemoteListing r) {
+    try {
+      tx.executeWithoutResult(
+          s -> {
+            CrmProperty fresh = load(id);
+            if (fresh.getSyncStatus() == SyncStatus.DONE) {
+              fresh.applyRemote(fromRemote(r.draft(), fresh), r.photos(), null, r.updatedAt(), clock.instant());
+              fresh.featuresTemplate(templateOf(r));
+              fresh.baseline(json(draft(fresh)));
+            } else {
+              fresh.noteRemote(r.photos(), r.updatedAt());
+            }
+          });
+    } catch (OptimisticLockingFailureException e) {
+      // Se editó en Genera al mismo tiempo: en la siguiente pasada se vuelve a comparar.
     }
   }
 
@@ -495,7 +682,18 @@ public class PropertyService {
         r.publishOnline(),
         advisor,
         match != null ? match.id() : null,
-        detail);
+        detail,
+        remoteExtras(r, before));
+  }
+
+  /** Atributos de 21Online más los que su API no devuelve (se conserva lo último capturado en Genera). */
+  private static Map<String, Object> remoteExtras(ListingDraft r, Data before) {
+    Map<String, Object> extras = new java.util.TreeMap<>(r.extras());
+    extras.remove(ListingAttributes.FEATURES_TEMPLATE);
+    if (before != null) {
+      extras.putAll(ListingAttributes.writeOnly(before.extras()));
+    }
+    return extras;
   }
 
   private ListingDraft baselineOf(CrmProperty p) {
@@ -527,7 +725,7 @@ public class PropertyService {
         d.operation(), d.propertyType(), d.subtype(), d.contractType(), status, d.headline(), d.description(), d.salePrice(), d.rentPrice(),
         d.currency(), d.street(), d.number(), d.neighborhood(), d.municipality(), d.state(), d.postalCode(), d.hideStreet(), d.hideNumber(),
         d.hidePrice(), d.bedrooms(), d.bathrooms(), d.halfBathrooms(), d.parking(), d.landM2(), d.builtM2(), d.levels(), d.age(), d.maintenanceFee(),
-        d.commission(), d.publishOnline(), d.advisorOnline21Id(), d.integratorId());
+        d.commission(), d.publishOnline(), d.advisorOnline21Id(), d.integratorId(), d.extras());
   }
 
   private ListingDraft draft(CrmProperty p) {
@@ -537,7 +735,16 @@ public class PropertyService {
         d.operation(), d.propertyType(), d.subtype(), d.contractType(), d.status(), d.headline(), d.description(), d.salePrice(), d.rentPrice(),
         d.currency(), d.street(), d.extNumber(), d.neighborhood(), d.municipality(), d.state(), d.postalCode(), d.hideStreet(), d.hideNumber(),
         d.hidePrice(), d.bedrooms(), d.bathrooms(), d.halfBathrooms(), d.parking(), d.landM2(), d.builtM2(), d.levels(), d.age(), d.maintenanceFee(),
-        d.commission(), d.publishOnline(), advisorOnline21, "genera:" + p.getId());
+        d.commission(), d.publishOnline(), advisorOnline21, "genera:" + p.getId(), draftExtras(p));
+  }
+
+  /** Atributos de la propiedad más la plantilla de caracteristicasJSON que trajo 21Online. */
+  private static Map<String, Object> draftExtras(CrmProperty p) {
+    Map<String, Object> extras = new java.util.TreeMap<>(p.data().extras());
+    if (p.getFeaturesTemplate() != null) {
+      extras.put(ListingAttributes.FEATURES_TEMPLATE, p.getFeaturesTemplate());
+    }
+    return extras;
   }
 
   // ---------------------------------------------------------------------------
@@ -618,7 +825,19 @@ public class PropertyService {
         currency, in.hidePrice(), blankToNull(in.street()), blankToNull(in.extNumber()), neighborhood, municipality, state, blankToNull(in.postalCode()),
         in.hideStreet(), in.hideNumber(), nonNegative(in.bedrooms()), positive(in.bathrooms()), nonNegative(in.halfBathrooms()), nonNegative(in.parking()),
         positive(in.landM2()), positive(in.builtM2()), nonNegative(in.levels()), nonNegative(in.age()), positive(in.maintenanceFee()), in.commission(),
-        in.publishOnline(), advisor, catalogSubtype.id(), typeDetail);
+        in.publishOnline(), advisor, catalogSubtype.id(), typeDetail, extras(in.extras()));
+  }
+
+  /** null = no vinieron en la petición (se conservan los que ya tenía la propiedad). */
+  private static Map<String, Object> extras(Map<String, Object> in) {
+    if (in == null) {
+      return null;
+    }
+    try {
+      return ListingAttributes.normalize(in);
+    } catch (IllegalArgumentException e) {
+      throw new UnprocessableException("PROPERTY_INVALID", e.getMessage());
+    }
   }
 
   private void requireEditable(CrmProperty p, CurrentUser user) {
@@ -642,10 +861,16 @@ public class PropertyService {
     return new PropertyView(
         p.getId(), p.getOnline21Id(), p.getSyncStatus().name(), p.getSyncError(), p.isSyncUncertain(), p.getSyncedAt(), p.data(),
         advisor == null ? null : new Person(advisor, staff.nameOf(advisor, names)), linked,
-        new Person(p.getCreatedByUserId(), staff.nameOf(p.getCreatedByUserId(), names)), p.getCreatedAt(), p.getUpdatedAt(), canEdit(p, user),
+        p.getCreatedByUserId() == null ? null : new Person(p.getCreatedByUserId(), staff.nameOf(p.getCreatedByUserId(), names)),
+        p.getCreatedAt(),
+        p.getUpdatedAt(),
+        canEdit(p, user),
         catalog.subtype(p.data().catalogSubtypeId()).map(s -> s.label(p.data().propertyTypeDetail())).orElse(null),
         p.getOrigin(),
-        p.getRemoteModifiedAt());
+        p.getRemoteModifiedAt(),
+        p.getPhotoUrls(),
+        p.getPrivateNotes(),
+        p.getTags());
   }
 
   /** Asesor de Genera vinculado al usuario de 21Online (Asesores → usuario de 21Online). */

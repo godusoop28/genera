@@ -113,7 +113,14 @@ export function SourceLabel({ source, detail, className }: { source: LeadSource;
   );
 }
 
-export function Avatar({ name, className }: { name: string; className?: string }) {
+/** photoUrl: foto de su usuario de 21Online (si no hay, iniciales). */
+export function Avatar({ name, className, photoUrl }: { name: string; className?: string; photoUrl?: string | null }) {
+  if (photoUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={photoUrl} alt="" loading="lazy" className={cn("h-9 w-9 shrink-0 rounded-full bg-gold/25 object-cover", className)} aria-hidden />
+    );
+  }
   return (
     <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gold/25 text-xs font-semibold text-dark-gold", className)} aria-hidden>
       {initials(name)}
