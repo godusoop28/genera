@@ -47,10 +47,12 @@ public class PropertyCatalogController {
       boolean requiresDetail,
       @NotBlank String caseType,
       @NotBlank String online21Type,
-      @NotBlank String online21Subtype) {
+      @NotBlank String online21Subtype,
+      // Control de Cambios #27: letras del tipo en la clave estructurada (opcional).
+      @Size(max = 3) String keyCode) {
 
     SubtypeInput toInput() {
-      return new SubtypeInput(categoryId, name, sortOrder, active, requiresDetail, caseType, online21Type, online21Subtype);
+      return new SubtypeInput(categoryId, name, sortOrder, active, requiresDetail, caseType, online21Type, online21Subtype, keyCode);
     }
   }
 

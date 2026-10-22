@@ -196,7 +196,7 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
                 ),
                 const SizedBox(height: 16),
                 AppTextField(
-                  hint: 'Buscar por cliente, folio o domicilio',
+                  hint: 'Buscar por cliente, folio, clave o domicilio',
                   value: query,
                   onChanged: (q) {
                     query = q;
@@ -397,7 +397,7 @@ class ExpedienteCard extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  e.folio,
+                  e.propertyKey != null ? '${e.folio} · ${e.propertyKey}' : e.folio,
                   style: TextStyle(fontFamily: 'GeistMono', fontSize: 12, color: c.muted, fontWeight: FontWeight.w500),
                 ),
               ),
@@ -535,7 +535,7 @@ class ExpedienteRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   Text(
-                    e.folio,
+                    e.propertyKey != null ? '${e.folio} · ${e.propertyKey}' : e.folio,
                     style: TextStyle(fontFamily: 'GeistMono', fontSize: 12, color: c.muted),
                   ),
                   Text(

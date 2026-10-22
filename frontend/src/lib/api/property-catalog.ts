@@ -15,6 +15,8 @@ export interface CatalogSubtype {
   caseType: BackendPropertyCaseType;
   online21Type: "habitacional" | "comercial";
   online21Subtype: string;
+  /** Control de Cambios #27: letras del tipo en la clave estructurada (p. ej. "C" de Casa en CVEA03); null = sin clave automática. */
+  keyCode: string | null;
 }
 
 export interface CatalogCategory {

@@ -46,6 +46,7 @@ class ExpedienteArchiveTest {
           events,
           new ObjectMapper(),
           mock(com.c21genera.propertycatalog.PropertyCatalog.class),
+          mock(PropertyKeyService.class),
           Clock.systemUTC());
 
   private final Actor director = Actor.staff(UUID.randomUUID(), "Carmen Directora", "DIRECTOR");

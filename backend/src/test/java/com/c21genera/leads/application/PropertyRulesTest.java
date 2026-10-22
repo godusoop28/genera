@@ -18,13 +18,13 @@ class PropertyRulesTest {
 
   private static final UUID HABITACIONAL = UUID.randomUUID();
   private static final PropertyCatalog.Subtype CASA =
-      new PropertyCatalog.Subtype(UUID.randomUUID(), HABITACIONAL, "Habitacional", "Casa", 10, true, false, "HOUSING", "habitacional", "casa");
+      new PropertyCatalog.Subtype(UUID.randomUUID(), HABITACIONAL, "Habitacional", "Casa", 10, true, false, "HOUSING", "habitacional", "casa", "C");
   private static final PropertyCatalog.Subtype LOCAL =
-      new PropertyCatalog.Subtype(UUID.randomUUID(), UUID.randomUUID(), "Comercial y oficinas", "Local comercial", 10, true, false, "COMMERCIAL", "comercial", "local");
+      new PropertyCatalog.Subtype(UUID.randomUUID(), UUID.randomUUID(), "Comercial y oficinas", "Local comercial", 10, true, false, "COMMERCIAL", "comercial", "local", "L");
   private static final PropertyCatalog.Subtype OTRO =
-      new PropertyCatalog.Subtype(UUID.randomUUID(), UUID.randomUUID(), "Especiales", "Otro — especificar", 30, true, true, "COMMERCIAL", "comercial", "inmueble-productivo");
+      new PropertyCatalog.Subtype(UUID.randomUUID(), UUID.randomUUID(), "Especiales", "Otro — especificar", 30, true, true, "COMMERCIAL", "comercial", "inmueble-productivo", "X");
   private static final PropertyCatalog.Subtype RETIRED =
-      new PropertyCatalog.Subtype(UUID.randomUUID(), HABITACIONAL, "Habitacional", "Quinta", 90, false, false, "HOUSING", "habitacional", "quinta");
+      new PropertyCatalog.Subtype(UUID.randomUUID(), HABITACIONAL, "Habitacional", "Quinta", 90, false, false, "HOUSING", "habitacional", "quinta", null);
 
   /** Catálogo en memoria (solo subtype() importa para estas reglas). */
   private static final PropertyCatalog CATALOG =

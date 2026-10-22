@@ -51,6 +51,7 @@ class AdvisorAssignmentTest {
           events,
           new ObjectMapper(),
           mock(com.c21genera.propertycatalog.PropertyCatalog.class),
+          mock(PropertyKeyService.class),
           Clock.systemUTC());
 
   private final UUID ana = UUID.randomUUID();

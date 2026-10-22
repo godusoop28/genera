@@ -45,6 +45,17 @@ public interface ExpedienteRepository extends JpaRepository<Expediente, UUID>, J
 
   long countByAssignedAdvisorIdAndArchivedAtIsNotNull(UUID assignedAdvisorId);
 
+  /** Control de Cambios #27. */
+  Optional<Expediente> findByPropertyKey(String propertyKey);
+
+  List<Expediente> findByPropertyKeyIsNotNull();
+
+  List<Expediente> findByPropertyKeyIsNull();
+
+  /** Consecutivo más alto registrado para una combinación (null si no hay ninguno). */
+  @Query("SELECT MAX(e.propertyKeyNumber) FROM Expediente e WHERE e.propertyKeyPrefix = :prefix")
+  Integer maxPropertyKeyNumber(@Param("prefix") String prefix);
+
   @Query(value = "SELECT nextval('expediente_folio_seq')", nativeQuery = true)
   long nextFolioSequenceValue();
 }

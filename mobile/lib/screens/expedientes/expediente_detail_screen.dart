@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../api/api.dart' as api;
@@ -6,6 +7,8 @@ import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../config.dart';
 import '../../labels.dart';
+import '../../state/auth.dart';
+import '../../ui/property_key_sheet.dart';
 import '../../ui/shell.dart';
 import '../../ui/widgets.dart';
 import 'tabs/consistency_tab.dart';
@@ -160,9 +163,23 @@ class _ExpedienteDetailScreenState extends State<ExpedienteDetailScreen> with Ti
     );
     final c = context.c;
     final next = backendStatusNextStep[e.status];
+    final canAssignKey = context.watch<AuthState>().can('EXPEDIENT_KEY_ASSIGN');
     return AppScaffold(
       title: e.ownerDisplayName.isEmpty ? 'Expediente' : e.ownerDisplayName,
       actions: [
+        // Control de Cambios #27 (adenda): solo administrador o directivo asignan/corrigen la clave.
+        if (canAssignKey)
+          IconButton(
+            tooltip: e.propertyKey != null ? 'Corregir clave' : 'Asignar clave',
+            icon: const Icon(Icons.key_outlined),
+            onPressed: () async {
+              final saved = await showPropertyKeySheet(context, expedienteId: e.id, folio: e.folio, currentKey: e.propertyKey);
+              if (saved && context.mounted) {
+                showToast(context, 'Clave asignada.');
+                await reload();
+              }
+            },
+          ),
         IconButton(
           tooltip: 'Actualizar',
           onPressed: refreshing ? null : refresh,
@@ -182,6 +199,20 @@ class _ExpedienteDetailScreenState extends State<ExpedienteDetailScreen> with Ti
                     decoration: BoxDecoration(color: c.card, borderRadius: BorderRadius.circular(8), border: Border.all(color: c.border)),
                     child: Text(e.folio, style: TextStyle(fontFamily: 'GeistMono', fontSize: 12, color: c.fg.withValues(alpha: 0.75))),
                   ),
+                  // Control de Cambios #27: clave estructurada del inmueble.
+                  if (e.propertyKey != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                          color: Brand.gold.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8), border: Border.all(color: Brand.gold.withValues(alpha: 0.5))),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.key_outlined, size: 14, color: c.goldText),
+                        const SizedBox(width: 4),
+                        Text(e.propertyKey!, style: TextStyle(fontFamily: 'GeistMono', fontSize: 12, fontWeight: FontWeight.w600, color: c.fg)),
+                      ]),
+                    )
+                  else if (canAssignKey)
+                    const AppBadge('Sin clave', tone: Tone.warning),
                   AppBadge(label(backendStatusLabels, e.status), tone: backendStatusTone[e.status] ?? Tone.neutral),
                   if (!e.correctable) const AppBadge('Datos bloqueados (contrato firmado o expediente decidido)'),
                 ]),

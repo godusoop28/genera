@@ -105,6 +105,19 @@ public class Expediente extends AuditableEntity {
   @Column(length = 160)
   private String assignedAdvisorName;
 
+  /**
+   * Control de Cambios #27: clave estructurada (ver {@link PropertyKey}). Se genera sola al dar de
+   * alta o la asigna a mano el administrador/directivo; prefix y number sirven para calcular el
+   * siguiente consecutivo de cada combinación. null = sin clave (expedientes anteriores al cambio).
+   */
+  @Column(length = 24, unique = true)
+  private String propertyKey;
+
+  @Column(length = 20)
+  private String propertyKeyPrefix;
+
+  private Integer propertyKeyNumber;
+
   /** Ver {@link com.c21genera.expedientes.LegalDetails}; lo serializa ExpedienteService. */
   private String legalDetailsJson;
 
@@ -220,6 +233,13 @@ public class Expediente extends AuditableEntity {
   public void assignAdvisor(UUID advisorId, String advisorName) {
     this.assignedAdvisorId = advisorId;
     this.assignedAdvisorName = advisorName;
+  }
+
+  /** Control de Cambios #27: no forma parte del contrato, así que se permite en cualquier etapa. */
+  public void assignPropertyKey(PropertyKey key) {
+    this.propertyKey = key.value();
+    this.propertyKeyPrefix = key.prefix();
+    this.propertyKeyNumber = key.number();
   }
 
   /** Se permite en cualquier estatus; no cambia el estatus ni los documentos. */
@@ -450,5 +470,17 @@ public class Expediente extends AuditableEntity {
 
   public String getArchiveReason() {
     return archiveReason;
+  }
+
+  public String getPropertyKey() {
+    return propertyKey;
+  }
+
+  public String getPropertyKeyPrefix() {
+    return propertyKeyPrefix;
+  }
+
+  public Integer getPropertyKeyNumber() {
+    return propertyKeyNumber;
   }
 }

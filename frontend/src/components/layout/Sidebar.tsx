@@ -6,7 +6,7 @@ import { useCanSeeCrm } from "@/components/crm/CrmUi";
 import { useAuth } from "@/context/AuthProvider";
 import { useCan } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-import { BarChart3, CalendarDays, FilePlus2, Files, House, LayoutDashboard, LogOut, MessagesSquare, Users, UserRoundSearch, UsersRound } from "lucide-react";
+import { BarChart3, CalendarDays, FilePlus2, Files, House, KeyRound, LayoutDashboard, LogOut, MessagesSquare, Users, UserRoundSearch, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -17,6 +17,8 @@ const navItems = [
   { href: "/expedientes/nuevo", label: "Nuevo expediente", icon: FilePlus2, permission: "EXPEDIENT_CREATE" },
   // Control de Cambios #24: cartera por tipo de propiedad, operación y asesor.
   { href: "/reportes", label: "Reportes", icon: BarChart3 },
+  // Control de Cambios #27 (adenda): claves en uso y migración de las propiedades existentes.
+  { href: "/claves", label: "Claves de inmuebles", icon: KeyRound, permission: "EXPEDIENT_KEY_ASSIGN" },
   { href: "/usuarios", label: "Usuarios y permisos", icon: Users, permission: "USER_MANAGE" },
 ];
 

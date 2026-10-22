@@ -256,3 +256,67 @@ export function getPortfolioReport(filters: PortfolioFilters) {
 export function classifyExpedienteProperty(id: string, propertySubtypeId: string, propertyTypeDetail?: string, reason?: string) {
   return apiClient.put<ExpedienteResponse>(`/internal/expedientes/${id}/property-type`, { propertySubtypeId, propertyTypeDetail, reason });
 }
+
+/** Control de Cambios #27 (adenda): validación en tiempo real de una clave capturada a mano. */
+export interface PropertyKeyCheck {
+  /** Normalizada (mayúsculas, consecutivo a dos dígitos). */
+  key: string;
+  valid: boolean;
+  available: boolean;
+  message: string;
+  assignedTo: { expedienteId: string; folio: string; ownerDisplayName: string; property: string | null } | null;
+}
+
+export function checkPropertyKey(key: string, expedienteId?: string) {
+  const search = new URLSearchParams({ key });
+  if (expedienteId) search.set("expedienteId", expedienteId);
+  return apiClient.get<PropertyKeyCheck>(`/internal/expedientes/property-keys/check?${search.toString()}`);
+}
+
+/** Asignación manual: se respeta la clave capturada (no genera consecutivo automático). */
+export function assignPropertyKey(id: string, key: string, reason?: string) {
+  return apiClient.put<ExpedienteResponse>(`/internal/expedientes/${id}/property-key`, { key, reason });
+}
+
+export interface PropertyKeyOverview {
+  assigned: {
+    expedienteId: string;
+    folio: string;
+    key: string;
+    prefix: string;
+    number: number;
+    ownerDisplayName: string;
+    property: string | null;
+    propertyTypeLabel: string | null;
+    operationType: BackendOperationType;
+    advisorId: string | null;
+    advisorName: string | null;
+    archivedAt: string | null;
+  }[];
+  /** Por combinación (tipo + operación + asesor): consecutivos en uso, huecos libres y el siguiente automático. */
+  combinations: { prefix: string; used: number[]; gaps: number[]; nextKey: string | null }[];
+  /** Expedientes sin clave, con la que les tocaría (null si su tipo no tiene letras o falta el asesor). */
+  withoutKey: {
+    expedienteId: string;
+    folio: string;
+    ownerDisplayName: string;
+    property: string | null;
+    propertyTypeLabel: string | null;
+    operationType: BackendOperationType;
+    advisorName: string | null;
+    suggestedPrefix: string | null;
+    suggestedKey: string | null;
+    archivedAt: string | null;
+  }[];
+}
+
+export function getPropertyKeys(filters: Omit<PortfolioFilters, "advisorId"> & { advisorId?: string | null; prefix?: string }) {
+  const search = new URLSearchParams();
+  if (filters.categoryId) search.set("categoryId", filters.categoryId);
+  if (filters.subtypeId === UNCLASSIFIED_SUBTYPE) search.set("unclassified", "true");
+  else if (filters.subtypeId) search.set("subtypeId", filters.subtypeId);
+  if (filters.operationType) search.set("operationType", filters.operationType);
+  if (filters.advisorId) search.set("advisorId", filters.advisorId);
+  if (filters.prefix?.trim()) search.set("prefix", filters.prefix.trim());
+  return apiClient.get<PropertyKeyOverview>(`/internal/expedientes/property-keys?${search.toString()}`);
+}

@@ -74,6 +74,8 @@ export interface ParticipantRequest extends Partial<ParticipantDetails> {
 export interface ExpedienteResponse {
   id: string;
   folio: string;
+  /** Control de Cambios #27: clave estructurada del inmueble (p. ej. "CVEA03"); null = sin asignar. */
+  propertyKey: string | null;
   ownerDisplayName: string;
   status: BackendExpedienteStatus;
   personType: BackendPersonType;

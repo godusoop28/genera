@@ -92,8 +92,12 @@ class CatalogSubtype {
         requiresDetail = _b(j['requiresDetail']),
         caseType = _sr(j['caseType'], 'COMMERCIAL'),
         online21Type = _sr(j['online21Type'], 'comercial'),
-        online21Subtype = _sr(j['online21Subtype']);
+        online21Subtype = _sr(j['online21Subtype']),
+        keyCode = _s(j['keyCode']);
   final String id, categoryId, categoryName, name, caseType, online21Type, online21Subtype;
+
+  /// Control de Cambios #27: letras del tipo en la clave estructurada (null = sin clave automática).
+  final String? keyCode;
   final bool active, requiresDetail;
 
   /// "Habitacional → Casa en condominio" o "Especiales → Otro: Capilla".
@@ -159,6 +163,7 @@ class ExpedienteResponse {
   ExpedienteResponse.fromJson(Json j)
       : id = _sr(j['id']),
         folio = _sr(j['folio']),
+        propertyKey = _s(j['propertyKey']),
         ownerDisplayName = _sr(j['ownerDisplayName']),
         status = _sr(j['status']),
         personType = _sr(j['personType']),
@@ -185,6 +190,9 @@ class ExpedienteResponse {
         updatedAt = _sr(j['updatedAt']);
   final String id, folio, ownerDisplayName, status, personType, signerCharacter, accreditationType, propertyCaseType, operationType, declaredLegalStatus;
   final bool signedByAttorney, condominiumRegime, correctable;
+
+  /// Control de Cambios #27: clave estructurada del inmueble (p. ej. "CVEA03"); null = sin asignar.
+  final String? propertyKey;
   final String? propertyAddress, propertyReference, decisionReason;
 
   /// Control de Cambios #24: asesor responsable (null = sin asignar).
@@ -193,6 +201,67 @@ class ExpedienteResponse {
 
   /// Control de Cambios #26: catálogo de inmuebles. Sin subcategoría = pendiente de clasificación.
   final String? propertyCategoryId, propertyCategoryName, propertySubtypeId, propertySubtypeName, propertyTypeDetail, propertyTypeLabel;
+}
+
+/// Control de Cambios #27 (adenda): validación en tiempo real de una clave capturada a mano.
+class PropertyKeyCheck {
+  PropertyKeyCheck.fromJson(Json j)
+      : key = _sr(j['key']),
+        valid = _b(j['valid']),
+        available = _b(j['available']),
+        message = _sr(j['message']);
+  final String key, message;
+  final bool valid, available;
+}
+
+/// Control de Cambios #27 (adenda): claves asignadas, consecutivos por combinación y expedientes sin clave.
+class PropertyKeyOverview {
+  PropertyKeyOverview.fromJson(Json j)
+      : assigned = _list(j['assigned'], AssignedKey.fromJson),
+        combinations = _list(j['combinations'], KeyCombination.fromJson),
+        withoutKey = _list(j['withoutKey'], PendingKey.fromJson);
+  final List<AssignedKey> assigned;
+  final List<KeyCombination> combinations;
+  final List<PendingKey> withoutKey;
+}
+
+class AssignedKey {
+  AssignedKey.fromJson(Json j)
+      : expedienteId = _sr(j['expedienteId']),
+        folio = _sr(j['folio']),
+        key = _sr(j['key']),
+        ownerDisplayName = _sr(j['ownerDisplayName']),
+        property = _s(j['property']),
+        propertyTypeLabel = _s(j['propertyTypeLabel']),
+        operationType = _sr(j['operationType'], 'SALE'),
+        advisorName = _s(j['advisorName']);
+  final String expedienteId, folio, key, ownerDisplayName, operationType;
+  final String? property, propertyTypeLabel, advisorName;
+}
+
+class KeyCombination {
+  KeyCombination.fromJson(Json j)
+      : prefix = _sr(j['prefix']),
+        used = (j['used'] as List? ?? const []).map((e) => _i(e)).toList(),
+        gaps = (j['gaps'] as List? ?? const []).map((e) => _i(e)).toList(),
+        nextKey = _s(j['nextKey']);
+  final String prefix;
+  final List<int> used, gaps;
+  final String? nextKey;
+}
+
+class PendingKey {
+  PendingKey.fromJson(Json j)
+      : expedienteId = _sr(j['expedienteId']),
+        folio = _sr(j['folio']),
+        ownerDisplayName = _sr(j['ownerDisplayName']),
+        property = _s(j['property']),
+        propertyTypeLabel = _s(j['propertyTypeLabel']),
+        operationType = _sr(j['operationType'], 'SALE'),
+        advisorName = _s(j['advisorName']),
+        suggestedKey = _s(j['suggestedKey']);
+  final String expedienteId, folio, ownerDisplayName, operationType;
+  final String? property, propertyTypeLabel, advisorName, suggestedKey;
 }
 
 /// Asesor activo que se puede asignar a un expediente (Control de Cambios #24).

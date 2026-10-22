@@ -171,6 +171,8 @@ public final class ExpedienteDtos {
   public record ExpedienteResponse(
       UUID id,
       String folio,
+      // Control de Cambios #27: clave estructurada (null = sin asignar).
+      String propertyKey,
       String ownerDisplayName,
       ExpedienteStatus status,
       PersonType personType,
@@ -207,6 +209,7 @@ public final class ExpedienteDtos {
       return new ExpedienteResponse(
           e.getId(),
           e.getFolio(),
+          e.getPropertyKey(),
           e.getOwnerDisplayName(),
           e.getStatus(),
           e.getPersonType(),
@@ -273,6 +276,9 @@ public final class ExpedienteDtos {
           c.getReason());
     }
   }
+
+  /** Control de Cambios #27: clave capturada a mano (p. ej. "CVEA03"); se respeta tal cual, sin consecutivo automático. */
+  public record AssignPropertyKeyRequest(@NotBlank @Size(max = 24) String key, @Size(max = 500) String reason) {}
 
   public record RejectPropertyRequest(@NotBlank String reason) {}
 

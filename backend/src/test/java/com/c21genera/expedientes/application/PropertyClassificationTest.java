@@ -36,11 +36,11 @@ class PropertyClassificationTest {
 
   private static final UUID TERRENOS = UUID.randomUUID();
   private static final PropertyCatalog.Subtype TERRENO_HABITACIONAL =
-      new PropertyCatalog.Subtype(UUID.randomUUID(), TERRENOS, "Terrenos", "Terreno habitacional", 10, true, false, "RESIDENTIAL_LAND", "habitacional", "terreno");
+      new PropertyCatalog.Subtype(UUID.randomUUID(), TERRENOS, "Terrenos", "Terreno habitacional", 10, true, false, "RESIDENTIAL_LAND", "habitacional", "terreno", "T");
   private static final PropertyCatalog.Subtype TERRENO_COMERCIAL =
-      new PropertyCatalog.Subtype(UUID.randomUUID(), TERRENOS, "Terrenos", "Terreno comercial", 20, true, false, "COMMERCIAL", "comercial", "terreno");
+      new PropertyCatalog.Subtype(UUID.randomUUID(), TERRENOS, "Terrenos", "Terreno comercial", 20, true, false, "COMMERCIAL", "comercial", "terreno", "TC");
   private static final PropertyCatalog.Subtype OTRO =
-      new PropertyCatalog.Subtype(UUID.randomUUID(), UUID.randomUUID(), "Especiales", "Otro — especificar", 30, true, true, "RESIDENTIAL_LAND", "comercial", "inmueble-productivo");
+      new PropertyCatalog.Subtype(UUID.randomUUID(), UUID.randomUUID(), "Especiales", "Otro — especificar", 30, true, true, "RESIDENTIAL_LAND", "comercial", "inmueble-productivo", "X");
 
   private final ExpedienteRepository expedienteRepository = mock(ExpedienteRepository.class);
   private final ExpedienteChangeRepository changeRepository = mock(ExpedienteChangeRepository.class);
@@ -54,6 +54,7 @@ class PropertyClassificationTest {
           mock(ApplicationEventPublisher.class),
           new ObjectMapper(),
           catalog,
+          mock(PropertyKeyService.class),
           Clock.systemUTC());
   private final Actor director = Actor.staff(UUID.randomUUID(), "Carmen Directora", "DIRECTOR");
 

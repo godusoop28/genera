@@ -113,6 +113,13 @@ Future<void> assignAdvisor(String id, String advisorId, String reason) => _c.put
 Future<List<DuplicateMatch>> checkClientDuplicates(List<String> holderNames) async =>
     _l(await _c.post('/internal/expedientes/duplicate-check', {'holderNames': holderNames}), DuplicateMatch.fromJson);
 Future<ExpedienteResponse> createExpediente(Json request) async => ExpedienteResponse.fromJson(_j(await _c.post('/internal/expedientes', request)));
+// Control de Cambios #27 (adenda): clave estructurada del inmueble.
+Future<PropertyKeyCheck> checkPropertyKey(String key, String? expedienteId) async => PropertyKeyCheck.fromJson(_j(await _c.get(
+    '/internal/expedientes/property-keys/check?${Uri(queryParameters: {'key': key, 'expedienteId': ?expedienteId}).query}')));
+Future<ExpedienteResponse> assignPropertyKey(String id, String key, String? reason) async =>
+    ExpedienteResponse.fromJson(_j(await _c.put('/internal/expedientes/$id/property-key', {'key': key, 'reason': reason})));
+Future<PropertyKeyOverview> getPropertyKeys({String? operationType, String? advisorId, String? prefix}) async => PropertyKeyOverview.fromJson(_j(await _c.get(
+    '/internal/expedientes/property-keys?${Uri(queryParameters: {'operationType': ?operationType, 'advisorId': ?advisorId, if (prefix != null && prefix.isNotEmpty) 'prefix': prefix}).query}')));
 Future<ExpedienteResponse> getExpediente(String id) async => ExpedienteResponse.fromJson(_j(await _c.get('/internal/expedientes/$id')));
 Future<void> correctExpediente(String id, Json configuration, String reason) => _c.put('/internal/expedientes/$id', {...configuration, 'reason': reason});
 Future<List<Participant>> getParticipants(String id) async => _l(await _c.get('/internal/expedientes/$id/participants'), Participant.fromJson);

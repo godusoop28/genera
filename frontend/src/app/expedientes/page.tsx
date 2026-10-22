@@ -243,8 +243,8 @@ function ExpedientesContent() {
             <SearchInput
               value={query}
               onChange={setQuery}
-              label="Buscar expedientes por cliente, folio o domicilio"
-              placeholder="Buscar por cliente, folio o domicilio"
+              label="Buscar expedientes por cliente, folio, clave o domicilio"
+              placeholder="Buscar por cliente, folio, clave o domicilio"
               className="lg:max-w-md lg:flex-1"
             />
             <div className="flex flex-1 flex-wrap items-center gap-2" role="group" aria-label="Filtrar por estado">
@@ -531,7 +531,10 @@ function ExpedienteCard({ item }: { item: ExpedienteOverviewItem }) {
   return (
     <article className="group flex h-full flex-col rounded-xl border border-border bg-card p-5 shadow-[0_1px_2px_rgba(36,39,35,0.04)] transition-shadow duration-200 hover:shadow-md">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <span className="font-mono text-xs font-medium tracking-wide text-muted">{e.folio}</span>
+        <span className="font-mono text-xs font-medium tracking-wide text-muted">
+          {e.folio}
+          {e.propertyKey ? <span className="ml-2 font-semibold text-obsessed">{e.propertyKey}</span> : null}
+        </span>
         <span className="flex flex-wrap items-center gap-1.5">
           {e.archivedAt ? <ArchivedBadge /> : null}
           <ExpedienteStatusBadge status={e.status} received={item.documents?.received} />
@@ -616,7 +619,10 @@ function ExpedienteList({ items }: { items: ExpedienteOverviewItem[] }) {
                   <p className="line-clamp-2 break-words font-semibold text-obsessed" title={e.ownerDisplayName}>
                     {e.ownerDisplayName || "Sin nombre"}
                   </p>
-                  <p className="font-mono text-xs text-muted">{e.folio}</p>
+                  <p className="font-mono text-xs text-muted">
+                    {e.folio}
+                    {e.propertyKey ? <span className="ml-2 font-semibold text-obsessed">{e.propertyKey}</span> : null}
+                  </p>
                   <p className="truncate text-xs text-muted">
                     {operationLabel(item)} · {e.assignedAdvisorName ?? "Sin asesor asignado"}
                   </p>

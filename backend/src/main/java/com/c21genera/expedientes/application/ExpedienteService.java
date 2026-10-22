@@ -86,6 +86,7 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
   private final ApplicationEventPublisher events;
   private final ObjectMapper objectMapper;
   private final PropertyCatalog propertyCatalog;
+  private final PropertyKeyService propertyKeys;
   private final Clock clock;
 
   public ExpedienteService(
@@ -96,6 +97,7 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
       ApplicationEventPublisher events,
       ObjectMapper objectMapper,
       PropertyCatalog propertyCatalog,
+      PropertyKeyService propertyKeys,
       Clock clock) {
     this.expedienteRepository = expedienteRepository;
     this.participantRepository = participantRepository;
@@ -104,6 +106,7 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
     this.events = events;
     this.objectMapper = objectMapper;
     this.propertyCatalog = propertyCatalog;
+    this.propertyKeys = propertyKeys;
     this.clock = clock;
   }
 
@@ -214,6 +217,8 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
     if (command.legalDetails() != null) {
       expediente.replaceLegalDetailsJson(writeLegalDetails(command.legalDetails()));
     }
+    // Control de Cambios #27: clave estructurada con el siguiente consecutivo de su combinación.
+    propertyKeys.assignAutomatically(expediente);
     expedienteRepository.save(expediente);
 
     int ordinal = 1;
@@ -261,7 +266,7 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
   }
 
   /**
-   * Listado con búsqueda (folio, titular o domicilio), filtro por estatus y
+   * Listado con búsqueda (folio, clave del inmueble, titular o domicilio), filtro por estatus y
    * filtros de cartera. ownerUserId null = todos los expedientes; si no, solo
    * los asignados a ese asesor. archived = solo los archivados; si no, solo los activos.
    */
@@ -282,6 +287,7 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
               (root, q, cb) ->
                   cb.or(
                       cb.like(cb.lower(root.get("folio")), like, '!'),
+                      cb.like(cb.lower(cb.coalesce(root.<String>get("propertyKey"), "")), like, '!'),
                       cb.like(cb.lower(root.get("ownerDisplayName")), like, '!'),
                       cb.like(cb.lower(cb.coalesce(root.<String>get("propertyAddress"), "")), like, '!')));
     }

@@ -1,10 +1,12 @@
 package com.c21genera.expedientes.web;
 
 import com.c21genera.expedientes.LegalDetails;
+import com.c21genera.expedientes.OperationType;
 import com.c21genera.expedientes.application.AssignableAdvisors;
 import com.c21genera.expedientes.application.ExpedienteService;
 import com.c21genera.expedientes.application.ExpedienteService.ConfigurationCorrection;
 import com.c21genera.expedientes.application.ExpedienteService.CreateExpedienteCommand;
+import com.c21genera.expedientes.application.PropertyKeyService;
 import com.c21genera.expedientes.domain.Expediente;
 import com.c21genera.expedientes.web.ExpedienteDtos.AdvisorOptionResponse;
 import com.c21genera.expedientes.web.ExpedienteDtos.AssignAdvisorRequest;
@@ -52,13 +54,19 @@ public class InternalExpedienteController {
   private final ExpedienteAccessPolicy accessPolicy;
   private final UserDirectory userDirectory;
   private final AssignableAdvisors assignableAdvisors;
+  private final PropertyKeyService propertyKeys;
 
   public InternalExpedienteController(
-      ExpedienteService expedienteService, ExpedienteAccessPolicy accessPolicy, UserDirectory userDirectory, AssignableAdvisors assignableAdvisors) {
+      ExpedienteService expedienteService,
+      ExpedienteAccessPolicy accessPolicy,
+      UserDirectory userDirectory,
+      AssignableAdvisors assignableAdvisors,
+      PropertyKeyService propertyKeys) {
     this.expedienteService = expedienteService;
     this.accessPolicy = accessPolicy;
     this.userDirectory = userDirectory;
     this.assignableAdvisors = assignableAdvisors;
+    this.propertyKeys = propertyKeys;
   }
 
   @PostMapping
@@ -124,6 +132,39 @@ public class InternalExpedienteController {
     CurrentUser user = requireAccess(id, jwt);
     UserDirectory.StaffMember advisor = assignableAdvisors.require(request.advisorId());
     return ExpedienteResponse.from(expedienteService.reassignAdvisor(id, advisor.id(), advisor.name(), user.toActor(), request.reason()));
+  }
+
+  /**
+   * Control de Cambios #27 (adenda): claves asignadas (filtrables por tipo, operación y asesor), los
+   * consecutivos en uso y disponibles de cada combinación, y los expedientes que aún no tienen clave
+   * con la que les tocaría. prefix: consultar una combinación, p. ej. "CVEA".
+   */
+  @GetMapping("/property-keys")
+  @PreAuthorize("hasAuthority('EXPEDIENT_KEY_ASSIGN')")
+  public PropertyKeyService.KeyOverview propertyKeys(
+      @RequestParam(required = false) UUID categoryId,
+      @RequestParam(required = false) UUID subtypeId,
+      @RequestParam(defaultValue = "false") boolean unclassified,
+      @RequestParam(required = false) OperationType operationType,
+      @RequestParam(required = false) UUID advisorId,
+      @RequestParam(required = false) String prefix) {
+    return propertyKeys.overview(new PropertyKeyService.KeyFilter(categoryId, subtypeId, unclassified, operationType, advisorId, prefix));
+  }
+
+  /** Validación en tiempo real de una clave capturada a mano: ¿tiene el formato y está libre? */
+  @GetMapping("/property-keys/check")
+  @PreAuthorize("hasAuthority('EXPEDIENT_KEY_ASSIGN')")
+  public PropertyKeyService.KeyCheck checkPropertyKey(@RequestParam String key, @RequestParam(required = false) UUID expedienteId) {
+    return propertyKeys.check(key, expedienteId);
+  }
+
+  /** Asignación manual de la clave (migración de propiedades existentes o corrección); queda en el historial. */
+  @PutMapping("/{id}/property-key")
+  @PreAuthorize("hasAuthority('EXPEDIENT_KEY_ASSIGN')")
+  public ExpedienteResponse assignPropertyKey(
+      @PathVariable UUID id, @Valid @RequestBody ExpedienteDtos.AssignPropertyKeyRequest request, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = requireAccess(id, jwt);
+    return ExpedienteResponse.from(propertyKeys.assign(id, request.key(), user.toActor(), request.reason()));
   }
 
   /** Saca el expediente del listado de trabajo (no cambia su estatus ni borra nada); queda en el historial. */

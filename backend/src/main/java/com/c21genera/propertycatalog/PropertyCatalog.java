@@ -36,7 +36,9 @@ public interface PropertyCatalog {
       boolean requiresDetail,
       String caseType,
       String online21Type,
-      String online21Subtype) {
+      String online21Subtype,
+      // Control de Cambios #27: letras del tipo en la clave estructurada (null = sin clave automática).
+      String keyCode) {
 
     /** "Habitacional → Casa en condominio" (o "Especiales → Otro: <detalle>"). */
     public String label(String detail) {

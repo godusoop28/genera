@@ -1,5 +1,6 @@
 "use client";
 
+import { PropertyKeyModal } from "@/components/expediente/PropertyKeyField";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -13,7 +14,7 @@ import type { ExpedienteResponse, ParticipantResponse, SigningLinkResponse } fro
 import { readDraft, writeDraft } from "@/lib/drafts";
 import { useCan } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-import { Archive, ArchiveRestore, ArrowRight, RefreshCw } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowRight, KeyRound, RefreshCw } from "lucide-react";
 import { use, useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { ConsistencyTab } from "./ConsistencyTab";
 import { ContractDataTab } from "./ContractDataTab";
@@ -68,6 +69,7 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
   const { showToast } = useToast();
   const can = useCan();
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [keyOpen, setKeyOpen] = useState(false);
   const [unarchiving, setUnarchiving] = useState(false);
   const [expediente, setExpediente] = useState<ExpedienteResponse | null>(null);
   const [participants, setParticipants] = useState<ParticipantResponse[]>([]);
@@ -192,11 +194,29 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
             <span className="rounded-lg bg-app-bg px-2.5 py-1 font-mono text-xs font-medium tracking-wide text-obsessed/70">
               {expediente.folio}
             </span>
+            {/* Control de Cambios #27: clave estructurada del inmueble. */}
+            {expediente.propertyKey ? (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gold/50 bg-gold/10 px-2.5 py-1 font-mono text-xs font-semibold tracking-wide text-obsessed"
+                title="Clave del inmueble"
+              >
+                <KeyRound className="h-3.5 w-3.5 text-dark-gold" aria-hidden />
+                {expediente.propertyKey}
+              </span>
+            ) : can("EXPEDIENT_KEY_ASSIGN") ? (
+              <Badge tone="warning">Sin clave</Badge>
+            ) : null}
             <Badge tone={backendStatusTone[expediente.status]}>{backendStatusLabels[expediente.status]}</Badge>
             {!expediente.correctable ? <Badge tone="neutral">Datos bloqueados (contrato firmado o expediente decidido)</Badge> : null}
             {expediente.archivedAt ? <Badge tone="neutral">Archivado</Badge> : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {can("EXPEDIENT_KEY_ASSIGN") ? (
+              <Button variant="secondary" size="sm" onClick={() => setKeyOpen(true)}>
+                <KeyRound className="h-4 w-4" aria-hidden />
+                {expediente.propertyKey ? "Corregir clave" : "Asignar clave"}
+              </Button>
+            ) : null}
             {can("EXPEDIENT_ARCHIVE") ? (
               expediente.archivedAt ? (
                 <Button variant="secondary" size="sm" onClick={unarchive} disabled={unarchiving}>
@@ -270,6 +290,18 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
         onCancel={() => setArchiveOpen(false)}
         onConfirm={archive}
       />
+
+      {keyOpen ? (
+        <PropertyKeyModal
+          expediente={expediente}
+          onClose={() => setKeyOpen(false)}
+          onSaved={async (updated) => {
+            setKeyOpen(false);
+            showToast(`Clave ${updated.propertyKey} asignada.`);
+            await reload();
+          }}
+        />
+      ) : null}
 
       <div key={version}>
         {tab === "resumen" ? <SummaryTab {...context} /> : null}

@@ -47,7 +47,15 @@ public class PropertyCatalogService implements PropertyCatalog {
   }
 
   public record SubtypeInput(
-      UUID categoryId, String name, int sortOrder, boolean active, boolean requiresDetail, String caseType, String online21Type, String online21Subtype) {}
+      UUID categoryId,
+      String name,
+      int sortOrder,
+      boolean active,
+      boolean requiresDetail,
+      String caseType,
+      String online21Type,
+      String online21Subtype,
+      String keyCode) {}
 
   // --- Consulta ------------------------------------------------------------
 
@@ -117,9 +125,12 @@ public class PropertyCatalogService implements PropertyCatalog {
       throw new ConflictException("DUPLICATE_SUBTYPE", "\"" + clean + "\" ya existe en " + category.getName() + ".");
     }
     validate(input);
+    String keyCode = keyCodeOf(input.keyCode());
     PropertySubtype subtype =
-        new PropertySubtype(category.getId(), clean, input.sortOrder(), input.requiresDetail(), input.caseType(), input.online21Type(), input.online21Subtype());
-    subtype.update(category.getId(), clean, input.sortOrder(), input.active(), input.requiresDetail(), input.caseType(), input.online21Type(), input.online21Subtype());
+        new PropertySubtype(
+            category.getId(), clean, input.sortOrder(), input.requiresDetail(), input.caseType(), input.online21Type(), input.online21Subtype(), keyCode);
+    subtype.update(
+        category.getId(), clean, input.sortOrder(), input.active(), input.requiresDetail(), input.caseType(), input.online21Type(), input.online21Subtype(), keyCode);
     return toView(subtypes.save(subtype), category.getName());
   }
 
@@ -132,7 +143,16 @@ public class PropertyCatalogService implements PropertyCatalog {
       throw new ConflictException("DUPLICATE_SUBTYPE", "\"" + clean + "\" ya existe en " + category.getName() + ".");
     }
     validate(input);
-    subtype.update(category.getId(), clean, input.sortOrder(), input.active(), input.requiresDetail(), input.caseType(), input.online21Type(), input.online21Subtype());
+    subtype.update(
+        category.getId(),
+        clean,
+        input.sortOrder(),
+        input.active(),
+        input.requiresDetail(),
+        input.caseType(),
+        input.online21Type(),
+        input.online21Subtype(),
+        keyCodeOf(input.keyCode()));
     return toView(subtype, category.getName());
   }
 
@@ -144,6 +164,18 @@ public class PropertyCatalogService implements PropertyCatalog {
     if (allowed == null || !allowed.contains(input.online21Subtype())) {
       throw new UnprocessableException("INVALID_ONLINE21_TYPE", "Elige con qué tipo se publica en 21Online.");
     }
+  }
+
+  /** Control de Cambios #27: 1 a 3 letras (sin acentos); vacío = esta subcategoría no genera clave automática. */
+  private static String keyCodeOf(String keyCode) {
+    String clean = keyCode == null ? "" : keyCode.strip().toUpperCase(java.util.Locale.ROOT);
+    if (clean.isEmpty()) {
+      return null;
+    }
+    if (!clean.matches("[A-Z]{1,3}")) {
+      throw new UnprocessableException("INVALID_KEY_CODE", "Las letras de la clave deben ser de 1 a 3 letras sin acentos (p. ej. C para Casa).");
+    }
+    return clean;
   }
 
   private static String requireName(String name, String what) {
@@ -165,6 +197,7 @@ public class PropertyCatalogService implements PropertyCatalog {
         s.isRequiresDetail(),
         s.getCaseType(),
         s.getOnline21Type(),
-        s.getOnline21Subtype());
+        s.getOnline21Subtype(),
+        s.getKeyCode());
   }
 }

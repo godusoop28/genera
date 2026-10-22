@@ -393,3 +393,20 @@ Probado con pruebas unitarias y de servicio con repositorios simulados
 (`ScheduleTest`, `AssignmentEngineTest`, `AssignmentScenariosTest`,
 `LeadIntakeContinuityTest`). El bloqueo de filas, la migración V028 y el
 procesamiento de pendientes contra Postgres real se verifican en el despliegue.
+
+### Clave estructurada del inmueble (Control de Cambios #27 y su adenda, V044)
+
+- Formato: letras del tipo (columna `key_code` de `property_subtype`, editable en el
+  catálogo) + operación (`V`/`R`) + iniciales del asesor (primer nombre + primer
+  apellido) + consecutivo de dos dígitos, p. ej. `CVEA03`.
+- Al dar de alta se genera sola con el consecutivo más alto de la combinación + 1
+  (`PropertyKeyService.assignAutomatically`). Una vez asignada no cambia sola si
+  después se reasigna el asesor o se corrige el tipo.
+- Migración de propiedades existentes: el administrador o directivo
+  (`EXPEDIENT_KEY_ASSIGN`) captura la clave a mano desde el expediente o desde
+  `/claves`; se respeta tal cual y se valida antes de guardar
+  (`GET /internal/expedientes/property-keys/check`). El índice único sobre
+  `expediente.property_key` impide repetirla.
+- `GET /internal/expedientes/property-keys`: claves asignadas (filtros por tipo,
+  operación y asesor), consecutivos en uso/huecos/siguiente por combinación y
+  expedientes sin clave con la que les tocaría.

@@ -98,7 +98,7 @@ export function PropertyCatalogCard() {
     setSaving(true);
     setFormError(null);
     const { id, sortOrder, ...rest } = subtypeForm;
-    const body: CatalogSubtypeInput = { ...rest, name: rest.name.trim(), sortOrder: Number(sortOrder) || 0 };
+    const body: CatalogSubtypeInput = { ...rest, name: rest.name.trim(), sortOrder: Number(sortOrder) || 0, keyCode: rest.keyCode?.trim() || null };
     try {
       if (id) await updateCatalogSubtype(id, body);
       else await createCatalogSubtype(body);
@@ -125,6 +125,7 @@ export function PropertyCatalogCard() {
       caseType: s.caseType,
       online21Type: s.online21Type,
       online21Subtype: s.online21Subtype,
+      keyCode: s.keyCode,
     });
   };
 
@@ -196,6 +197,7 @@ export function PropertyCatalogCard() {
                             <span className="block text-xs text-muted">
                               {caseTypeLabels[s.caseType]} · 21Online: {online21SubtypeLabel(s.online21Subtype)}
                               {s.requiresDetail ? " · pide descripción" : ""}
+                              {s.keyCode ? ` · clave: ${s.keyCode}` : " · sin letras de clave"}
                             </span>
                           </span>
                           {s.active ? null : <Badge tone="neutral">Inactiva</Badge>}
@@ -221,6 +223,7 @@ export function PropertyCatalogCard() {
                           caseType: "COMMERCIAL",
                           online21Type: "comercial",
                           online21Subtype: "inmueble-productivo",
+                          keyCode: null,
                         });
                       }}
                     >
@@ -324,6 +327,20 @@ export function PropertyCatalogCard() {
               value={subtypeForm.online21Subtype}
               onChange={(e) => setSubtypeForm({ ...subtypeForm, online21Subtype: e.target.value })}
               options={subtypesByType[subtypeForm.online21Type].map((s) => ({ value: s, label: online21SubtypeLabel(s) }))}
+            />
+            <Input
+              label="Letras en la clave"
+              hint="1 a 3 letras, p. ej. C para Casa (CVEA03). Vacío: no se genera clave automática."
+              value={subtypeForm.keyCode ?? ""}
+              maxLength={3}
+              onChange={(e) => setSubtypeForm({ ...subtypeForm, keyCode: e.target.value.toUpperCase().replace(/[^A-Z]/g, "") })}
+            />
+            <Input
+              label="Letras en la clave"
+              hint="1 a 3 letras, p. ej. C para Casa (CVEA03). Vacío: no se genera clave automática."
+              value={subtypeForm.keyCode ?? ""}
+              maxLength={3}
+              onChange={(e) => setSubtypeForm({ ...subtypeForm, keyCode: e.target.value.toUpperCase().replace(/[^A-Z]/g, "") })}
             />
             <Input
               label="Orden en el menú"
