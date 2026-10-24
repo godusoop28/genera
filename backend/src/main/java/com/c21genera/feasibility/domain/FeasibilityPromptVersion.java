@@ -22,7 +22,9 @@ public class FeasibilityPromptVersion {
     /** "Analista de Factibilidad 3.0": reporte de 27 secciones (Word). */
     ANALYST,
     /** "Presentación de factibilidad": las 12 láminas para el propietario (PowerPoint). */
-    PRESENTATION
+    PRESENTATION,
+    /** Chat de consultas adicionales sobre una factibilidad ya hecha. */
+    CHAT
   }
 
   @Id

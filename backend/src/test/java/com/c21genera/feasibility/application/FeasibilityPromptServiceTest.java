@@ -54,7 +54,7 @@ class FeasibilityPromptServiceTest {
   @Test
   void startsWithClientOriginalsPlusFixedSystemRules() {
     var list = service.list();
-    assertThat(list).extracting(FeasibilityPromptService.PromptView::key).containsExactly(PromptKey.ANALYST, PromptKey.PRESENTATION);
+    assertThat(list).extracting(FeasibilityPromptService.PromptView::key).containsExactly(PromptKey.ANALYST, PromptKey.PRESENTATION, PromptKey.CHAT);
     assertThat(list.get(0).original()).isTrue();
     assertThat(list.get(0).content()).startsWith("# PROMPT MAESTRO — ANALISTA DE FACTIBILIDAD 3.0").contains("Nunca sustituyas evidencia por optimismo.");
     assertThat(list.get(1).content()).contains("CENTURY 21 GENERA").contains("DIAPOSITIVA 8. MAPA DE UBICACIÓN");

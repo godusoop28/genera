@@ -17,6 +17,19 @@ final class FeasibilityPrompts {
 
   static final String ANALYST = load("/feasibility/analista-factibilidad.md");
   static final String PRESENTATION = load("/feasibility/presentacion-factibilidad.md");
+  static final String CHAT = load("/feasibility/chat-factibilidad.md");
+
+  static final String CHAT_OPERATION =
+      """
+
+      ## REGLAS DE OPERACIÓN DENTRO DEL SISTEMA CENTURY 21 GENERA
+
+      - El primer mensaje trae los datos del inmueble, la factibilidad elaborada y los datos de la presentación: \
+      son tu contexto; no los repitas completos, úsalos para responder.
+      - Responde en Markdown sencillo (párrafos, listas, tablas con "|", negritas y ligas). Sin emojis.
+      - No incluyas datos personales del propietario (nombres completos, CURP, RFC, identificaciones, teléfonos o \
+      correos) aunque aparezcan en el contexto.
+      """;
 
   static final String ANALYST_OPERATION =
       """

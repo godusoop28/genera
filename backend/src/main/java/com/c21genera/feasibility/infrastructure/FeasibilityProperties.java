@@ -8,7 +8,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * ({@code app.ai.api-key}); el modelo puede ser otro (vacío = el de la extracción).
  *
  * <ul>
- *   <li>reasoningEffort: low/medium/high; vacío = no se envía.
+ *   <li>reasoningEffort: low/medium/high; vacío = no se envía. chatReasoningEffort: el del chat de
+ *       consultas (low por defecto para que responda rápido).
  *   <li>stageTimeout: tiempo máximo de cada etapa en la IA antes de darla por fallida.
  *   <li>maxFileBytes / maxTotalFileBytes: PDFs de los documentos que se adjuntan (los más
  *       grandes se omiten y la IA trabaja con los datos ya leídos de ellos).
@@ -30,7 +31,8 @@ public record FeasibilityProperties(
     String geocodeUrl,
     String userAgent,
     String tileFallbackUrl,
-    String photonUrl) {
+    String photonUrl,
+    String chatReasoningEffort) {
 
   public FeasibilityProperties {
     if (maxOutputTokensReport <= 0) {
@@ -59,6 +61,9 @@ public record FeasibilityProperties(
     }
     if (photonUrl == null || photonUrl.isBlank()) {
       photonUrl = "https://photon.komoot.io/api/";
+    }
+    if (chatReasoningEffort == null) {
+      chatReasoningEffort = "low";
     }
     if (userAgent == null || userAgent.isBlank()) {
       userAgent = "C21Genera-Factibilidad/1.0 (https://c21genera.com)";

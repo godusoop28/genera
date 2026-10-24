@@ -175,6 +175,7 @@ app:
     max-output-tokens-report: ${FEASIBILITY_MAX_OUTPUT_TOKENS_REPORT:100000}
     max-output-tokens-presentation: ${FEASIBILITY_MAX_OUTPUT_TOKENS_PRESENTATION:50000}
     stage-timeout: ${FEASIBILITY_STAGE_TIMEOUT:PT45M}
+    chat-reasoning-effort: ${FEASIBILITY_CHAT_REASONING_EFFORT:low}
   # Integración de solo lectura con 21Online (inventario) — ver online21.infrastructure.Online21Properties.
   online21:
     base-url: ${ONLINE21_BASE_URL:https://plus.21onlinemx.com}

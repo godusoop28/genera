@@ -205,6 +205,10 @@ public class FeasibilityService {
     return repository.findById(reportId).orElseThrow(() -> new NotFoundException("Factibilidad", reportId));
   }
 
+  RequestInput inputOf(FeasibilityReport report) {
+    return read(report.getInputJson(), RequestInput.class);
+  }
+
   public List<FeasibilityReport> inProgress() {
     return repository.findByStatusInOrderByRequestedAtAsc(List.of(Status.ANALYZING, Status.PRESENTING));
   }
@@ -576,7 +580,7 @@ public class FeasibilityService {
     return body;
   }
 
-  private String model() {
+  String model() {
     return properties.model() != null && !properties.model().isBlank() ? properties.model() : ai.defaultModel();
   }
 

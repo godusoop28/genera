@@ -14,9 +14,11 @@ import org.springframework.stereotype.Component;
 class FeasibilityPoller {
 
   private final FeasibilityService service;
+  private final FeasibilityChatService chat;
 
-  FeasibilityPoller(FeasibilityService service) {
+  FeasibilityPoller(FeasibilityService service, FeasibilityChatService chat) {
     this.service = service;
+    this.chat = chat;
   }
 
   @Scheduled(fixedDelayString = "PT20S", initialDelayString = "PT30S")
@@ -28,5 +30,7 @@ class FeasibilityPoller {
         MemoryRelief.afterHeavyWork();
       }
     }
+    // Respuestas del chat que nadie está viendo (quien sí lo ve las completa al consultar).
+    chat.refreshPending();
   }
 }

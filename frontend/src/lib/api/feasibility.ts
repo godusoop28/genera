@@ -73,7 +73,7 @@ export function getFeasibilityDownload(reportId: string, file: "docx" | "pptx") 
 
 // ------------------------------------------------------------------ prompts maestros (Configuración)
 
-export type FeasibilityPromptKey = "ANALYST" | "PRESENTATION";
+export type FeasibilityPromptKey = "ANALYST" | "PRESENTATION" | "CHAT";
 
 export interface FeasibilityPrompt {
   key: FeasibilityPromptKey;
@@ -117,4 +117,26 @@ export function getFeasibilityPromptVersion(key: FeasibilityPromptKey, version: 
 
 export function restoreFeasibilityPrompt(key: FeasibilityPromptKey, version: number) {
   return apiClient.post<FeasibilityPrompt>(`${PROMPTS}/${key.toLowerCase()}/restore`, { version });
+}
+
+// ------------------------------------------------------------------ chat de consultas
+
+export interface FeasibilityChatMessage {
+  id: string;
+  role: "USER" | "ASSISTANT";
+  /** PENDING = la IA está respondiendo. */
+  status: "PENDING" | "DONE" | "FAILED";
+  content: string | null;
+  sources: { title: string; url: string }[];
+  error: string | null;
+  authorName: string | null;
+  createdAt: string;
+}
+
+export function getFeasibilityChat(reportId: string) {
+  return apiClient.get<FeasibilityChatMessage[]>(`/internal/feasibility/${reportId}/chat`);
+}
+
+export function askFeasibilityChat(reportId: string, message: string) {
+  return apiClient.post<FeasibilityChatMessage[]>(`/internal/feasibility/${reportId}/chat`, { message });
 }

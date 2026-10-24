@@ -17,7 +17,8 @@ import {
 import { errorText } from "@/lib/errors";
 import { shrinkImages } from "@/lib/image-shrink";
 import { formatDateTime, formatMoney } from "@/lib/labels";
-import { Download, ExternalLink, ImagePlus, Loader2, Presentation, Sparkles, X } from "lucide-react";
+import { FeasibilityChat } from "@/components/feasibility/FeasibilityChat";
+import { Download, ExternalLink, ImagePlus, Loader2, MessagesSquare, Presentation, Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ExpedienteContext } from "./page";
 
@@ -267,6 +268,7 @@ function ReportCard({ report: r, onDownload }: { report: FeasibilityResponse; on
   const s = r.summary;
   const classification = s?.classification ? classificationLabels[s.classification] : null;
   const rent = r.operation === "RENT";
+  const [chatOpen, setChatOpen] = useState(false);
   const money = (value: number | null) => (value === null ? "—" : rent ? `${formatMoney(value)}/mes` : formatMoney(value));
   return (
     <Card>
@@ -284,6 +286,7 @@ function ReportCard({ report: r, onDownload }: { report: FeasibilityResponse; on
       </div>
 
       {r.status === "ANALYZING" || r.status === "PRESENTING" ? <Progress report={r} /> : null}
+      {chatOpen ? <FeasibilityChat reportId={r.id} versionNumber={r.versionNumber} open onClose={() => setChatOpen(false)} /> : null}
 
       {r.status === "FAILED" ? (
         <p className="rounded-lg bg-danger-bg px-3 py-2 text-sm text-danger-text">{r.error ?? "No se pudo completar la factibilidad."} Puedes volver a generarla.</p>
@@ -297,6 +300,9 @@ function ReportCard({ report: r, onDownload }: { report: FeasibilityResponse; on
             </Button>
             <Button size="sm" onClick={() => onDownload(r.id, "pptx")} disabled={!r.hasPptx}>
               <Presentation className="h-4 w-4" /> Presentación para el propietario (PowerPoint)
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setChatOpen(true)}>
+              <MessagesSquare className="h-4 w-4" /> Consultar a la IA sobre esta factibilidad
             </Button>
           </div>
           {s ? (

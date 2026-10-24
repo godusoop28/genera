@@ -45,20 +45,32 @@ public class FeasibilityPromptService {
   }
 
   static String title(PromptKey key) {
-    return key == PromptKey.ANALYST ? "Analista de Factibilidad 3.0 (reporte en Word)" : "Presentación de factibilidad (PowerPoint para el propietario)";
+    return switch (key) {
+      case ANALYST -> "Analista de Factibilidad 3.0 (reporte en Word)";
+      case PRESENTATION -> "Presentación de factibilidad (PowerPoint para el propietario)";
+      case CHAT -> "Chat de consultas sobre la factibilidad";
+    };
   }
 
   static String original(PromptKey key) {
-    return key == PromptKey.ANALYST ? FeasibilityPrompts.ANALYST : FeasibilityPrompts.PRESENTATION;
+    return switch (key) {
+      case ANALYST -> FeasibilityPrompts.ANALYST;
+      case PRESENTATION -> FeasibilityPrompts.PRESENTATION;
+      case CHAT -> FeasibilityPrompts.CHAT;
+    };
   }
 
   static String systemRules(PromptKey key) {
-    return key == PromptKey.ANALYST ? FeasibilityPrompts.ANALYST_OPERATION : FeasibilityPrompts.PRESENTATION_OPERATION;
+    return switch (key) {
+      case ANALYST -> FeasibilityPrompts.ANALYST_OPERATION;
+      case PRESENTATION -> FeasibilityPrompts.PRESENTATION_OPERATION;
+      case CHAT -> FeasibilityPrompts.CHAT_OPERATION;
+    };
   }
 
   @Transactional(readOnly = true)
   public List<PromptView> list() {
-    return List.of(current(PromptKey.ANALYST), current(PromptKey.PRESENTATION));
+    return List.of(current(PromptKey.ANALYST), current(PromptKey.PRESENTATION), current(PromptKey.CHAT));
   }
 
   @Transactional(readOnly = true)

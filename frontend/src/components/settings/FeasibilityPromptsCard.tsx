@@ -98,7 +98,7 @@ export function FeasibilityPromptsCard() {
     <Card>
       <CardHeader
         title="Prompts de la factibilidad con IA"
-        description="Instrucciones que sigue la IA al generar la factibilidad de un expediente. Puedes mejorarlas cuando quieras: cada guardado crea una versión nueva y siempre puedes volver a una anterior o al texto original."
+        description="Instrucciones que sigue la IA al generar la factibilidad de un expediente y al responder el chat de consultas. Puedes mejorarlas cuando quieras: cada guardado crea una versión nueva y siempre puedes volver a una anterior o al texto original."
       />
       {prompts === null ? (
         <p className="text-sm text-muted">Cargando…</p>

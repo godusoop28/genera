@@ -1,6 +1,8 @@
 package com.c21genera.feasibility.web;
 
+import com.c21genera.feasibility.application.FeasibilityChatService;
 import com.c21genera.feasibility.application.FeasibilityService;
+import com.c21genera.feasibility.domain.FeasibilityChatMessage;
 import com.c21genera.feasibility.application.FeasibilityService.Photo;
 import com.c21genera.feasibility.domain.FeasibilityReport;
 import com.c21genera.feasibility.domain.PresentationData;
@@ -28,6 +30,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -46,10 +49,17 @@ public class FeasibilityController {
   private final FileStorage fileStorage;
   private final StorageProperties storageProperties;
   private final ObjectMapper objectMapper;
+  private final FeasibilityChatService chat;
   private final Tika tika = new Tika();
 
   public FeasibilityController(
-      FeasibilityService service, ExpedienteAccessPolicy accessPolicy, FileStorage fileStorage, StorageProperties storageProperties, ObjectMapper objectMapper) {
+      FeasibilityService service,
+      ExpedienteAccessPolicy accessPolicy,
+      FileStorage fileStorage,
+      StorageProperties storageProperties,
+      ObjectMapper objectMapper,
+      FeasibilityChatService chat) {
+    this.chat = chat;
     this.service = service;
     this.accessPolicy = accessPolicy;
     this.fileStorage = fileStorage;
@@ -156,6 +166,43 @@ public class FeasibilityController {
       throw new NotFoundException("Ese archivo todavía no está disponible para esta factibilidad.");
     }
     return new DownloadResponse(fileStorage.generateTemporaryDownloadUrl(key, storageProperties.presignedUrlTtl()));
+  }
+
+  // ---------------------------------------------------------------- chat de consultas
+
+  public record ChatSource(String title, String url) {}
+
+  /** role: USER o ASSISTANT; status: PENDING (la IA está respondiendo), DONE o FAILED. */
+  public record ChatMessageResponse(
+      UUID id, String role, String status, String content, List<ChatSource> sources, String error, String authorName, Instant createdAt) {}
+
+  public record AskRequest(String message) {}
+
+  @GetMapping("/api/v1/internal/feasibility/{reportId}/chat")
+  public List<ChatMessageResponse> chat(@PathVariable UUID reportId, @AuthenticationPrincipal Jwt jwt) {
+    require(service.get(reportId).getExpedienteId(), jwt);
+    return chat.messages(reportId).stream().map(this::toChat).toList();
+  }
+
+  /** Respuesta en segundo plano: el front vuelve a consultar el chat hasta que deja de estar PENDING. */
+  @PostMapping("/api/v1/internal/feasibility/{reportId}/chat")
+  @ResponseStatus(HttpStatus.ACCEPTED)
+  public List<ChatMessageResponse> ask(@PathVariable UUID reportId, @RequestBody AskRequest request, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = require(service.get(reportId).getExpedienteId(), jwt);
+    chat.ask(reportId, request == null ? null : request.message(), user.id(), user.name());
+    return chat.messages(reportId).stream().map(this::toChat).toList();
+  }
+
+  private ChatMessageResponse toChat(FeasibilityChatMessage m) {
+    List<ChatSource> sources = List.of();
+    if (m.getSourcesJson() != null) {
+      try {
+        sources = List.of(objectMapper.readValue(m.getSourcesJson(), ChatSource[].class));
+      } catch (IOException e) {
+        // Sin fuentes la respuesta sigue siendo útil.
+      }
+    }
+    return new ChatMessageResponse(m.getId(), m.getRole().name(), m.getStatus().name(), m.getContent(), sources, m.getError(), m.getAuthorName(), m.getCreatedAt());
   }
 
   private FeasibilityResponse toResponse(FeasibilityReport r) {
