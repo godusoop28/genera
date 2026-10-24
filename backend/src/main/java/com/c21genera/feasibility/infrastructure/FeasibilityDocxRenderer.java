@@ -41,7 +41,8 @@ public class FeasibilityDocxRenderer {
   static final String MUTED = "6E6A5F";
   private static final String FONT = "Arial";
 
-  public record Cover(String propertyTitle, String folio, String address, String advisor, String dateText) {}
+  /** rent: factibilidad para renta (la portada lo dice). */
+  public record Cover(String propertyTitle, String folio, String address, String advisor, String dateText, boolean rent) {}
 
   private static final Pattern INLINE = Pattern.compile("\\*\\*(.+?)\\*\\*|\\[([^\\]]+)\\]\\((https?://[^)\\s]+)\\)|(https?://[^\\s)\\]|>]+)|\\*(?!\\s)([^*]+?)\\*|`([^`]+)`");
   private static final Pattern NUMBERED = Pattern.compile("^(\\d+)[.)]\\s+(.*)$");
@@ -107,7 +108,7 @@ public class FeasibilityDocxRenderer {
     }
     spacer(doc, 60);
     XWPFParagraph kicker = doc.createParagraph();
-    run(kicker, "ANÁLISIS DE FACTIBILIDAD COMERCIAL", 12, true, GOLD);
+    run(kicker, cover.rent() ? "ANÁLISIS DE FACTIBILIDAD COMERCIAL · RENTA" : "ANÁLISIS DE FACTIBILIDAD COMERCIAL · VENTA", 12, true, GOLD);
     XWPFParagraph title = doc.createParagraph();
     title.setSpacingAfter(120);
     run(title, nonBlank(cover.propertyTitle(), "Inmueble en análisis"), 26, true, INK);
@@ -119,7 +120,8 @@ public class FeasibilityDocxRenderer {
     spacer(doc, 240);
     paragraph(
         doc,
-        "Reporte elaborado con apoyo de inteligencia artificial (Analista de Factibilidad 3.0) a partir de los documentos del expediente, los datos capturados por el asesor y la investigación de mercado en fuentes públicas. Es una estimación comercial orientativa: no sustituye un avalúo practicado por perito valuador. Los precios de publicaciones son precios de oferta, no de cierre.",
+        "Reporte elaborado con apoyo de inteligencia artificial (Analista de Factibilidad 3.0) a partir de los documentos del expediente, los datos capturados por el asesor y la investigación de mercado en fuentes públicas. Es una estimación comercial orientativa: no sustituye un avalúo practicado por perito valuador. Los precios de publicaciones son precios de oferta, no de cierre."
+            + (cover.rent() ? " Los montos son rentas mensuales." : ""),
         false,
         9,
         MUTED);

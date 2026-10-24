@@ -9,6 +9,7 @@ import com.c21genera.expedientes.ExpedienteSummary;
 import com.c21genera.expedientes.OperationType;
 import com.c21genera.extraction.ExtractionApi;
 import com.c21genera.extraction.ExtractionApi.DocumentFieldView;
+import com.c21genera.feasibility.domain.FeasibilityPromptVersion.PromptKey;
 import com.c21genera.feasibility.domain.FeasibilityReport;
 import com.c21genera.feasibility.domain.FeasibilityReport.Status;
 import com.c21genera.feasibility.domain.PresentationData;
@@ -116,6 +117,7 @@ public class FeasibilityService {
   private final Geocoder geocoder;
   private final StaticMapRenderer mapRenderer;
   private final FeasibilityDocxRenderer docxRenderer;
+  private final FeasibilityPromptService prompts;
   private final FeasibilityPptxRenderer pptxRenderer;
   private final ObjectMapper objectMapper;
   private final Clock clock;
@@ -132,6 +134,7 @@ public class FeasibilityService {
       StaticMapRenderer mapRenderer,
       FeasibilityDocxRenderer docxRenderer,
       FeasibilityPptxRenderer pptxRenderer,
+      FeasibilityPromptService prompts,
       ObjectMapper objectMapper,
       Clock clock) {
     this.repository = repository;
@@ -145,6 +148,7 @@ public class FeasibilityService {
     this.mapRenderer = mapRenderer;
     this.docxRenderer = docxRenderer;
     this.pptxRenderer = pptxRenderer;
+    this.prompts = prompts;
     this.objectMapper = objectMapper;
     this.clock = clock;
   }
@@ -156,10 +160,20 @@ public class FeasibilityService {
   /** Foto que subió el asesor (ya validada como imagen por el controlador). */
   public record Photo(String filename, byte[] content) {}
 
-  /** Lo que el asesor captura al pedir la factibilidad; se guarda tal cual en input_json. */
-  public record RequestInput(BigDecimal askingPrice, String notes, int photoCount) {}
+  /**
+   * Lo que el asesor captura al pedir la factibilidad; se guarda tal cual en input_json.
+   * operation: SALE (venta) o RENT (renta); askingPrice es el precio de venta o la renta mensual.
+   */
+  public record RequestInput(BigDecimal askingPrice, String notes, int photoCount, OperationType operation) {
 
-  public FeasibilityReport request(UUID expedienteId, BigDecimal askingPrice, String notes, List<Photo> photos, UUID userId, String userName) {
+    public boolean rent() {
+      return operation == OperationType.RENT;
+    }
+  }
+
+  /** operation null = la operación del expediente. */
+  public FeasibilityReport request(
+      UUID expedienteId, OperationType operation, BigDecimal askingPrice, String notes, List<Photo> photos, UUID userId, String userName) {
     if (!available()) {
       throw new UnprocessableException("AI_NOT_CONFIGURED", "La inteligencia artificial no está configurada en el servidor; no se puede generar la factibilidad.");
     }
@@ -177,7 +191,8 @@ public class FeasibilityService {
       String key = "expedientes/%s/feasibility/v%d/foto-%d.jpg".formatted(expedienteId, version, i + 1);
       photoKeys.add(fileStorage.store(key, new ByteArrayInputStream(jpeg), jpeg.length, "image/jpeg").storageKey());
     }
-    RequestInput input = new RequestInput(askingPrice, notes == null ? null : notes.strip(), photos.size());
+    OperationType op = operation != null ? operation : expedientes.getPropertyProfile(expedienteId).operationType();
+    RequestInput input = new RequestInput(askingPrice, notes == null ? null : notes.strip(), photos.size(), op == null ? OperationType.SALE : op);
     FeasibilityReport report = new FeasibilityReport(expedienteId, version, userId, userName, json(input), json(photoKeys), clock.instant());
     return repository.save(report);
   }
@@ -273,7 +288,9 @@ public class FeasibilityService {
     content.addAll(photoInputs(report));
 
     Map<String, Object> body = baseRequest(properties.maxOutputTokensReport());
-    body.put("instructions", FeasibilityPrompts.ANALYST + FeasibilityPrompts.ANALYST_OPERATION);
+    FeasibilityPromptService.Instructions instructions = prompts.instructions(PromptKey.ANALYST);
+    body.put("instructions", instructions.text() + FeasibilityPrompts.operationRules(input.rent()));
+    report.usedAnalystPrompt(instructions.version());
     body.put("input", List.of(Map.of("role", "user", "content", content)));
     String responseId = ai.createInBackground(body);
     report.analysisSubmitted(responseId, model(), json(fileIds));
@@ -294,7 +311,9 @@ public class FeasibilityService {
             context + "\n\n# FACTIBILIDAD INMOBILIARIA (FUENTE PRINCIPAL)\n\n" + state.text()));
     content.addAll(photoInputs(report));
     Map<String, Object> body = baseRequest(properties.maxOutputTokensPresentation());
-    body.put("instructions", FeasibilityPrompts.PRESENTATION + FeasibilityPrompts.PRESENTATION_OPERATION);
+    FeasibilityPromptService.Instructions instructions = prompts.instructions(PromptKey.PRESENTATION);
+    body.put("instructions", instructions.text() + FeasibilityPrompts.operationRules(input.rent()));
+    report.usedPresentationPrompt(instructions.version());
     body.put("input", List.of(Map.of("role", "user", "content", content)));
     body.put("text", Map.of("format", Map.of("type", "json_schema", "name", "presentacion_factibilidad", "schema", PresentationData.SCHEMA, "strict", true)));
     String responseId = ai.createInBackground(body);
@@ -309,6 +328,7 @@ public class FeasibilityService {
     PresentationData data = objectMapper.readValue(state.text(), PresentationData.class).normalized();
     ExpedienteSummary summary = expedientes.getSummary(report.getExpedienteId());
     PropertyProfile profile = expedientes.getPropertyProfile(report.getExpedienteId());
+    boolean rent = read(report.getInputJson(), RequestInput.class).rent();
 
     // Ubicaciones: el inmueble por su domicilio; los comparables por sus coordenadas publicadas o su colonia.
     LatLng subject = locateSubject(summary, data);
@@ -352,12 +372,12 @@ public class FeasibilityService {
 
     byte[] pptx =
         pptxRenderer.render(
-            new FeasibilityPptxRenderer.Deck(data, summary.folio(), dateText, advisor, photos, map, mapsUrl, distances, subject != null, subjectApproximate));
+            new FeasibilityPptxRenderer.Deck(data, summary.folio(), dateText, advisor, photos, map, mapsUrl, distances, subject != null, subjectApproximate, rent));
     photos = null; // libera memoria antes del Word
     List<Citation> sources = mergeSources(read(report.getSourcesJson(), new TypeReference<List<Citation>>() {}), state.citations(), data);
     byte[] docx =
         docxRenderer.render(
-            new FeasibilityDocxRenderer.Cover(data.property() == null ? null : data.property().title(), summary.folio(), summary.propertyAddress(), advisor, dateText),
+            new FeasibilityDocxRenderer.Cover(data.property() == null ? null : data.property().title(), summary.folio(), summary.propertyAddress(), advisor, dateText, rent),
             report.getReportMarkdown(),
             sources);
 
@@ -436,7 +456,7 @@ public class FeasibilityService {
     line(b, "Folio", s.folio());
     line(b, "Clave del inmueble", p.propertyKey());
     line(b, "Tipo de inmueble", joinNonBlank(" / ", p.categoryName(), p.subtypeName(), p.typeDetail()));
-    line(b, "Operación", p.operationType() == OperationType.RENT ? "Renta" : "Venta");
+    line(b, "Operación a analizar", input.rent() ? "RENTA (arrendamiento mensual)" : "VENTA");
     line(b, "Domicilio del inmueble", s.propertyAddress());
     line(b, "Referencia del asesor", p.propertyReference());
     line(b, "Régimen de condominio", s.condominiumRegime() ? "Sí" : "No");
@@ -445,7 +465,12 @@ public class FeasibilityService {
 
     b.append("\n## Datos capturados por el asesor\n");
     BigDecimal asking = input.askingPrice() != null ? input.askingPrice() : m.authorizedPrice();
-    line(b, "Precio solicitado por el propietario (MXN)", asking == null ? null : asking.toPlainString());
+    if (input.rent()) {
+      // El precio autorizado del contrato es de venta: en renta solo cuenta lo que capture el asesor.
+      line(b, "Renta mensual solicitada por el propietario (MXN)", input.askingPrice() == null ? null : input.askingPrice().toPlainString());
+    } else {
+      line(b, "Precio de venta solicitado por el propietario (MXN)", asking == null ? null : asking.toPlainString());
+    }
     line(b, "Superficie de terreno (m²)", m.landAreaM2() == null ? null : m.landAreaM2().toPlainString());
     line(b, "Superficie de construcción (m²)", m.builtAreaM2() == null ? null : m.builtAreaM2().toPlainString());
     line(b, "Recámaras", m.bedrooms() == null ? null : m.bedrooms().toString());

@@ -4,6 +4,7 @@ import com.c21genera.feasibility.application.FeasibilityService;
 import com.c21genera.feasibility.application.FeasibilityService.Photo;
 import com.c21genera.feasibility.domain.FeasibilityReport;
 import com.c21genera.feasibility.domain.PresentationData;
+import com.c21genera.expedientes.OperationType;
 import com.c21genera.identity.CurrentUser;
 import com.c21genera.shared.config.StorageProperties;
 import com.c21genera.shared.domain.NotFoundException;
@@ -69,10 +70,12 @@ public class FeasibilityController {
       List<ComparableSummary> comparables,
       List<String> pendingItems) {}
 
+  /** operation: SALE o RENT. */
   public record FeasibilityResponse(
       UUID id,
       UUID expedienteId,
       int versionNumber,
+      String operation,
       FeasibilityReport.Status status,
       Instant requestedAt,
       String requestedByName,
@@ -98,6 +101,7 @@ public class FeasibilityController {
   @ResponseStatus(HttpStatus.ACCEPTED)
   public FeasibilityResponse request(
       @PathVariable UUID expedienteId,
+      @RequestParam(required = false) String operation,
       @RequestParam(required = false) BigDecimal askingPrice,
       @RequestParam(required = false) String notes,
       @RequestPart(name = "photos", required = false) List<MultipartFile> photos,
@@ -125,7 +129,14 @@ public class FeasibilityController {
         throw new UnprocessableException("INVALID_PHOTO", "No se pudo leer una de las fotografías.");
       }
     }
-    return toResponse(service.request(expedienteId, askingPrice, notes, accepted, user.id(), user.name()));
+    OperationType op =
+        switch (operation == null ? "" : operation.toUpperCase(java.util.Locale.ROOT)) {
+          case "" -> null;
+          case "SALE", "VENTA" -> OperationType.SALE;
+          case "RENT", "RENTA" -> OperationType.RENT;
+          default -> throw new UnprocessableException("INVALID_OPERATION", "La operación debe ser venta o renta.");
+        };
+    return toResponse(service.request(expedienteId, op, askingPrice, notes, accepted, user.id(), user.name()));
   }
 
   @GetMapping("/api/v1/internal/feasibility/{reportId}")
@@ -152,6 +163,7 @@ public class FeasibilityController {
         r.getId(),
         r.getExpedienteId(),
         r.getVersionNumber(),
+        operationOf(r),
         r.getStatus(),
         r.getRequestedAt(),
         r.getRequestedByName(),
@@ -161,6 +173,15 @@ public class FeasibilityController {
         r.getDocxStorageKey() != null,
         r.getPptxStorageKey() != null,
         summaryOf(r));
+  }
+
+  private String operationOf(FeasibilityReport r) {
+    try {
+      var op = objectMapper.readValue(r.getInputJson(), FeasibilityService.RequestInput.class).operation();
+      return op == null ? "SALE" : op.name();
+    } catch (IOException e) {
+      return "SALE";
+    }
   }
 
   private Summary summaryOf(FeasibilityReport r) {

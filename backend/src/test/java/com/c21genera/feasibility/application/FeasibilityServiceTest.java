@@ -26,10 +26,13 @@ import com.c21genera.expedientes.PropertyLegalStatus;
 import com.c21genera.expedientes.SignerCharacter;
 import com.c21genera.extraction.ExtractionApi;
 import com.c21genera.extraction.ExtractionApi.DocumentFieldView;
+import com.c21genera.feasibility.domain.FeasibilityPromptVersion;
+import com.c21genera.feasibility.domain.FeasibilityPromptVersion.PromptKey;
 import com.c21genera.feasibility.domain.FeasibilityReport;
 import com.c21genera.feasibility.domain.FeasibilityReport.Status;
 import com.c21genera.feasibility.infrastructure.FeasibilityDocxRenderer;
 import com.c21genera.feasibility.infrastructure.FeasibilityPptxRenderer;
+import com.c21genera.feasibility.infrastructure.FeasibilityPromptVersionRepository;
 import com.c21genera.feasibility.infrastructure.FeasibilityProperties;
 import com.c21genera.feasibility.infrastructure.FeasibilityReportRepository;
 import com.c21genera.feasibility.infrastructure.Geocoder;
@@ -68,6 +71,9 @@ class FeasibilityServiceTest {
   private final Map<String, byte[]> stored = new HashMap<>();
   private final ObjectMapper objectMapper = new ObjectMapper();
   private FeasibilityService service;
+
+  private final FeasibilityPromptVersionRepository promptRepository = mock(FeasibilityPromptVersionRepository.class);
+  private final FeasibilityPromptService prompts = new FeasibilityPromptService(promptRepository, Clock.systemUTC());
 
   @BeforeEach
   void setUp() {
@@ -118,13 +124,31 @@ class FeasibilityServiceTest {
     service =
         new FeasibilityService(
             repository, expedientes, documents, extraction, storage, ai, properties, geocoder, new StaticMapRenderer(properties), new FeasibilityDocxRenderer(),
-            new FeasibilityPptxRenderer(), objectMapper, Clock.fixed(Instant.parse("2026-10-24T18:00:00Z"), ZoneOffset.UTC));
+            new FeasibilityPptxRenderer(), prompts, objectMapper, Clock.fixed(Instant.parse("2026-10-24T18:00:00Z"), ZoneOffset.UTC));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void usesTheAnalystPromptEditedInSettingsAndRecordsItsVersion() throws Exception {
+    when(promptRepository.findFirstByKeyOrderByVersionNumberDesc(PromptKey.ANALYST))
+        .thenReturn(Optional.of(new FeasibilityPromptVersion(PromptKey.ANALYST, 3, "# PROMPT EDITADO EN CONFIGURACIÓN v3", null,
+            Instant.parse("2026-10-24T17:00:00Z"), null, "Admin")));
+    FeasibilityReport report = service.request(expedienteId, null, null, null, List.of(), UUID.randomUUID(), "Emilia");
+    when(ai.createInBackground(any())).thenReturn("resp-1");
+    service.advance(report);
+    ArgumentCaptor<Map<String, Object>> body = ArgumentCaptor.forClass(Map.class);
+    verify(ai).createInBackground(body.capture());
+    assertThat((String) body.getValue().get("instructions"))
+        .startsWith("# PROMPT EDITADO EN CONFIGURACIÓN v3")
+        .contains("REGLAS DE OPERACIÓN DENTRO DEL SISTEMA CENTURY 21 GENERA")
+        .doesNotContain("ANALISTA DE FACTIBILIDAD 3.0");
+    assertThat(report.getAnalystPromptVersion()).isEqualTo(3);
   }
 
   @Test
   @SuppressWarnings("unchecked")
   void runsBothStagesAndStoresWordAndPowerPoint() throws Exception {
-    FeasibilityReport report = service.request(expedienteId, null, "Remodelada en 2022", List.of(), UUID.randomUUID(), "Emilia");
+    FeasibilityReport report = service.request(expedienteId, null, null, "Remodelada en 2022", List.of(), UUID.randomUUID(), "Emilia");
     assertThat(report.getStatus()).isEqualTo(Status.ANALYZING);
 
     // Etapa 1: solo se adjunta el PDF del inmueble (no la INE) y el contexto no lleva datos personales.
@@ -144,6 +168,7 @@ class FeasibilityServiceTest {
         .doesNotContain("JUAN PÉREZ LÓPEZ")
         .doesNotContain("PELJ800101HMSRPN09");
     assertThat(report.getAiResponseId()).isEqualTo("resp-1");
+    assertThat(report.getAnalystPromptVersion()).isZero(); // texto original del cliente
 
     // Mientras la IA trabaja no cambia nada.
     when(ai.get("resp-1")).thenReturn(new ResponseState("in_progress", "", List.of(), null));
@@ -172,7 +197,7 @@ class FeasibilityServiceTest {
 
   @Test
   void failedResponseLeavesTheReasonAndReleasesFiles() {
-    FeasibilityReport report = service.request(expedienteId, new BigDecimal("5000000"), null, List.of(), UUID.randomUUID(), "Emilia");
+    FeasibilityReport report = service.request(expedienteId, null, new BigDecimal("5000000"), null, List.of(), UUID.randomUUID(), "Emilia");
     when(ai.createInBackground(any())).thenReturn("resp-1");
     service.advance(report);
     when(ai.get("resp-1")).thenReturn(new ResponseState("failed", "", List.of(), "model not found"));
@@ -185,7 +210,7 @@ class FeasibilityServiceTest {
   @Test
   void onlyOneFeasibilityAtATimePerExpediente() {
     when(repository.existsByExpedienteIdAndStatusIn(any(), any())).thenReturn(true);
-    assertThatThrownBy(() -> service.request(expedienteId, null, null, List.of(), UUID.randomUUID(), "Emilia")).isInstanceOf(ConflictException.class);
+    assertThatThrownBy(() -> service.request(expedienteId, null, null, null, List.of(), UUID.randomUUID(), "Emilia")).isInstanceOf(ConflictException.class);
     verify(repository, never()).save(any());
   }
 }

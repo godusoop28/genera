@@ -78,7 +78,8 @@ public class FeasibilityPptxRenderer {
       String mapsUrl,
       Map<String, Distance> distances,
       boolean subjectLocated,
-      boolean subjectApproximate) {}
+      boolean subjectApproximate,
+      boolean rent) {}
 
   private static final List<String[]> EXCLUSIVE_BENEFITS =
       List.of(
@@ -133,6 +134,10 @@ public class FeasibilityPptxRenderer {
     }
 
     // ---------------------------------------------------------------- 1. Portada
+    private String m(Long value) {
+      return deck.rent() && value != null ? money(value) + "/mes" : money(value);
+    }
+
     void cover() {
       XSLFSlide slide = newSlide(true);
       double split = 430;
@@ -145,7 +150,7 @@ public class FeasibilityPptxRenderer {
       }
       rect(slide, split, 0, 6, H, GOLD, null);
       logo(slide, "/feasibility/logo-vertical-sobre-oscuro.jpg", M, 40, 150, 87);
-      text(slide, M, 175, split - 2 * M, 22, "ANÁLISIS DE FACTIBILIDAD COMERCIAL", 12, GOLD, true, TextAlign.LEFT);
+      text(slide, M, 175, split - 2 * M, 22, deck.rent() ? "ANÁLISIS DE FACTIBILIDAD · RENTA" : "ANÁLISIS DE FACTIBILIDAD · VENTA", 12, GOLD, true, TextAlign.LEFT);
       text(slide, M, 200, split - 2 * M, 110, nz(d.property() == null ? null : d.property().title(), "Inmueble en análisis"), 28, WHITE, true, TextAlign.LEFT);
       text(slide, M, 318, split - 2 * M, 50, nz(d.property() == null ? null : d.property().location(), PENDING), 13, LIGHT, false, TextAlign.LEFT);
       rect(slide, M, 380, 60, 3, GOLD, null);
@@ -155,7 +160,9 @@ public class FeasibilityPptxRenderer {
           392,
           split - 2 * M,
           70,
-          "Propósito: entender el mercado de tu propiedad, definir un precio de salida competitivo y la estrategia para venderla.",
+          deck.rent()
+              ? "Propósito: entender el mercado de renta de tu propiedad, definir una renta mensual competitiva y la estrategia para rentarla."
+              : "Propósito: entender el mercado de tu propiedad, definir un precio de salida competitivo y la estrategia para venderla.",
           11,
           LIGHT,
           false,
@@ -234,14 +241,14 @@ public class FeasibilityPptxRenderer {
     // ---------------------------------------------------------------- 4. Oferta en la zona
     void supply() {
       XSLFSlide slide = newSlide(true);
-      title(slide, "Mercado observado", "Oferta inmobiliaria en la zona", true);
+      title(slide, "Mercado observado", deck.rent() ? "Oferta en renta en la zona" : "Oferta inmobiliaria en la zona", true);
       var s = d.marketSupply();
       String[][] kpis = {
         {"Propiedades únicas", s == null || s.uniqueListings() == null ? "—" : String.valueOf(s.uniqueListings())},
-        {"Precio mínimo", money(s == null ? null : s.minPrice())},
-        {"Precio máximo", money(s == null ? null : s.maxPrice())},
-        {"Promedio", money(s == null ? null : s.averagePrice())},
-        {"Mediana", money(s == null ? null : s.medianPrice())}
+        {deck.rent() ? "Renta mínima /mes" : "Precio mínimo", money(s == null ? null : s.minPrice())},
+        {deck.rent() ? "Renta máxima /mes" : "Precio máximo", money(s == null ? null : s.maxPrice())},
+        {deck.rent() ? "Promedio /mes" : "Promedio", money(s == null ? null : s.averagePrice())},
+        {deck.rent() ? "Mediana /mes" : "Mediana", money(s == null ? null : s.medianPrice())}
       };
       double tw = (W - 2 * M - 4 * 14) / 5;
       for (int i = 0; i < kpis.length; i++) {
@@ -276,7 +283,7 @@ public class FeasibilityPptxRenderer {
     }
 
     private void comparableTable(XSLFSlide slide, List<ComparableListing> list, double x, double y, double w) {
-      String[] headers = {"ID", "Zona", "Precio", "Terreno", "Construcción", "$/m² constr.", "Estado y atributos", "Publicación"};
+      String[] headers = {"ID", "Zona", deck.rent() ? "Renta /mes" : "Precio", "Terreno", "Construcción", deck.rent() ? "$/m² al mes" : "$/m² constr.", "Estado y atributos", "Publicación"};
       double[] weights = {0.05, 0.16, 0.11, 0.08, 0.10, 0.10, 0.26, 0.12};
       XSLFTable table = slide.createTable();
       table.setAnchor(new Rectangle2D.Double(x, y, w, 26 + list.size() * 34));
@@ -423,13 +430,13 @@ public class FeasibilityPptxRenderer {
     // ---------------------------------------------------------------- 9. Precio
     void pricing() {
       XSLFSlide slide = newSlide(true);
-      title(slide, "Nuestra recomendación", "Posicionamiento y recomendación de precio", true);
+      title(slide, "Nuestra recomendación", deck.rent() ? "Posicionamiento y recomendación de renta" : "Posicionamiento y recomendación de precio", true);
       var p = d.pricing();
-      String range = p == null || p.rangeMin() == null || p.rangeMax() == null ? PENDING : money(p.rangeMin()) + " – " + money(p.rangeMax());
+      String range = p == null || p.rangeMin() == null || p.rangeMax() == null ? PENDING : money(p.rangeMin()) + " – " + m(p.rangeMax());
       String[][] kpis = {
-        {"Expectativa del propietario", money(p == null ? null : p.ownerPrice())},
-        {"Rango sugerido", range},
-        {"Precio recomendado de salida", money(p == null ? null : p.recommendedPrice())}
+        {"Expectativa del propietario", m(p == null ? null : p.ownerPrice())},
+        {deck.rent() ? "Rango de renta sugerido" : "Rango sugerido", range},
+        {deck.rent() ? "Renta mensual recomendada" : "Precio recomendado de salida", m(p == null ? null : p.recommendedPrice())}
       };
       double kw = 270;
       for (int i = 0; i < 3; i++) {
@@ -463,7 +470,7 @@ public class FeasibilityPptxRenderer {
         bars.add(new Bar("Expectativa", p.ownerPrice(), GOLD, true));
       }
       bars.sort(Comparator.comparingLong(Bar::value).reversed());
-      text(slide, x, y - 2, w, 16, "PRECIOS PUBLICADOS FRENTE A NUESTRA PROPUESTA (MXN)", 8.5, GOLD, true, TextAlign.LEFT);
+      text(slide, x, y - 2, w, 16, deck.rent() ? "RENTAS MENSUALES PUBLICADAS FRENTE A NUESTRA PROPUESTA (MXN)" : "PRECIOS PUBLICADOS FRENTE A NUESTRA PROPUESTA (MXN)", 8.5, GOLD, true, TextAlign.LEFT);
       if (bars.isEmpty()) {
         text(slide, x, y + 30, w, 30, "Sin precios verificables para graficar.", 11, LIGHT, false, TextAlign.LEFT);
         return;
@@ -488,7 +495,7 @@ public class FeasibilityPptxRenderer {
     // ---------------------------------------------------------------- 10. Cómo vamos a vender
     void sales() {
       XSLFSlide slide = newSlide(false);
-      title(slide, "Estrategia comercial", "¿Cómo vamos a vender tu propiedad?", false);
+      title(slide, "Estrategia comercial", deck.rent() ? "¿Cómo vamos a rentar tu propiedad?" : "¿Cómo vamos a vender tu propiedad?", false);
       var s = d.sales();
       rect(slide, M, 108, W - 2 * M, 54, INK, null);
       text(slide, M + 18, 114, W - 2 * M - 36, 44, clip(nz(s == null ? null : s.mainMessage(), PENDING), 200), 14, WHITE, true, TextAlign.LEFT);
@@ -543,8 +550,8 @@ public class FeasibilityPptxRenderer {
       double colW = (W - 2 * M - 24) / 2;
       listCard(slide, M, 108, colW, 250, "HALLAZGOS PRINCIPALES", clipAll(PresentationData.safe(c == null ? null : c.findings()), 5, 120));
       rect(slide, M + colW + 24, 108, colW, 72, GOLD, null);
-      text(slide, M + colW + 40, 116, colW - 32, 16, "PRECIO RECOMENDADO DE SALIDA", 9, INK, true, TextAlign.LEFT);
-      text(slide, M + colW + 40, 136, colW - 32, 36, money(d.pricing() == null ? null : d.pricing().recommendedPrice()), 22, INK, true, TextAlign.LEFT);
+      text(slide, M + colW + 40, 116, colW - 32, 16, deck.rent() ? "RENTA MENSUAL RECOMENDADA" : "PRECIO RECOMENDADO DE SALIDA", 9, INK, true, TextAlign.LEFT);
+      text(slide, M + colW + 40, 136, colW - 32, 36, m(d.pricing() == null ? null : d.pricing().recommendedPrice()), 22, INK, true, TextAlign.LEFT);
       listCard(slide, M + colW + 24, 192, colW, 166, "CÓMO INICIAMOS (CONTRATO DE EXCLUSIVA)", clipAll(PresentationData.safe(c == null ? null : c.nextSteps()), 5, 110));
       rect(slide, M, 372, W - 2 * M, 72, INK, null);
       text(slide, M + 18, 380, W - 2 * M - 220, 58, clip(nz(c == null ? null : c.invitation(), "Te proponemos avanzar juntos con una estrategia clara y medible."), 230), 12.5, WHITE, false, TextAlign.LEFT);

@@ -6,9 +6,10 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Los dos prompts maestros que entregó el cliente (sin cambios, en resources/feasibility) más
- * las reglas de operación de este sistema: aquí la IA no puede hacer preguntas ni producir
- * archivos; entrega texto que el servidor convierte en Word y PowerPoint.
+ * Texto original de los dos prompts maestros que entregó el cliente (resources/feasibility; versión 0
+ * en {@link FeasibilityPromptService}, que guarda las ediciones hechas desde Configuración) más las
+ * reglas de operación de este sistema, que no se editan: aquí la IA no puede hacer preguntas ni
+ * producir archivos; entrega texto que el servidor convierte en Word y PowerPoint.
  */
 final class FeasibilityPrompts {
 
@@ -74,6 +75,28 @@ final class FeasibilityPrompts {
       - pendingItems: datos pendientes por confirmar o no verificables (ligas, superficies, ubicación, etc.).
       - Español claro para el propietario, sin tecnicismos, sin emojis y sin garantizar plazos ni resultados.
       """;
+
+  /** Venta: el análisis tal cual. Renta: el mismo método y la misma estructura, aplicados al arrendamiento. */
+  static String operationRules(boolean rent) {
+    if (!rent) {
+      return "\n- OPERACIÓN: VENTA. Todos los precios son precios de venta totales en pesos mexicanos.\n";
+    }
+    return """
+
+        ## OPERACIÓN: RENTA
+
+        - Este análisis es para RENTAR el inmueble, no para venderlo. Conserva exactamente la misma \
+        estructura y el mismo rigor, pero aplica todo a la renta: precio = renta mensual en pesos mexicanos; \
+        comparables = inmuebles EN RENTA (no en venta); precio por m² = renta mensual por m²; absorción y DOM \
+        = tiempo para rentar; comprador = arrendatario (capacidad de pago mensual, garantías, aval o póliza \
+        jurídica, depósito y plazo del contrato); finanzas = renta neta, meses de depósito, mantenimiento, \
+        meses sin rentar y rendimiento anual cuando haya datos para estimarlo.
+        - Donde los prompts dicen "vender", "venta", "comprador" o "cierre", entiéndase "rentar", "renta", \
+        "arrendatario" y "firma del contrato de arrendamiento".
+        - En la presentación (JSON): pricing.*, los precios de los comparables y los de la oferta en la zona son \
+        rentas mensuales; la exclusiva y los siguientes pasos se refieren a la comercialización en renta.
+        """;
+  }
 
   private static String load(String resource) {
     try (InputStream in = FeasibilityPrompts.class.getResourceAsStream(resource)) {

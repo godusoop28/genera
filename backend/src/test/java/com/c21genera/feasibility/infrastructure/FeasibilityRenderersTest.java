@@ -82,11 +82,11 @@ public class FeasibilityRenderersTest {
             .render(
                 new FeasibilityPptxRenderer.Deck(
                     data, "EXP-2026-0042", "24 de octubre de 2026", "Emilia Rodríguez", List.of(photo(), photo()), mapPng,
-                    "https://www.google.com/maps/search/?api=1&query=18.93,-99.225", distances, true, false));
+                    "https://www.google.com/maps/search/?api=1&query=18.93,-99.225", distances, true, false, false));
     byte[] docx =
         new FeasibilityDocxRenderer()
             .render(
-                new FeasibilityDocxRenderer.Cover("Casa en Vista Hermosa", "EXP-2026-0042", "Calle Ejemplo 12, Vista Hermosa, Cuernavaca", "Emilia Rodríguez", "24 de octubre de 2026"),
+                new FeasibilityDocxRenderer.Cover("Casa en Vista Hermosa", "EXP-2026-0042", "Calle Ejemplo 12, Vista Hermosa, Cuernavaca", "Emilia Rodríguez", "24 de octubre de 2026", false),
                 MARKDOWN,
                 List.of(new Citation("Inmuebles24", "https://www.inmuebles24.com/propiedades/ejemplo-1.html")));
 

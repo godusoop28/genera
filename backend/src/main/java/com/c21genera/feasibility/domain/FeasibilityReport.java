@@ -82,6 +82,11 @@ public class FeasibilityReport {
 
   private String error;
 
+  /** Versión de cada prompt maestro con la que se generó (0 = texto original del cliente). */
+  private Integer analystPromptVersion;
+
+  private Integer presentationPromptVersion;
+
   protected FeasibilityReport() {}
 
   public FeasibilityReport(
@@ -210,6 +215,22 @@ public class FeasibilityReport {
 
   public String getPptxStorageKey() {
     return pptxStorageKey;
+  }
+
+  public void usedAnalystPrompt(int version) {
+    this.analystPromptVersion = version;
+  }
+
+  public void usedPresentationPrompt(int version) {
+    this.presentationPromptVersion = version;
+  }
+
+  public Integer getAnalystPromptVersion() {
+    return analystPromptVersion;
+  }
+
+  public Integer getPresentationPromptVersion() {
+    return presentationPromptVersion;
   }
 
   public String getError() {

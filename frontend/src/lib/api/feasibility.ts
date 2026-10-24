@@ -66,3 +66,51 @@ export function requestFeasibility(
 export function getFeasibilityDownload(reportId: string, file: "docx" | "pptx") {
   return apiClient.get<DownloadResponse>(`/internal/feasibility/${reportId}/download?file=${file}`);
 }
+
+// ------------------------------------------------------------------ prompts maestros (Configuración)
+
+export type FeasibilityPromptKey = "ANALYST" | "PRESENTATION";
+
+export interface FeasibilityPrompt {
+  key: FeasibilityPromptKey;
+  title: string;
+  content: string;
+  /** 0 = texto original del cliente. */
+  version: number;
+  original: boolean;
+  updatedAt: string | null;
+  updatedByName: string | null;
+  /** Reglas fijas que el sistema agrega al final (formato para armar el Word y el PowerPoint). */
+  systemRules: string;
+}
+
+export interface FeasibilityPromptVersion {
+  version: number;
+  createdAt: string | null;
+  createdByName: string | null;
+  note: string | null;
+  length: number;
+  current: boolean;
+}
+
+const PROMPTS = "/internal/settings/feasibility-prompts";
+
+export function getFeasibilityPrompts() {
+  return apiClient.get<FeasibilityPrompt[]>(PROMPTS);
+}
+
+export function updateFeasibilityPrompt(key: FeasibilityPromptKey, content: string, note?: string) {
+  return apiClient.put<FeasibilityPrompt>(`${PROMPTS}/${key.toLowerCase()}`, { content, note: note || null });
+}
+
+export function getFeasibilityPromptVersions(key: FeasibilityPromptKey) {
+  return apiClient.get<FeasibilityPromptVersion[]>(`${PROMPTS}/${key.toLowerCase()}/versions`);
+}
+
+export function getFeasibilityPromptVersion(key: FeasibilityPromptKey, version: number) {
+  return apiClient.get<{ version: number; content: string }>(`${PROMPTS}/${key.toLowerCase()}/versions/${version}`);
+}
+
+export function restoreFeasibilityPrompt(key: FeasibilityPromptKey, version: number) {
+  return apiClient.post<FeasibilityPrompt>(`${PROMPTS}/${key.toLowerCase()}/restore`, { version });
+}
