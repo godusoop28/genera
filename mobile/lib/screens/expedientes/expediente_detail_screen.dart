@@ -15,12 +15,13 @@ import 'tabs/consistency_tab.dart';
 import 'tabs/contract_data_tab.dart';
 import 'tabs/contract_tab.dart';
 import 'tabs/documents_tab.dart';
+import 'tabs/feasibility_tab.dart';
 import 'tabs/follow_up_tab.dart';
 import 'tabs/history_tab.dart';
 import 'tabs/participants_tab.dart';
 import 'tabs/summary_tab.dart';
 
-const _tabs = ['Resumen', 'Participantes', 'Documentos', 'Consistencia', 'Datos del contrato', 'Contrato y firmas', 'Seguimiento', 'Bitácora'];
+const _tabs = ['Resumen', 'Participantes', 'Documentos', 'Consistencia', 'Factibilidad IA', 'Datos del contrato', 'Contrato y firmas', 'Seguimiento', 'Bitácora'];
 
 /// El backend arma las ligas con su propia configuración; el token es siempre
 /// el último segmento, así que se reconstruyen con el dominio de la web.
@@ -252,6 +253,7 @@ class _ExpedienteDetailScreenState extends State<ExpedienteDetailScreen> with Ti
             ParticipantsTab(key: ValueKey('p$version'), ctx: ctx),
             DocumentsTab(key: ValueKey('d$version'), ctx: ctx),
             ConsistencyTab(key: ValueKey('c$version'), ctx: ctx),
+            FeasibilityTab(key: ValueKey('fa$version'), ctx: ctx),
             ContractDataTab(key: ValueKey('cd$version'), ctx: ctx),
             ContractTab(key: ValueKey('ct$version'), ctx: ctx),
             FollowUpTab(key: ValueKey('f$version'), ctx: ctx),

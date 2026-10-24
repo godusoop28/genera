@@ -368,3 +368,21 @@ Future<List<FollowUp>> getPropertyFollowUps(String online21Id) async =>
 
 /// Ficha técnica en PDF. variant: ADVISOR, NO_CONTACT o NO_LOGO.
 Future<List<int>> getPropertySheet(String online21Id, String variant) => _c.getBytes('/internal/properties/inventory/$online21Id/sheet?variant=$variant');
+
+// --- Factibilidad con IA -----------------------------------------------------------
+
+/// available=false: la IA no está configurada en el servidor.
+Future<({bool available, List<FeasibilityReport> reports})> listFeasibility(String expedienteId) async {
+  final j = _j(await _c.get('/internal/expedientes/$expedienteId/feasibility'));
+  return (available: j['available'] == true, reports: _l(j['reports'], FeasibilityReport.fromJson));
+}
+
+Future<void> requestFeasibility(String expedienteId, {String? askingPrice, String? notes, required List<UploadFile> photos, void Function(int percent)? onProgress}) =>
+    _c.upload('/internal/expedientes/$expedienteId/feasibility', 'photos', photos,
+        onProgress: onProgress,
+        fields: {
+          if (askingPrice != null && askingPrice.isNotEmpty) 'askingPrice': askingPrice,
+          if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+        });
+
+Future<String> getFeasibilityDownload(String reportId, String file) async => '${_j(await _c.get('/internal/feasibility/$reportId/download?file=$file'))['url']}';

@@ -154,7 +154,7 @@ void main() {
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 300));
     }
-    const tabs = ['Participantes', 'Documentos', 'Consistencia', 'Datos del contrato', 'Contrato y firmas', 'Seguimiento', 'Bitácora'];
+    const tabs = ['Participantes', 'Documentos', 'Consistencia', 'Factibilidad IA', 'Datos del contrato', 'Contrato y firmas', 'Seguimiento', 'Bitácora'];
     for (final t in tabs) {
       await tester.tap(find.text(t));
       for (var i = 0; i < 5; i++) {

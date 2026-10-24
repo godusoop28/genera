@@ -1465,3 +1465,59 @@ class FollowUp {
         createdAt = _s(j['createdAt']);
   final String? type, subtype, advisor, client, createdAt;
 }
+
+// ---------------------------------------------------------------------------
+// Factibilidad con IA
+// ---------------------------------------------------------------------------
+
+class FeasibilityComparable {
+  FeasibilityComparable.fromJson(Json j)
+      : id = _sr(j['id']),
+        group = _sr(j['group']),
+        zone = _s(j['zone']),
+        price = _in(j['price']),
+        url = _s(j['url']),
+        urlVerified = _b(j['urlVerified']);
+  final String id, group;
+  final String? zone, url;
+  final int? price;
+  final bool urlVerified;
+}
+
+class FeasibilitySummary {
+  FeasibilitySummary.fromJson(Json j)
+      : executiveSummary = _s(j['executiveSummary']),
+        ownerPrice = _in(j['ownerPrice']),
+        rangeMin = _in(j['rangeMin']),
+        rangeMax = _in(j['rangeMax']),
+        recommendedPrice = _in(j['recommendedPrice']),
+        classification = _s(j['classification']),
+        strategy = _s(j['strategy']),
+        comparables = (j['comparables'] as List? ?? const []).whereType<Map>().map((e) => FeasibilityComparable.fromJson(Json.from(e))).toList(),
+        pendingItems = _ls(j['pendingItems']);
+  final String? executiveSummary, classification, strategy;
+  final int? ownerPrice, rangeMin, rangeMax, recommendedPrice;
+  final List<FeasibilityComparable> comparables;
+  final List<String> pendingItems;
+}
+
+/// status: ANALYZING, PRESENTING, READY o FAILED.
+class FeasibilityReport {
+  FeasibilityReport.fromJson(Json j)
+      : id = _sr(j['id']),
+        versionNumber = _i(j['versionNumber']),
+        status = _sr(j['status']),
+        requestedAt = _sr(j['requestedAt']),
+        requestedByName = _s(j['requestedByName']),
+        error = _s(j['error']),
+        hasDocx = _b(j['hasDocx']),
+        hasPptx = _b(j['hasPptx']),
+        summary = j['summary'] is Map ? FeasibilitySummary.fromJson(Json.from(j['summary'] as Map)) : null;
+  final String id, status, requestedAt;
+  final int versionNumber;
+  final String? requestedByName, error;
+  final bool hasDocx, hasPptx;
+  final FeasibilitySummary? summary;
+
+  bool get inProgress => status == 'ANALYZING' || status == 'PRESENTING';
+}

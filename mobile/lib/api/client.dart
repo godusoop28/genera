@@ -187,9 +187,11 @@ class ApiClient {
   Future<dynamic> delete(String path) => request('DELETE', path);
 
   /// POST multipart (nunca JSON). onProgress recibe de 0 a 100.
-  Future<dynamic> upload(String path, String fieldName, List<UploadFile> files, {void Function(int percent)? onProgress}) async {
+  /// fields: campos de texto adicionales del formulario.
+  Future<dynamic> upload(String path, String fieldName, List<UploadFile> files, {void Function(int percent)? onProgress, Map<String, String>? fields}) async {
     final response = await _withAuth(path, (token) {
       final req = _ProgressMultipartRequest('POST', _uri(path), onProgress)..headers.addAll(_headers(token, json: false));
+      if (fields != null) req.fields.addAll(fields);
       for (final f in files) {
         final parts = f.contentType.split('/');
         req.files.add(http.MultipartFile.fromBytes(fieldName, f.bytes, filename: f.name, contentType: MediaType(parts[0], parts.length > 1 ? parts[1] : 'octet-stream')));

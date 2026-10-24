@@ -407,6 +407,31 @@ final List<({String method, String path, Object? body})> sentRequests = [];
     return (200, {'closingActive': false, 'documents': [], 'submissions': []});
   }
   if (p == '/internal/expedientes/exp-1/signed-contracts') return (200, []);
+  if (p == '/internal/expedientes/exp-1/feasibility') {
+    return (
+      200,
+      {
+        'available': true,
+        'reports': [
+          {
+            'id': 'fea-1', 'expedienteId': 'exp-1', 'versionNumber': 1, 'status': 'READY', 'requestedAt': '2026-10-24T18:00:00Z', 'requestedByName': 'Ana Asesora',
+            'stageStartedAt': '2026-10-24T18:05:00Z', 'completedAt': '2026-10-24T18:14:00Z', 'hasDocx': true, 'hasPptx': true,
+            'summary': {
+              'executiveSummary': 'La casa está por arriba del rango competitivo; con un precio de salida de \$4,350,000 compite con las alternativas directas.',
+              'ownerPrice': 4500000, 'rangeMin': 4200000, 'rangeMax': 4450000, 'recommendedPrice': 4350000, 'classification': 'LIMITE_SUPERIOR',
+              'strategy': 'Salir en \$4,350,000 y revisar a los 30 días.',
+              'comparables': [
+                {'id': 'C1', 'group': 'ARRIBA', 'zone': 'Vista Hermosa, Cuernavaca', 'price': 4900000, 'url': 'https://example.com/c1', 'urlVerified': true, 'locationPrecision': 'EXACTA'},
+                {'id': 'C2', 'group': 'SIMILAR', 'zone': 'Delicias, Cuernavaca', 'price': 4400000, 'url': null, 'urlVerified': false, 'locationPrecision': 'APROXIMADA'},
+              ],
+              'pendingItems': ['Superficie de construcción por confirmar'],
+            },
+          },
+          {'id': 'fea-0', 'expedienteId': 'exp-1', 'versionNumber': 0, 'status': 'FAILED', 'requestedAt': '2026-10-23T18:00:00Z', 'stageStartedAt': '2026-10-23T18:00:00Z', 'error': 'La IA tardó más de 45 minutos.', 'hasDocx': false, 'hasPptx': false},
+        ],
+      }
+    );
+  }
   if (p == '/internal/settings/visit-instructions') return (200, {'text': 'Las visitas al inmueble deberán programarse previamente.'});
   if (p == '/internal/expedientes/exp-1/client-data') return (200, {'authorizedPrice': 4500000, 'email': 'maria@example.com', 'phone': '777 123 4567', 'bedrooms': 3, 'bathrooms': 2});
   if (p == '/internal/expedientes/exp-1/legal-details') return (200, {'deed': {'number': null}, 'propertyChecklist': {'LICENSES': true}});
