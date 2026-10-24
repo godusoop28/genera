@@ -377,10 +377,12 @@ Future<({bool available, List<FeasibilityReport> reports})> listFeasibility(Stri
   return (available: j['available'] == true, reports: _l(j['reports'], FeasibilityReport.fromJson));
 }
 
-Future<void> requestFeasibility(String expedienteId, {String? askingPrice, String? notes, required List<UploadFile> photos, void Function(int percent)? onProgress}) =>
+Future<void> requestFeasibility(String expedienteId,
+        {required String operation, String? askingPrice, String? notes, required List<UploadFile> photos, void Function(int percent)? onProgress}) =>
     _c.upload('/internal/expedientes/$expedienteId/feasibility', 'photos', photos,
         onProgress: onProgress,
         fields: {
+          'operation': operation,
           if (askingPrice != null && askingPrice.isNotEmpty) 'askingPrice': askingPrice,
           if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
         });

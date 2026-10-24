@@ -35,6 +35,8 @@ class FeasibilityTab extends StatefulWidget {
 class _FeasibilityTabState extends State<FeasibilityTab> {
   bool available = true;
   List<FeasibilityReport>? reports;
+  late String operation = widget.ctx.expediente.operationType == 'RENT' ? 'RENT' : 'SALE';
+  String authorizedPrice = '';
   final price = TextEditingController();
   String notes = '';
   List<UploadFile> photos = [];
@@ -51,7 +53,10 @@ class _FeasibilityTabState extends State<FeasibilityTab> {
     load();
     api.getContractData(id).then((c) {
       final p = num.tryParse(c.price) ?? 0;
-      if (p > 0 && mounted && price.text.isEmpty) setState(() => price.text = p.toStringAsFixed(0));
+      if (p <= 0 || !mounted) return;
+      authorizedPrice = p.toStringAsFixed(0);
+      // El precio autorizado del contrato es de venta: no aplica a una renta mensual.
+      if (operation == 'SALE' && price.text.isEmpty) setState(() => price.text = authorizedPrice);
     }).catchError((_) => null);
   }
 
@@ -92,6 +97,7 @@ class _FeasibilityTabState extends State<FeasibilityTab> {
     });
     try {
       await api.requestFeasibility(id,
+          operation: operation,
           askingPrice: price.text.replaceAll(RegExp(r'[^0-9.]'), ''), notes: notes, photos: photos, onProgress: (p) => mounted ? setState(() => progress = p) : null);
       setState(() => photos = []);
       if (mounted) showToast(context, 'Factibilidad en proceso. La IA está analizando los documentos e investigando el mercado; tarda varios minutos.');
@@ -130,12 +136,26 @@ class _FeasibilityTabState extends State<FeasibilityTab> {
                 padding: EdgeInsets.only(bottom: 12),
                 child: Notice(tone: Tone.warning, text: 'La inteligencia artificial no está configurada en el servidor; por ahora no se puede generar la factibilidad.'),
               ),
+            AppSelect<String>(
+              label: '¿Para qué operación es la factibilidad?',
+              value: operation,
+              options: const [(value: 'SALE', label: 'Venta'), (value: 'RENT', label: 'Renta')],
+              onChanged: (v) {
+                if (v == operation) return;
+                // Cambiar de operación cambia el sentido del precio (total de venta vs. renta mensual).
+                setState(() {
+                  operation = v;
+                  price.text = v == 'SALE' ? authorizedPrice : '';
+                });
+              },
+            ),
+            const SizedBox(height: 10),
             AppTextField(
-              label: 'Precio solicitado por el propietario (MXN)',
+              label: operation == 'RENT' ? 'Renta mensual solicitada (MXN)' : 'Precio de venta solicitado (MXN)',
               controller: price,
               keyboardType: TextInputType.number,
-              hint: 'Ej. 6900000',
-              helper: 'Se toma del precio autorizado si ya se capturó.',
+              hint: operation == 'RENT' ? 'Ej. 25000' : 'Ej. 6900000',
+              helper: operation == 'RENT' ? 'Renta por mes. Si no la sabes, la IA propone una.' : 'Se toma del precio autorizado si ya se capturó.',
             ),
             const SizedBox(height: 10),
             AppTextField(
@@ -210,10 +230,13 @@ class _ReportCard extends StatelessWidget {
     final s = r.summary;
     final cls = _classification[s?.classification];
     final c = context.c;
+    final rent = r.operation == 'RENT';
+    String money(int? v) => v == null ? '—' : (rent ? '${formatMoney(v)}/mes' : formatMoney(v));
     return AppCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
           Text('Factibilidad v${r.versionNumber}', style: TextStyle(color: c.fg, fontWeight: FontWeight.w600)),
+          AppBadge(rent ? 'Renta' : 'Venta', tone: Tone.obsessed),
           switch (r.status) {
             'READY' => const AppBadge('Lista', tone: Tone.success),
             'FAILED' => const AppBadge('Falló', tone: Tone.danger),
@@ -239,9 +262,9 @@ class _ReportCard extends StatelessWidget {
           if (s != null) ...[
             const SizedBox(height: 12),
             FieldGrid(children: [
-              FieldView('Expectativa del propietario', formatMoney(s.ownerPrice)),
-              FieldView('Rango sugerido', s.rangeMin != null && s.rangeMax != null ? '${formatMoney(s.rangeMin)} – ${formatMoney(s.rangeMax)}' : '—'),
-              FieldView('Precio recomendado de salida', formatMoney(s.recommendedPrice)),
+              FieldView('Expectativa del propietario', money(s.ownerPrice)),
+              FieldView(rent ? 'Rango de renta sugerido' : 'Rango sugerido', s.rangeMin != null && s.rangeMax != null ? '${formatMoney(s.rangeMin)} – ${money(s.rangeMax)}' : '—'),
+              FieldView(rent ? 'Renta mensual recomendada' : 'Precio recomendado de salida', money(s.recommendedPrice)),
               FieldView('Comparables', '${s.comparables.length}'),
             ]),
             if (s.executiveSummary != null) ...[const SizedBox(height: 10), Text(s.executiveSummary!, style: TextStyle(color: c.fg, fontSize: 13.5))],
@@ -256,7 +279,7 @@ class _ReportCard extends StatelessWidget {
                       child: Wrap(spacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
                         Text(comp.id, style: TextStyle(color: c.fg, fontWeight: FontWeight.w600, fontSize: 13)),
                         MutedText(_groups[comp.group] ?? comp.group, size: 12),
-                        Text('${comp.zone ?? '—'} · ${formatMoney(comp.price)}', style: TextStyle(color: c.fg, fontSize: 13)),
+                        Text('${comp.zone ?? '—'} · ${money(comp.price)}', style: TextStyle(color: c.fg, fontSize: 13)),
                         if (comp.url != null)
                           LinkText(comp.urlVerified ? 'Ver publicación' : 'Ver (no verificada)', icon: Icons.open_in_new, onTap: () => openUrl(context, comp.url!))
                         else

@@ -1506,6 +1506,7 @@ class FeasibilityReport {
   FeasibilityReport.fromJson(Json j)
       : id = _sr(j['id']),
         versionNumber = _i(j['versionNumber']),
+        operation = _sr(j['operation'], 'SALE'),
         status = _sr(j['status']),
         requestedAt = _sr(j['requestedAt']),
         requestedByName = _s(j['requestedByName']),
@@ -1513,7 +1514,8 @@ class FeasibilityReport {
         hasDocx = _b(j['hasDocx']),
         hasPptx = _b(j['hasPptx']),
         summary = j['summary'] is Map ? FeasibilitySummary.fromJson(Json.from(j['summary'] as Map)) : null;
-  final String id, status, requestedAt;
+  /// SALE o RENT: en renta los montos son rentas mensuales.
+  final String id, operation, status, requestedAt;
   final int versionNumber;
   final String? requestedByName, error;
   final bool hasDocx, hasPptx;
