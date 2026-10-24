@@ -10,6 +10,7 @@ import '../../../labels.dart';
 import '../../../ui/file_pick.dart';
 import '../../../ui/widgets.dart';
 import '../expediente_detail_screen.dart';
+import '../feasibility_chat_screen.dart';
 
 const _maxPhotos = 10;
 
@@ -259,6 +260,10 @@ class _ReportCard extends StatelessWidget {
           Btn('Reporte de factibilidad (Word)', icon: Icons.download_outlined, variant: BtnVariant.dark, expand: true, onPressed: r.hasDocx ? () => onDownload(r.id, 'docx') : null),
           const SizedBox(height: 8),
           Btn('Presentación (PowerPoint)', icon: Icons.slideshow_outlined, expand: true, onPressed: r.hasPptx ? () => onDownload(r.id, 'pptx') : null),
+          const SizedBox(height: 8),
+          Btn('Consultar a la IA', icon: Icons.forum_outlined, variant: BtnVariant.secondary, expand: true, onPressed: () {
+            Navigator.of(context).push(MaterialPageRoute(builder: (_) => FeasibilityChatScreen(reportId: r.id, versionNumber: r.versionNumber)));
+          }),
           if (s != null) ...[
             const SizedBox(height: 12),
             FieldGrid(children: [

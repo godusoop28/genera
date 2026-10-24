@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:genera_mobile/api/client.dart';
 import 'package:genera_mobile/main.dart';
 import 'package:genera_mobile/screens/expedientes/expedientes_screen.dart';
+import 'package:genera_mobile/screens/expedientes/feasibility_chat_screen.dart';
 import 'package:genera_mobile/state/auth.dart';
 import 'package:genera_mobile/state/settings.dart';
 import 'package:genera_mobile/ui/widgets.dart';
@@ -165,6 +166,21 @@ void main() {
         await expectLater(find.byType(GeneraApp), matchesGoldenFile('goldens/expediente_${t.toLowerCase().replaceAll(' ', '_')}.png'));
       }
     }
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 10));
+  });
+
+  testWidgets('chat de consultas de la factibilidad', (tester) async {
+    await _open(tester, '/expedientes/exp-1');
+    await tester.pumpWidget(MaterialApp(
+      theme: buildTheme(ThemeId.light),
+      home: const FeasibilityChatScreen(reportId: 'fea-1', versionNumber: 1),
+    ));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+    expect(tester.takeException(), isNull);
+    expect(find.byWidgetPredicate((w) => w is SelectableText && (w.data ?? '').contains('tres escuelas a menos de 1 km')), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 10));
   });

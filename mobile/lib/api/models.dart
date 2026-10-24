@@ -1523,3 +1523,20 @@ class FeasibilityReport {
 
   bool get inProgress => status == 'ANALYZING' || status == 'PRESENTING';
 }
+
+/// Mensaje del chat de consultas sobre una factibilidad. role: USER o ASSISTANT; status: PENDING
+/// (la IA está respondiendo), DONE o FAILED.
+class FeasibilityChatMessage {
+  FeasibilityChatMessage.fromJson(Json j)
+      : id = _sr(j['id']),
+        role = _sr(j['role']),
+        status = _sr(j['status']),
+        content = _s(j['content']),
+        error = _s(j['error']),
+        authorName = _s(j['authorName']),
+        createdAt = _sr(j['createdAt']),
+        sources = _list(j['sources'], (s) => (title: _sr(s['title']), url: _sr(s['url'])));
+  final String id, role, status, createdAt;
+  final String? content, error, authorName;
+  final List<({String title, String url})> sources;
+}

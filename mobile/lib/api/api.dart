@@ -388,3 +388,9 @@ Future<void> requestFeasibility(String expedienteId,
         });
 
 Future<String> getFeasibilityDownload(String reportId, String file) async => '${_j(await _c.get('/internal/feasibility/$reportId/download?file=$file'))['url']}';
+
+Future<List<FeasibilityChatMessage>> getFeasibilityChat(String reportId) async =>
+    _l(await _c.get('/internal/feasibility/$reportId/chat'), FeasibilityChatMessage.fromJson);
+
+Future<List<FeasibilityChatMessage>> askFeasibilityChat(String reportId, String message) async =>
+    _l(await _c.post('/internal/feasibility/$reportId/chat', {'message': message}), FeasibilityChatMessage.fromJson);

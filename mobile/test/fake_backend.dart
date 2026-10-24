@@ -407,6 +407,18 @@ final List<({String method, String path, Object? body})> sentRequests = [];
     return (200, {'closingActive': false, 'documents': [], 'submissions': []});
   }
   if (p == '/internal/expedientes/exp-1/signed-contracts') return (200, []);
+  if (p == '/internal/feasibility/fea-1/chat') {
+    return (
+      200,
+      [
+        {'id': 'm1', 'role': 'USER', 'status': 'DONE', 'content': '¿Qué escuelas hay cerca?', 'sources': [], 'authorName': 'Ana Asesora', 'createdAt': '2026-10-24T18:20:00Z'},
+        {
+          'id': 'm2', 'role': 'ASSISTANT', 'status': 'DONE', 'content': 'Hay **tres escuelas** a menos de 1 km:\n- Colegio A\n- Escuela B',
+          'sources': [{'title': 'SEP', 'url': 'https://example.com/sep'}], 'createdAt': '2026-10-24T18:21:00Z',
+        },
+      ]
+    );
+  }
   if (p == '/internal/expedientes/exp-1/feasibility') {
     return (
       200,
