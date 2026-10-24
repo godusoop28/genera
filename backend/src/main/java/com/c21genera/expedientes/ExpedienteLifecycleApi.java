@@ -16,6 +16,19 @@ public interface ExpedienteLifecycleApi {
 
   ManualClientDataView getManualData(UUID expedienteId);
 
+  /** Tipo de inmueble, operación, clave y asesor: lo que identifica al inmueble fuera del contrato. */
+  PropertyProfile getPropertyProfile(UUID expedienteId);
+
+  /** categoryName/subtypeName/typeDetail: catálogo del CC#26 (null si no se clasificó). */
+  record PropertyProfile(
+      String categoryName,
+      String subtypeName,
+      String typeDetail,
+      OperationType operationType,
+      String propertyReference,
+      String propertyKey,
+      String assignedAdvisorName) {}
+
   record ManualClientDataView(
       BigDecimal authorizedPrice,
       LocalDate contractSignatureDate,

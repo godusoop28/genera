@@ -919,6 +919,20 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
 
   @Override
   @Transactional(readOnly = true)
+  public ExpedienteLifecycleApi.PropertyProfile getPropertyProfile(UUID expedienteId) {
+    Expediente e = get(expedienteId);
+    return new ExpedienteLifecycleApi.PropertyProfile(
+        e.getPropertyCategoryName(),
+        e.getPropertySubtypeName(),
+        e.getPropertyTypeDetail(),
+        e.getOperationType(),
+        e.getPropertyReference(),
+        e.getPropertyKey(),
+        e.getAssignedAdvisorName());
+  }
+
+  @Override
+  @Transactional(readOnly = true)
   public ExpedienteSummary getSummary(UUID expedienteId) {
     Expediente e = get(expedienteId);
     List<ParticipantView> participants = participantsOf(expedienteId).stream().map(ExpedienteService::toView).toList();

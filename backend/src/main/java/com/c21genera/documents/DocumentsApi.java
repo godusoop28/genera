@@ -48,6 +48,15 @@ public interface DocumentsApi {
   List<AcceptedDocumentView> acceptedDocumentsOf(UUID expedienteId);
 
   /**
+   * Documentos con archivo vigente (cualquier estatus salvo RECHAZADO o NO APLICA), con el PDF ya
+   * procesado de esa versión. pdfStorageKey es null mientras el archivo no termina de procesarse.
+   * Para análisis de apoyo (p. ej. la factibilidad), que no exigen que el revisor ya los aceptara.
+   */
+  List<CurrentDocumentView> currentDocumentsOf(UUID expedienteId);
+
+  record CurrentDocumentView(UUID documentId, String type, String name, String status, String pdfStorageKey) {}
+
+  /**
    * Avance documental de varios expedientes en una sola consulta (para el
    * listado). Solo cuentan los documentos obligatorios que aplican:
    * received = tienen archivo vigente (cargado, por revisar o aceptado);

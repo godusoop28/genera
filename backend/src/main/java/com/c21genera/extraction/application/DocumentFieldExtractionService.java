@@ -8,6 +8,7 @@ import com.c21genera.expedientes.ExpedienteSummary;
 import com.c21genera.expedientes.PropertyLegalStatus;
 import com.c21genera.extraction.ExtractionApi;
 import com.c21genera.extraction.ExtractionApi.ConflictView;
+import com.c21genera.extraction.ExtractionApi.DocumentFieldView;
 import com.c21genera.extraction.domain.DataConflict;
 import com.c21genera.extraction.domain.DocumentConsistencyChecker;
 import com.c21genera.extraction.domain.DocumentConsistencyChecker.DeclaredData;
@@ -308,6 +309,20 @@ public class DocumentFieldExtractionService implements ExtractionApi {
   public List<ConflictView> unresolvedConflicts(UUID expedienteId) {
     return conflictRepository.findByExpedienteIdAndResolvedFalse(expedienteId).stream()
         .map(c -> new ConflictView(c.getSeverity(), c.getDescription()))
+        .toList();
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<DocumentFieldView> documentFieldsOf(UUID expedienteId) {
+    return observationsOfExpediente(expedienteId).stream()
+        .map(
+            d -> {
+              ExtractedFieldObservation o = d.observation();
+              String value = o.getConfirmedValue() != null ? o.getConfirmedValue() : o.getDetectedValue();
+              return new DocumentFieldView(d.document().type().name(), d.document().name(), o.getFieldName(), value, o.getConfirmedValue() != null);
+            })
+        .filter(f -> f.value() != null && !f.value().isBlank())
         .toList();
   }
 

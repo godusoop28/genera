@@ -1,0 +1,88 @@
+package com.c21genera.feasibility.application;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+
+/**
+ * Los dos prompts maestros que entregó el cliente (sin cambios, en resources/feasibility) más
+ * las reglas de operación de este sistema: aquí la IA no puede hacer preguntas ni producir
+ * archivos; entrega texto que el servidor convierte en Word y PowerPoint.
+ */
+final class FeasibilityPrompts {
+
+  private FeasibilityPrompts() {}
+
+  static final String ANALYST = load("/feasibility/analista-factibilidad.md");
+  static final String PRESENTATION = load("/feasibility/presentacion-factibilidad.md");
+
+  static final String ANALYST_OPERATION =
+      """
+
+      ## REGLAS DE OPERACIÓN DENTRO DEL SISTEMA CENTURY 21 GENERA
+
+      - Este reporte se genera automáticamente desde el expediente: no puedes hacer preguntas ni esperar \
+      respuestas. Si faltan datos decisivos, elabora el diagnóstico con supuestos explícitos y registra lo \
+      que falta en la sección 26 (DATOS CRÍTICOS FALTANTES).
+      - La información del inmueble viene de los documentos del expediente (adjuntos y datos ya leídos de \
+      ellos), de lo que capturó el asesor y de las fotografías. Trátala como fuente principal del activo; si \
+      hay contradicciones entre documentos, señálalas.
+      - Usa la búsqueda web para investigar el mercado actual (por ejemplo Inmuebles24, Lamudi, Vivanuncios, \
+      Propiedades.com, Mercado Libre Inmuebles, century21mexico.com y sitios de desarrolladores). Cada \
+      comparable debe llevar la liga exacta de la publicación consultada y la fecha de consulta.
+      - Entrega el reporte completo en Markdown: cada una de las 27 secciones con un encabezado de la forma \
+      "## N. TÍTULO" en el orden obligatorio; subtítulos con "###"; tablas Markdown con "|"; montos en pesos \
+      mexicanos con formato $1,234,567.
+      - No incluyas datos personales del propietario (nombres completos, CURP, RFC, identificaciones, \
+      teléfonos o correos) aunque aparezcan en los documentos: no son necesarios para el análisis.
+      - No uses emojis. No agregues texto antes de la sección 1 ni después de la sección 27.
+      """;
+
+  static final String PRESENTATION_OPERATION =
+      """
+
+      ## REGLAS DE OPERACIÓN DENTRO DEL SISTEMA CENTURY 21 GENERA
+
+      - No generas el archivo: entregas el CONTENIDO de las láminas en el JSON solicitado y el sistema arma \
+      el PowerPoint editable (con logos, paleta autorizada, fotografías reales del inmueble, la gráfica de \
+      posicionamiento y el mapa estático con marcadores). Las láminas 1, 11 y la estructura visual las arma \
+      el sistema; tú das los textos y datos.
+      - La factibilidad incluida es la fuente principal. Úsala y complétala con la búsqueda web hasta reunir \
+      15 comparables verificables (5 por arriba, 5 directamente comparables y 5 por debajo de nuestra \
+      propiedad). Marca como hallazgo nuevo (campo notes) lo que no venga en la factibilidad. Si no hay \
+      suficientes comprobables, entrega solo los verificados: nunca inventes un comparable.
+      - comparables[].url: la liga exacta de la publicación; urlVerified=true solo si la abriste y la \
+      publicación corresponde al inmueble descrito. source: el portal y la fecha de consulta.
+      - latitude/longitude: solo si la publicación muestra el punto en un mapa o una dirección exacta; si \
+      solo indica colonia o zona deja null y usa locationPrecision APROXIMADA (el sistema la ubica por su \
+      colonia); si no hay forma de ubicarla, SIN_UBICACION. Lo mismo para property.
+      - zone: colonia y municipio (por ejemplo "Vista Hermosa, Cuernavaca"); el sistema la usa para ubicar \
+      el comparable en el mapa.
+      - Montos en pesos mexicanos como enteros (sin signos ni comas). null cuando no esté confirmado.
+      - pricing.ownerPrice: precio solicitado o esperado por el propietario; recommendedPrice: precio \
+      recomendado de salida; classification: ALINEADO, LIMITE_SUPERIOR o FUERA_DE_RANGO según la lectura de \
+      precio de la factibilidad (SIN_DATOS si no hay evidencia).
+      - Textos breves para que quepan en una lámina: executiveSummary hasta 900 caracteres; cada título de \
+      fortaleza u oportunidad hasta 60 caracteres y su explicación hasta 160; marketSupply.concentration y \
+      ourPosition hasta 350; ventajas y desventajas de cada grupo hasta 320; pricing.strategy hasta 300 y \
+      hasta 3 justificaciones de 130; mainMessage hasta 180; attributes y promotion hasta 6 elementos de 90; \
+      findings y nextSteps hasta 5 de 110; invitation hasta 220; mapConclusion hasta 220.
+      - Descripciones: shortDescription máximo 300 caracteres; mediumDescription de 80 a 120 palabras; \
+      fullDescription para portales. Solo información confirmada, conforme a la NOM-247-SE-2021 (precio \
+      total en moneda nacional, superficies, características reales y sin afirmaciones engañosas).
+      - pendingItems: datos pendientes por confirmar o no verificables (ligas, superficies, ubicación, etc.).
+      - Español claro para el propietario, sin tecnicismos, sin emojis y sin garantizar plazos ni resultados.
+      """;
+
+  private static String load(String resource) {
+    try (InputStream in = FeasibilityPrompts.class.getResourceAsStream(resource)) {
+      if (in == null) {
+        throw new IllegalStateException("Falta el recurso " + resource);
+      }
+      return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+}

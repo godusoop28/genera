@@ -20,4 +20,12 @@ public interface ExtractionApi {
   List<ConflictView> unresolvedConflicts(UUID expedienteId);
 
   record ConflictView(String severity, String description) {}
+
+  /**
+   * Datos leídos en los documentos vigentes del expediente (el confirmado por una persona si existe,
+   * si no el detectado). documentType: nombre de DocumentTypeCode.
+   */
+  List<DocumentFieldView> documentFieldsOf(UUID expedienteId);
+
+  record DocumentFieldView(String documentType, String documentName, String fieldName, String value, boolean confirmed) {}
 }

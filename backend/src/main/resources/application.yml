@@ -166,6 +166,15 @@ app:
     # final y luego el resto), con este tope de páginas por documento.
     max-pages: ${AI_MAX_PAGES:96}
     pages-per-batch: ${AI_PAGES_PER_BATCH:8}
+  # Factibilidad comercial con IA (misma llave AI_API_KEY). Corre en segundo plano en OpenAI con
+  # búsqueda web: el análisis completo suele tardar varios minutos.
+  feasibility:
+    # Vacío = el mismo AI_MODEL de la extracción de documentos.
+    model: ${FEASIBILITY_MODEL:}
+    reasoning-effort: ${FEASIBILITY_REASONING_EFFORT:medium}
+    max-output-tokens-report: ${FEASIBILITY_MAX_OUTPUT_TOKENS_REPORT:100000}
+    max-output-tokens-presentation: ${FEASIBILITY_MAX_OUTPUT_TOKENS_PRESENTATION:50000}
+    stage-timeout: ${FEASIBILITY_STAGE_TIMEOUT:PT45M}
   # Integración de solo lectura con 21Online (inventario) — ver online21.infrastructure.Online21Properties.
   online21:
     base-url: ${ONLINE21_BASE_URL:https://plus.21onlinemx.com}

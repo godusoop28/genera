@@ -1060,6 +1060,18 @@ public class DocumentService implements DocumentsApi {
         .toList();
   }
 
+  @Override
+  @Transactional(readOnly = true)
+  public List<CurrentDocumentView> currentDocumentsOf(UUID expedienteId) {
+    return documentRepository.findByExpedienteId(expedienteId).stream()
+        .filter(d -> d.getStatus() != DocumentStatus.REJECTED && d.getStatus() != DocumentStatus.NOT_APPLICABLE)
+        .flatMap(
+            d ->
+                latestVersion(d.getId()).stream()
+                    .map(v -> new CurrentDocumentView(d.getId(), d.getType().name(), d.displayName(), d.getStatus().name(), v.getStorageKeyPdf())))
+        .toList();
+  }
+
   private static String blankToNull(String value) {
     return value == null || value.isBlank() ? null : value.strip();
   }

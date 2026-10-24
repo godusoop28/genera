@@ -195,9 +195,11 @@ export async function uploadFiles<T>(
   fieldName: string,
   files: File[],
   onProgress?: (progress: UploadProgress) => void,
+  fields?: Record<string, string>,
 ): Promise<T> {
   const formData = new FormData();
   for (const file of files) formData.append(fieldName, file);
+  for (const [name, value] of Object.entries(fields ?? {})) formData.append(name, value);
 
   const response = await fetchWithAuth(path, (token) =>
     onProgress

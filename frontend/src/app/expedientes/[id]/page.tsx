@@ -20,6 +20,7 @@ import { ConsistencyTab } from "./ConsistencyTab";
 import { ContractDataTab } from "./ContractDataTab";
 import { ContractTab } from "./ContractTab";
 import { DocumentsPanel } from "./DocumentsPanel";
+import { FeasibilityTab } from "./FeasibilityTab";
 import { FollowUpTab } from "./FollowUpTab";
 import { HistoryTab } from "./HistoryTab";
 import { ParticipantsTab } from "./ParticipantsTab";
@@ -30,6 +31,7 @@ const tabs = [
   { id: "participantes", label: "Participantes" },
   { id: "documentos", label: "Documentos" },
   { id: "consistencia", label: "Consistencia" },
+  { id: "factibilidad", label: "Factibilidad IA" },
   { id: "datos-contrato", label: "Datos del contrato" },
   { id: "contrato", label: "Contrato y firmas" },
   { id: "seguimiento", label: "Seguimiento" },
@@ -308,6 +310,7 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
         {tab === "participantes" ? <ParticipantsTab {...context} /> : null}
         {tab === "documentos" ? <DocumentsPanel {...context} /> : null}
         {tab === "consistencia" ? <ConsistencyTab {...context} /> : null}
+        {tab === "factibilidad" ? <FeasibilityTab {...context} /> : null}
         {tab === "datos-contrato" ? <ContractDataTab {...context} /> : null}
         {tab === "contrato" ? <ContractTab {...context} /> : null}
         {tab === "seguimiento" ? <FollowUpTab {...context} /> : null}
