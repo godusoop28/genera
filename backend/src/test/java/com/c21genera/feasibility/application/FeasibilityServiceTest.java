@@ -120,7 +120,7 @@ class FeasibilityServiceTest {
     when(ai.uploadFile(anyString(), any(), anyString())).thenReturn("file-1");
     when(geocoder.locate(anyString())).thenReturn(Optional.of(new Geocoder.LatLng(18.93, -99.225, true)));
 
-    FeasibilityProperties properties = new FeasibilityProperties(null, "medium", 0, 0, null, 0, 0, "http://127.0.0.1:9/{z}/{x}/{y}.png", null, null);
+    FeasibilityProperties properties = new FeasibilityProperties(null, "medium", 0, 0, null, 0, 0, "http://127.0.0.1:9/{z}/{x}/{y}.png", null, null, "http://127.0.0.1:9/{z}/{x}/{y}.png", null);
     service =
         new FeasibilityService(
             repository, expedientes, documents, extraction, storage, ai, properties, geocoder, new StaticMapRenderer(properties), new FeasibilityDocxRenderer(),

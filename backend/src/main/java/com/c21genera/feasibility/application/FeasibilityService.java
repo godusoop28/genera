@@ -341,11 +341,23 @@ public class FeasibilityService {
                   p.title(), p.location(), p.surfaces(), p.distribution(), p.condition(), p.amenities(), p.highlights(), subject.lat(), subject.lng(),
                   subjectApproximate ? PresentationData.APPROXIMATE : PresentationData.EXACT));
     }
+    LatLng anchor = marketAnchor(data);
     List<ComparableListing> located = new ArrayList<>();
     for (ComparableListing c : PresentationData.safe(data.comparables())) {
-      located.add(locate(c, subject));
+      located.add(locate(c, subject, anchor));
     }
     data = data.withComparables(located);
+    List<String> unlocated = located.stream().filter(c -> !c.located()).map(c -> c.id() + " (" + nonBlank(c.zone(), "sin zona") + ")").toList();
+    if (!unlocated.isEmpty()) {
+      List<String> pending = new ArrayList<>(PresentationData.safe(data.pendingItems()));
+      pending.add("Sin ubicación verificable para el mapa: " + String.join(", ", unlocated) + ". Confirmar colonia o dirección del anuncio.");
+      data = data.withPendingItems(pending);
+    }
+    if (subject == null) {
+      List<String> pending = new ArrayList<>(PresentationData.safe(data.pendingItems()));
+      pending.add("No se pudo ubicar el inmueble en el mapa con su domicilio; las distancias no se calcularon. Revisar el domicilio del expediente.");
+      data = data.withPendingItems(pending);
+    }
 
     Map<String, Distance> distances = new LinkedHashMap<>();
     List<StaticMapRenderer.Point> points = new ArrayList<>();
@@ -390,43 +402,74 @@ public class FeasibilityService {
     log.info("Factibilidad {}: lista ({} comparables, {} en el mapa)", report.getId(), located.size(), points.size());
   }
 
+  /** Máximo para considerar que un punto pertenece al mercado analizado (Morelos y alrededores). */
+  private static final double MARKET_RADIUS_KM = 90;
+
+  /**
+   * El inmueble: su domicilio (y variantes limpias), luego las coordenadas o la ubicación que dio la
+   * IA. Un resultado lejos de la zona de la oficina (p. ej. una colonia homónima en otro estado) se
+   * descarta salvo que los comparables también estén por allá.
+   */
   private LatLng locateSubject(ExpedienteSummary summary, PresentationData data) {
-    if (summary.propertyAddress() != null && !summary.propertyAddress().isBlank()) {
-      var found = geocoder.locate(summary.propertyAddress());
-      if (found.isPresent()) {
-        return found.get();
-      }
-    }
     var p = data.property();
+    List<LatLng> candidates = new ArrayList<>();
+    geocoder.locate(summary.propertyAddress()).ifPresent(candidates::add);
     if (p != null && p.latitude() != null && p.longitude() != null && !PresentationData.NO_LOCATION.equals(p.locationPrecision())) {
-      return new LatLng(p.latitude(), p.longitude(), PresentationData.EXACT.equals(p.locationPrecision()));
+      candidates.add(new LatLng(p.latitude(), p.longitude(), PresentationData.EXACT.equals(p.locationPrecision())));
     }
-    return p == null ? null : geocoder.locate(p.location()).map(l -> new LatLng(l.lat(), l.lng(), false)).orElse(null);
+    if (p != null) {
+      geocoder.locate(p.location()).map(l -> new LatLng(l.lat(), l.lng(), false)).ifPresent(candidates::add);
+    }
+    LatLng anchor = marketAnchor(data);
+    return candidates.stream()
+        .filter(c -> Geocoder.distanceKm(anchor.lat(), anchor.lng(), c.lat(), c.lng()) < MARKET_RADIUS_KM)
+        .findFirst()
+        .orElse(candidates.isEmpty() ? null : candidates.get(0));
+  }
+
+  /** Centro del mercado: la mediana de las coordenadas que dio la IA para los comparables, o Cuernavaca. */
+  private static LatLng marketAnchor(PresentationData data) {
+    List<double[]> points =
+        PresentationData.safe(data.comparables()).stream()
+            .filter(c -> c.latitude() != null && c.longitude() != null)
+            .map(c -> new double[] {c.latitude(), c.longitude()})
+            .toList();
+    if (points.size() < 3) {
+      return new LatLng(Geocoder.HOME_LAT, Geocoder.HOME_LNG, false);
+    }
+    double[] lats = points.stream().mapToDouble(x -> x[0]).sorted().toArray();
+    double[] lngs = points.stream().mapToDouble(x -> x[1]).sorted().toArray();
+    LatLng median = new LatLng(lats[lats.length / 2], lngs[lngs.length / 2], false);
+    // Si la IA dio coordenadas disparatadas, mejor la oficina.
+    return Geocoder.distanceKm(median.lat(), median.lng(), Geocoder.HOME_LAT, Geocoder.HOME_LNG) < 400 ? median : new LatLng(Geocoder.HOME_LAT, Geocoder.HOME_LNG, false);
   }
 
   /**
-   * Coordenadas publicadas (si son verosímiles: a menos de 60 km del inmueble) o, si no, la colonia o
-   * zona geolocalizada como ubicación aproximada. Sin nada que ubicar: sin marcador.
+   * Un comparable: coordenadas publicadas (EXACTA) si son verosímiles; si no, su dirección o su
+   * colonia geolocalizadas (APROXIMADA); si no, el centro aproximado de la colonia que dio la IA.
+   * Verosímil = a menos de 90 km del inmueble (o del centro del mercado si el inmueble no se ubicó).
+   * Sin nada que ubicar: sin marcador, y queda anotado como pendiente.
    */
-  private ComparableListing locate(ComparableListing c, LatLng subject) {
-    if (c.latitude() != null && c.longitude() != null && !PresentationData.NO_LOCATION.equals(c.locationPrecision())) {
-      boolean plausible = subject == null || Geocoder.distanceKm(subject.lat(), subject.lng(), c.latitude(), c.longitude()) < 60;
-      if (plausible) {
-        return c.withLocation(c.latitude(), c.longitude(), PresentationData.EXACT.equals(c.locationPrecision()) ? PresentationData.EXACT : PresentationData.APPROXIMATE);
+  private ComparableListing locate(ComparableListing c, LatLng subject, LatLng anchor) {
+    LatLng reference = subject != null ? subject : anchor;
+    java.util.function.Predicate<LatLng> plausible = l -> Geocoder.distanceKm(reference.lat(), reference.lng(), l.lat(), l.lng()) < MARKET_RADIUS_KM;
+    LatLng published = c.latitude() != null && c.longitude() != null && !PresentationData.NO_LOCATION.equals(c.locationPrecision()) ? new LatLng(c.latitude(), c.longitude(), false) : null;
+    if (published != null && PresentationData.EXACT.equals(c.locationPrecision()) && plausible.test(published)) {
+      return c.withLocation(published.lat(), published.lng(), PresentationData.EXACT);
+    }
+    for (String query : new String[] {c.address(), c.zone()}) {
+      if (query == null || query.isBlank()) {
+        continue;
+      }
+      var found = geocoder.locate(query).filter(plausible);
+      if (found.isPresent()) {
+        return c.withLocation(found.get().lat(), found.get().lng(), PresentationData.APPROXIMATE);
       }
     }
-    String query = c.address() != null && !c.address().isBlank() ? c.address() : c.zone();
-    if (query != null && !query.isBlank() && !query.toLowerCase(Locale.ROOT).contains("morelos")) {
-      query = query + ", Morelos";
+    if (published != null && plausible.test(published)) {
+      return c.withLocation(published.lat(), published.lng(), PresentationData.APPROXIMATE);
     }
-    var found = geocoder.locate(query);
-    if (found.isEmpty() && c.address() != null && c.zone() != null) {
-      found = geocoder.locate(c.zone() + (c.zone().toLowerCase(Locale.ROOT).contains("morelos") ? "" : ", Morelos"));
-    }
-    return found
-        .filter(l -> subject == null || Geocoder.distanceKm(subject.lat(), subject.lng(), l.lat(), l.lng()) < 60)
-        .map(l -> c.withLocation(l.lat(), l.lng(), PresentationData.APPROXIMATE))
-        .orElse(c.withLocation(null, null, PresentationData.NO_LOCATION));
+    return c.withLocation(null, null, PresentationData.NO_LOCATION);
   }
 
   private static List<Citation> mergeSources(List<Citation> first, List<Citation> second, PresentationData data) {

@@ -27,10 +27,14 @@ export interface FeasibilitySummary {
   pendingItems: string[];
 }
 
+export type FeasibilityOperation = "SALE" | "RENT";
+
 export interface FeasibilityResponse {
   id: string;
   expedienteId: string;
   versionNumber: number;
+  /** Venta o renta: en renta los montos son rentas mensuales. */
+  operation: FeasibilityOperation;
   status: FeasibilityStatus;
   requestedAt: string;
   requestedByName: string | null;
@@ -54,10 +58,10 @@ export function listFeasibility(expedienteId: string) {
 
 export function requestFeasibility(
   expedienteId: string,
-  input: { askingPrice?: string; notes?: string; photos: File[] },
+  input: { operation: FeasibilityOperation; askingPrice?: string; notes?: string; photos: File[] },
   onProgress?: (progress: UploadProgress) => void,
 ) {
-  const fields: Record<string, string> = {};
+  const fields: Record<string, string> = { operation: input.operation };
   if (input.askingPrice) fields.askingPrice = input.askingPrice;
   if (input.notes?.trim()) fields.notes = input.notes.trim();
   return uploadFiles<FeasibilityResponse>(`/internal/expedientes/${expedienteId}/feasibility`, "photos", input.photos, onProgress, fields);

@@ -102,7 +102,7 @@ public class StaticMapRenderer {
     }
 
     g.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 20));
-    String attribution = tilesOk ? "© Colaboradores de OpenStreetMap" : "Mapa base no disponible al generar; posiciones relativas";
+    String attribution = tilesOk ? "© Colaboradores de OpenStreetMap · CARTO" : "Mapa base no disponible al generar; posiciones relativas";
     FontMetrics fm = g.getFontMetrics();
     int aw = fm.stringWidth(attribution) + 16;
     g.setColor(new Color(255, 255, 255, 220));
@@ -135,8 +135,14 @@ public class StaticMapRenderer {
     return loaded > 0;
   }
 
+  /** OpenStreetMap; si no entrega la tesela (bloqueo, límite o red), el mapa base alterno. */
   private BufferedImage fetchTile(int z, int x, int y) {
-    String url = properties.tileUrl().replace("{z}", String.valueOf(z)).replace("{x}", String.valueOf(x)).replace("{y}", String.valueOf(y));
+    BufferedImage tile = fetchTile(properties.tileUrl(), z, x, y);
+    return tile != null ? tile : fetchTile(properties.tileFallbackUrl(), z, x, y);
+  }
+
+  private BufferedImage fetchTile(String template, int z, int x, int y) {
+    String url = template.replace("{z}", String.valueOf(z)).replace("{x}", String.valueOf(x)).replace("{y}", String.valueOf(y));
     try {
       HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(10)).header("User-Agent", properties.userAgent()).GET().build();
       HttpResponse<byte[]> response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());

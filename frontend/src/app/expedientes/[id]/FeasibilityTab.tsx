@@ -11,6 +11,7 @@ import {
   listFeasibility,
   requestFeasibility,
   type ComparableGroup,
+  type FeasibilityOperation,
   type FeasibilityResponse,
 } from "@/lib/api/feasibility";
 import { errorText } from "@/lib/errors";
@@ -45,7 +46,9 @@ export function FeasibilityTab({ expediente }: ExpedienteContext) {
   const { showToast } = useToast();
   const [available, setAvailable] = useState(true);
   const [reports, setReports] = useState<FeasibilityResponse[] | null>(null);
+  const [operation, setOperation] = useState<FeasibilityOperation>(expediente.operationType === "RENT" ? "RENT" : "SALE");
   const [askingPrice, setAskingPrice] = useState("");
+  const [authorizedPrice, setAuthorizedPrice] = useState("");
   const [notes, setNotes] = useState("");
   const [photos, setPhotos] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
@@ -68,10 +71,14 @@ export function FeasibilityTab({ expediente }: ExpedienteContext) {
     // El precio autorizado del contrato es el punto de partida del precio solicitado.
     getContractData(expediente.id)
       .then((c) => {
-        if (Number(c.price) > 0) setAskingPrice((current) => current || String(Number(c.price)));
+        if (Number(c.price) > 0) {
+          setAuthorizedPrice(String(Number(c.price)));
+          // El precio autorizado del contrato es de venta: no aplica a una renta mensual.
+          if (expediente.operationType !== "RENT") setAskingPrice((current) => current || String(Number(c.price)));
+        }
       })
       .catch(() => undefined);
-  }, [load, expediente.id]);
+  }, [load, expediente.id, expediente.operationType]);
 
   const running = (reports ?? []).some((r) => r.status === "ANALYZING" || r.status === "PRESENTING");
 
@@ -101,7 +108,7 @@ export function FeasibilityTab({ expediente }: ExpedienteContext) {
     try {
       const shrunk = await shrinkImages(photos);
       const price = askingPrice.replace(/[^0-9.]/g, "");
-      await requestFeasibility(expediente.id, { askingPrice: price || undefined, notes, photos: shrunk }, (p) => setProgress(p.percent));
+      await requestFeasibility(expediente.id, { operation, askingPrice: price || undefined, notes, photos: shrunk }, (p) => setProgress(p.percent));
       setPhotos([]);
       showToast("Factibilidad en proceso. La IA está analizando los documentos e investigando el mercado; tarda varios minutos.");
       await load();
@@ -137,13 +144,48 @@ export function FeasibilityTab({ expediente }: ExpedienteContext) {
           </p>
         ) : null}
         <div className="grid gap-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <p className="mb-1.5 text-sm font-medium text-obsessed">¿Para qué operación es la factibilidad?</p>
+            <div className="inline-flex rounded-xl border border-border p-1" role="radiogroup" aria-label="Operación">
+              {(
+                [
+                  ["SALE", "Venta"],
+                  ["RENT", "Renta"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={operation === value}
+                  onClick={() => {
+                    if (value === operation) return;
+                    setOperation(value);
+                    // Cambiar de operación cambia el sentido del precio (total de venta vs. renta mensual).
+                    setAskingPrice(value === "SALE" ? authorizedPrice : "");
+                  }}
+                  className={
+                    operation === value
+                      ? "rounded-lg bg-brand-ink px-4 py-1.5 text-sm font-medium text-white"
+                      : "rounded-lg px-4 py-1.5 text-sm text-muted hover:bg-app-bg"
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
           <Input
-            label="Precio solicitado por el propietario (MXN)"
+            label={operation === "RENT" ? "Renta mensual solicitada por el propietario (MXN)" : "Precio de venta solicitado por el propietario (MXN)"}
             inputMode="decimal"
-            placeholder="Ej. 6900000"
+            placeholder={operation === "RENT" ? "Ej. 25000" : "Ej. 6900000"}
             value={askingPrice}
             onChange={(e) => setAskingPrice(e.target.value)}
-            hint="Se toma del precio autorizado si ya se capturó. Si no hay precio, la IA lo marca como dato faltante."
+            hint={
+              operation === "RENT"
+                ? "Renta por mes. Si no la sabes, la IA la marca como dato faltante y propone una."
+                : "Se toma del precio autorizado si ya se capturó. Si no hay precio, la IA lo marca como dato faltante."
+            }
           />
           <div className="sm:row-span-2">
             <label className="mb-1.5 block text-sm font-medium text-obsessed" htmlFor="feasibility-notes">
@@ -224,11 +266,14 @@ export function FeasibilityTab({ expediente }: ExpedienteContext) {
 function ReportCard({ report: r, onDownload }: { report: FeasibilityResponse; onDownload: (id: string, file: "docx" | "pptx") => void }) {
   const s = r.summary;
   const classification = s?.classification ? classificationLabels[s.classification] : null;
+  const rent = r.operation === "RENT";
+  const money = (value: number | null) => (value === null ? "—" : rent ? `${formatMoney(value)}/mes` : formatMoney(value));
   return (
     <Card>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="font-semibold text-obsessed">Factibilidad v{r.versionNumber}</h3>
+          <Badge tone="obsessed">{r.operation === "RENT" ? "Renta" : "Venta"}</Badge>
           <StatusBadge status={r.status} />
           {classification ? <Badge tone={classification.tone}>{classification.label}</Badge> : null}
         </div>
@@ -257,9 +302,9 @@ function ReportCard({ report: r, onDownload }: { report: FeasibilityResponse; on
           {s ? (
             <>
               <dl className="mb-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                <Info k="Expectativa del propietario" v={formatMoney(s.ownerPrice)} />
-                <Info k="Rango sugerido" v={s.rangeMin && s.rangeMax ? `${formatMoney(s.rangeMin)} – ${formatMoney(s.rangeMax)}` : "—"} />
-                <Info k="Precio recomendado de salida" v={formatMoney(s.recommendedPrice)} strong />
+                <Info k="Expectativa del propietario" v={money(s.ownerPrice)} />
+                <Info k={rent ? "Rango de renta sugerido" : "Rango sugerido"} v={s.rangeMin && s.rangeMax ? `${formatMoney(s.rangeMin)} – ${money(s.rangeMax)}` : "—"} />
+                <Info k={rent ? "Renta mensual recomendada" : "Precio recomendado de salida"} v={money(s.recommendedPrice)} strong />
                 <Info k="Comparables" v={String(s.comparables.length)} />
               </dl>
               {s.executiveSummary ? <p className="mb-3 whitespace-pre-line text-sm text-obsessed">{s.executiveSummary}</p> : null}
@@ -273,7 +318,7 @@ function ReportCard({ report: r, onDownload }: { report: FeasibilityResponse; on
                         <span className="w-9 font-semibold text-obsessed">{c.id}</span>
                         <span className="text-xs text-muted">{groupLabels[c.group] ?? c.group}</span>
                         <span>{c.zone ?? "—"}</span>
-                        <span className="font-medium">{formatMoney(c.price)}</span>
+                        <span className="font-medium">{money(c.price)}</span>
                         {c.url ? (
                           <a href={c.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-info-text underline">
                             Ver publicación <ExternalLink className="h-3 w-3" />

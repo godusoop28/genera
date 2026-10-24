@@ -70,7 +70,7 @@ public class FeasibilityRenderersTest {
     for (ComparableListing c : data.comparables()) {
       distances.put(c.id(), new Distance(0.4 + c.id().length() * 0.7, c.id().endsWith("3")));
     }
-    StaticMapRenderer map = new StaticMapRenderer(new FeasibilityProperties(null, null, 0, 0, null, 0, 0, System.getProperty("feasibility.tiles", "http://127.0.0.1:9/{z}/{x}/{y}.png"), null, null));
+    StaticMapRenderer map = new StaticMapRenderer(new FeasibilityProperties(null, null, 0, 0, null, 0, 0, System.getProperty("feasibility.tiles", "http://127.0.0.1:9/{z}/{x}/{y}.png"), null, null, System.getProperty("feasibility.tiles", "http://127.0.0.1:9/{z}/{x}/{y}.png"), null));
     List<StaticMapRenderer.Point> points = new ArrayList<>();
     for (ComparableListing c : data.comparables()) {
       points.add(new StaticMapRenderer.Point(c.id(), c.group(), c.latitude(), c.longitude(), c.id().endsWith("3")));

@@ -141,6 +141,11 @@ public record PresentationData(
         executiveSummary, property, strengths, opportunities, marketSupply, list, groupNotes, pricing, sales, mapConclusion, conclusions, pendingItems);
   }
 
+  public PresentationData withPendingItems(List<String> items) {
+    return new PresentationData(
+        executiveSummary, property, strengths, opportunities, marketSupply, comparables, groupNotes, pricing, sales, mapConclusion, conclusions, items);
+  }
+
   public PresentationData withProperty(PropertyContext p) {
     return new PresentationData(
         executiveSummary, p, strengths, opportunities, marketSupply, comparables, groupNotes, pricing, sales, mapConclusion, conclusions, pendingItems);

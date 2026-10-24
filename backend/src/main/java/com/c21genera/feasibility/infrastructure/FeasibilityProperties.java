@@ -12,7 +12,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *   <li>stageTimeout: tiempo máximo de cada etapa en la IA antes de darla por fallida.
  *   <li>maxFileBytes / maxTotalFileBytes: PDFs de los documentos que se adjuntan (los más
  *       grandes se omiten y la IA trabaja con los datos ya leídos de ellos).
- *   <li>tileUrl / geocodeUrl: mapa estático de la lámina 8 (OpenStreetMap por defecto).
+ *   <li>tileUrl / tileFallbackUrl: teselas del mapa de la lámina 8 (OpenStreetMap y, si no
+ *       responde, CARTO).
+ *   <li>geocodeUrl / photonUrl: ubicar domicilios y colonias (Nominatim y, de respaldo, Photon).
  * </ul>
  */
 @ConfigurationProperties(prefix = "app.feasibility")
@@ -26,7 +28,9 @@ public record FeasibilityProperties(
     long maxTotalFileBytes,
     String tileUrl,
     String geocodeUrl,
-    String userAgent) {
+    String userAgent,
+    String tileFallbackUrl,
+    String photonUrl) {
 
   public FeasibilityProperties {
     if (maxOutputTokensReport <= 0) {
@@ -49,6 +53,12 @@ public record FeasibilityProperties(
     }
     if (geocodeUrl == null || geocodeUrl.isBlank()) {
       geocodeUrl = "https://nominatim.openstreetmap.org/search";
+    }
+    if (tileFallbackUrl == null || tileFallbackUrl.isBlank()) {
+      tileFallbackUrl = "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png";
+    }
+    if (photonUrl == null || photonUrl.isBlank()) {
+      photonUrl = "https://photon.komoot.io/api/";
     }
     if (userAgent == null || userAgent.isBlank()) {
       userAgent = "C21Genera-Factibilidad/1.0 (https://c21genera.com)";

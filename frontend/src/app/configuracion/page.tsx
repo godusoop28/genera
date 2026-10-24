@@ -1,6 +1,7 @@
 import { PageContainer } from "@/components/layout/PageContainer";
 import { AccountSettingsForm } from "@/components/settings/AccountSettingsForm";
 import { ChangePasswordCard } from "@/components/settings/ChangePasswordCard";
+import { FeasibilityPromptsCard } from "@/components/settings/FeasibilityPromptsCard";
 import { FontSizeControl } from "@/components/settings/FontSizeControl";
 import { NotificationSettingsCard } from "@/components/settings/NotificationSettingsCard";
 import { PropertyCatalogCard } from "@/components/settings/PropertyCatalogCard";
@@ -21,6 +22,9 @@ export default function ConfiguracionPage() {
           <NotificationSettingsCard />
           <VisitInstructionsCard />
           <PropertyCatalogCard />
+        </div>
+        <div className="lg:col-span-2">
+          <FeasibilityPromptsCard />
         </div>
       </div>
     </PageContainer>

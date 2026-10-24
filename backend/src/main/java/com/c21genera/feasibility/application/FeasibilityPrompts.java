@@ -55,11 +55,13 @@ final class FeasibilityPrompts {
       suficientes comprobables, entrega solo los verificados: nunca inventes un comparable.
       - comparables[].url: la liga exacta de la publicación; urlVerified=true solo si la abriste y la \
       publicación corresponde al inmueble descrito. source: el portal y la fecha de consulta.
-      - latitude/longitude: solo si la publicación muestra el punto en un mapa o una dirección exacta; si \
-      solo indica colonia o zona deja null y usa locationPrecision APROXIMADA (el sistema la ubica por su \
-      colonia); si no hay forma de ubicarla, SIN_UBICACION. Lo mismo para property.
-      - zone: colonia y municipio (por ejemplo "Vista Hermosa, Cuernavaca"); el sistema la usa para ubicar \
-      el comparable en el mapa.
+      - latitude/longitude: si la publicación muestra el punto en un mapa o una dirección exacta, esas \
+      coordenadas con locationPrecision EXACTA. Si solo indica colonia o zona, las coordenadas aproximadas \
+      del centro de esa colonia con locationPrecision APROXIMADA (el sistema las verifica con un servicio \
+      de mapas). SIN_UBICACION solo si no se sabe ni la colonia. Lo mismo para property.
+      - zone: SIEMPRE colonia y municipio, sin abreviaturas ni código postal (por ejemplo "Vista Hermosa, \
+      Cuernavaca"); address: calle y número si el anuncio los muestra, si no null. El sistema usa zone y \
+      address para ubicar cada comparable en el mapa.
       - Montos en pesos mexicanos como enteros (sin signos ni comas). null cuando no esté confirmado.
       - pricing.ownerPrice: precio solicitado o esperado por el propietario; recommendedPrice: precio \
       recomendado de salida; classification: ALINEADO, LIMITE_SUPERIOR o FUERA_DE_RANGO según la lectura de \
