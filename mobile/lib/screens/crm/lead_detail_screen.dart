@@ -10,6 +10,7 @@ import '../../state/auth.dart';
 import '../../ui/shell.dart';
 import '../../ui/widgets.dart';
 import 'crm_ui.dart';
+import 'lead_followup.dart';
 
 class LeadDetailScreen extends StatefulWidget {
   const LeadDetailScreen({super.key, required this.id});
@@ -93,17 +94,36 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
           ]),
           if (lead.coordinationNote != null)
             Notice(tone: Tone.warning, icon: Icons.warning_amber_rounded, title: 'Requiere coordinación:', text: lead.coordinationNote),
+          if (lead.stale) Notice(tone: Tone.warning, icon: Icons.schedule, text: 'Sin actividad desde ${formatShortDateTime(lead.lastActivityAt)}: corre el riesgo de enfriarse.'),
+          if (auth.can('LEAD_MANAGE'))
+            SuggestedStageNotice(detail: d, onApply: (stage) async => run(() => api.changeLeadStage(lead.id, stage), 'Etapa: ${label(stageLabels, stage)}')),
           AppCard(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              CardHeader(title: 'Resumen', action: StageBadge(lead.stage)),
+              CardHeader(
+                title: 'Ficha del prospecto',
+                action: Wrap(spacing: 6, children: [
+                  if (lead.temperature != null) AppBadge('${temperatureDots[lead.temperature] ?? ''} ${label(temperatureLabels, lead.temperature)}', tone: temperatureTones[lead.temperature] ?? Tone.neutral),
+                  StageBadge(lead.stage),
+                ]),
+              ),
               FieldGrid(children: [
-                FieldView('Busca', label(interestLabels, lead.interest)),
-                FieldView('Fuente', null, child: SourceLabel(source: lead.source, detail: lead.sourceDetail, color: c.fg, size: 14)),
-                FieldView('Presupuesto', lead.budget != null && lead.budget! > 0 ? formatPrice(lead.budget!) : '—'),
-                FieldView('Recibido', formatShortDateTime(lead.createdAt)),
+                FieldView('Tipo de operación', label(interestLabels, lead.interest)),
+                FieldView('Fuente', null, child: SourceLabel(source: lead.source, sourceLabel: lead.sourceLabel, detail: lead.sourceDetail, color: c.fg, size: 14)),
+                FieldView('Tipo de inmueble', lead.propertyTypeLabel ?? '—'),
+                FieldView('Zona de interés', lead.zone ?? '—'),
+                FieldView('Presupuesto', _budget(lead)),
+                FieldView('Probabilidad de cierre', lead.closeProbability != null ? '${lead.closeProbability} %' : '—'),
+                FieldView('Cierre estimado', lead.expectedCloseOn ?? '—'),
+                FieldView('Primer contacto', lead.firstContactOn ?? formatShortDateTime(lead.createdAt)),
                 FieldView('Último movimiento', timeAgo(lead.lastActivityAt)),
-                if (lead.stage == 'LOST') FieldView('Motivo de pérdida', lead.lostReason ?? '—'),
+                if (lead.expedienteFolio != null) FieldView('Expediente', lead.expedienteFolio),
+                if (lead.stage == 'LOST') FieldView('Motivo de pérdida', [if (lead.lostReasonCode != null) label(lostReasonLabels, lead.lostReasonCode), ?lead.lostReason].join(' — ')),
               ]),
+              if (lead.desiredFeatures != null) ...[
+                const SizedBox(height: 12),
+                const SectionTitle('Características deseadas'),
+                Text(lead.desiredFeatures!, style: TextStyle(color: c.fg, fontSize: 14)),
+              ],
               if (lead.summary != null) ...[
                 const SizedBox(height: 14),
                 Container(
@@ -118,6 +138,7 @@ class _LeadDetailScreenState extends State<LeadDetailScreen> {
               ],
             ]),
           ),
+          LeadTasksCard(detail: d, canManage: auth.can('LEAD_MANAGE'), onChanged: load),
           if (auth.can('LEAD_MANAGE')) _StageCard(lead: lead, run: run),
           _AdvisorCard(detail: d, advisors: advisors, run: run),
           AppCard(
@@ -189,7 +210,20 @@ const _activityIcons = {
   'BOT': Icons.smart_toy_outlined,
   'NOTICE': Icons.notifications_none,
   'FOLLOW_UP': Icons.forum_outlined,
+  'TASK': Icons.event_available_outlined,
+  'PROPERTY_SHARED': Icons.home_outlined,
+  'EXPEDIENTE': Icons.folder_open_outlined,
+  'EDIT': Icons.edit_outlined,
 };
+
+String _budget(LeadItem lead) {
+  final min = lead.budgetMin;
+  final max = lead.budget;
+  if (min != null && max != null) return '${formatPrice(min)} – ${formatPrice(max)}';
+  if (max != null && max > 0) return 'Hasta ${formatPrice(max)}';
+  if (min != null) return 'Desde ${formatPrice(min)}';
+  return '—';
+}
 
 typedef _Run = Future<bool> Function(Future<LeadDetail> Function() action, String success);
 
@@ -205,12 +239,18 @@ class _StageCard extends StatefulWidget {
 class _StageCardState extends State<_StageCard> {
   String? pending;
   String reason = '';
+  String reasonCode = '';
   bool saving = false;
 
+  bool get lostInvalid => reasonCode.isEmpty || (reasonCode == 'OTHER' && reason.trim().isEmpty);
+
   Future<void> apply(String stage) async {
-    if (stage == 'LOST' && reason.trim().isEmpty) return;
+    if (stage == 'LOST' && lostInvalid) return;
     setState(() => saving = true);
-    final ok = await widget.run(() => api.changeLeadStage(widget.lead.id, stage, stage == 'LOST' ? reason.trim() : null), 'Etapa: ${stageLabels[stage]}');
+    final ok = await widget.run(
+      () => api.changeLeadStage(widget.lead.id, stage, stage == 'LOST' && reason.trim().isNotEmpty ? reason.trim() : null, stage == 'LOST' ? reasonCode : null),
+      'Etapa: ${stageLabels[stage]}',
+    );
     if (mounted) {
       setState(() {
         saving = false;
@@ -263,9 +303,9 @@ class _StageCardState extends State<_StageCard> {
           const SizedBox(height: 12),
           Notice(
             tone: Tone.success,
-            text: '¿Confirmas que el lead cerró operación?',
+            text: '¿Confirmas que la transacción se concretó?',
             action: Wrap(spacing: 8, children: [
-              Btn('Sí, cerrado ganado', small: true, loading: saving, onPressed: () => apply('WON')),
+              Btn('Sí, registrar cierre', small: true, loading: saving, onPressed: () => apply('WON')),
               Btn('Cancelar', small: true, variant: BtnVariant.ghost, onPressed: () => setState(() => pending = null)),
             ]),
           ),
@@ -274,10 +314,17 @@ class _StageCardState extends State<_StageCard> {
         if (lead.stage != 'LOST')
           pending == 'LOST'
               ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  AppTextField(label: 'Motivo de pérdida', hint: 'Ej. compró con otra inmobiliaria', autofocus: true, onChanged: (v) => setState(() => reason = v)),
+                  AppSelect<String>(
+                    label: 'Motivo de pérdida',
+                    value: reasonCode,
+                    options: [(value: '', label: 'Elige el motivo'), for (final e in lostReasonLabels.entries) (value: e.key, label: e.value)],
+                    onChanged: (v) => setState(() => reasonCode = v),
+                  ),
+                  const SizedBox(height: 8),
+                  AppTextField(hint: reasonCode == 'OTHER' ? 'Describe el motivo (obligatorio)' : 'Detalle (opcional)', onChanged: (v) => setState(() => reason = v)),
                   const SizedBox(height: 8),
                   Wrap(spacing: 8, children: [
-                    Btn('Marcar como perdido', small: true, variant: BtnVariant.danger, loading: saving, onPressed: reason.trim().isEmpty ? null : () => apply('LOST')),
+                    Btn('Marcar como perdido', small: true, variant: BtnVariant.danger, loading: saving, onPressed: lostInvalid ? null : () => apply('LOST')),
                     Btn('Cancelar', small: true, variant: BtnVariant.ghost, onPressed: () => setState(() => pending = null)),
                   ]),
                 ])

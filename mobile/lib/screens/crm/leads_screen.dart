@@ -19,7 +19,8 @@ const groupLabels = {
   'PENDING': 'Pendientes por horario',
   'NEW': 'Nuevos',
   'OPEN': 'En seguimiento',
-  'WON': 'Ganados',
+  'STALE': 'Sin actividad reciente',
+  'WON': 'Cierres',
   'LOST': 'Perdidos',
 };
 
@@ -126,7 +127,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
               label: 'Sin asesor',
               hint: counts == null ? 'Necesitan un asesor' : '${counts['PENDING'] ?? 0} esperan turno',
             ),
-            StatCard(icon: Icons.check_circle_outline, tone: Tone.success, value: count('WON'), label: 'Ganados', hint: 'Cerraron operación'),
+            StatCard(icon: Icons.check_circle_outline, tone: Tone.success, value: count('WON'), label: 'Cierres', hint: 'Transacciones concretadas'),
           ]),
           const SizedBox(height: 16),
           AppTextField(hint: 'Buscar por nombre, teléfono o propiedad', onChanged: onQuery, value: query),
@@ -212,8 +213,15 @@ class _LeadCard extends StatelessWidget {
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(lead.name, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: c.fg), overflow: TextOverflow.ellipsis),
+              Text('${lead.temperature != null ? '${temperatureDots[lead.temperature] ?? ''} ' : ''}${lead.name}', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: c.fg), overflow: TextOverflow.ellipsis),
               Text('${label(interestLabels, lead.interest)} · ${timeAgo(lead.createdAt)}', style: TextStyle(fontSize: 12, color: c.muted)),
+              if (lead.nextTaskAt != null)
+                Text(
+                  '${label(taskTypeLabels, lead.nextTaskType)}${lead.nextTaskOverdue ? ' · vencida' : ''} · ${formatInstantMx(lead.nextTaskAt!)}',
+                  style: TextStyle(fontSize: 12, color: lead.nextTaskOverdue ? c.dangerText : c.muted, fontWeight: lead.nextTaskOverdue ? FontWeight.w600 : null),
+                )
+              else if (lead.stale)
+                Text('Sin actividad reciente', style: TextStyle(fontSize: 12, color: c.warningText, fontWeight: FontWeight.w600)),
             ]),
           ),
           StageBadge(lead.stage),
@@ -228,7 +236,7 @@ class _LeadCard extends StatelessWidget {
         ]),
         const SizedBox(height: 8),
         Row(children: [
-          Expanded(child: SourceLabel(source: lead.source, detail: lead.sourceDetail, size: 12)),
+          Expanded(child: SourceLabel(source: lead.source, sourceLabel: lead.sourceLabel, detail: lead.sourceDetail, size: 12)),
           Text('Ver', style: TextStyle(color: c.goldText, fontWeight: FontWeight.w600)),
           Icon(Icons.arrow_forward, size: 16, color: c.goldText),
         ]),

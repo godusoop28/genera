@@ -211,7 +211,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       Text(timeAgo(lead.createdAt), style: TextStyle(fontSize: 12, color: c.muted)),
                     ]),
                     const SizedBox(height: 4),
-                    SourceLabel(source: lead.source, detail: lead.sourceDetail, size: 12),
+                    SourceLabel(source: lead.source, sourceLabel: lead.sourceLabel, detail: lead.sourceDetail, size: 12),
                     const SizedBox(height: 6),
                     Row(children: [Expanded(child: AdvisorChip(advisor: lead.advisor)), StageBadge(lead.stage)]),
                   ]),

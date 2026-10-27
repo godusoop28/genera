@@ -368,37 +368,88 @@ const backendStatusNextStep = {
 
 // --- CRM ----------------------------------------------------------------------
 
-const stageOrder = ['NEW', 'CONTACTED', 'APPOINTMENT', 'VISITED', 'NEGOTIATION', 'WON', 'LOST'];
+// Control de Cambios #30: pipeline de 10 etapas.
+const stageOrder = ['NEW', 'CONTACTED', 'QUALIFIED', 'APPOINTMENT', 'VISITED', 'PROPOSAL', 'NEGOTIATION', 'OFFER_ACCEPTED', 'WON', 'LOST'];
 
 const stageLabels = {
   'NEW': 'Nuevo',
-  'CONTACTED': 'Contactado',
+  'CONTACTED': 'Primer contacto',
+  'QUALIFIED': 'Calificado',
   'APPOINTMENT': 'Cita agendada',
-  'VISITED': 'Visitó',
+  'VISITED': 'Visita realizada',
+  'PROPOSAL': 'Propuesta enviada',
   'NEGOTIATION': 'Negociación',
-  'WON': 'Cerrado ganado',
+  'OFFER_ACCEPTED': 'Oferta aceptada',
+  'WON': 'Cierre',
   'LOST': 'Perdido',
 };
 
 const stageTones = {
   'NEW': Tone.warning,
   'CONTACTED': Tone.info,
+  'QUALIFIED': Tone.info,
   'APPOINTMENT': Tone.gold,
   'VISITED': Tone.manual,
+  'PROPOSAL': Tone.manual,
   'NEGOTIATION': Tone.obsessed,
+  'OFFER_ACCEPTED': Tone.success,
   'WON': Tone.success,
   'LOST': Tone.danger,
 };
 
+/// Canal general; la fuente precisa viene del catálogo (Control de Cambios #29, sourceLabel).
 const sourceLabels = {
   'WHATSAPP_BOT': 'WhatsApp (asistente)',
+  'WHATSAPP': 'WhatsApp',
   'PORTAL': 'Portal inmobiliario',
+  'SOCIAL': 'Redes sociales',
   'CAMPAIGN': 'Campaña',
-  'WEBSITE': 'Sitio web',
+  'WEBSITE': 'Sitio web / búsqueda',
+  'OUTDOOR': 'Publicidad exterior',
   'REFERRAL': 'Referido',
   'WALK_IN': 'Oficina',
+  'EVENT': 'Evento',
   'PHONE': 'Llamada',
+  'REACTIVATION': 'Reactivación',
+  'OTHER': 'Otra',
 };
+
+const temperatureLabels = {'COLD': 'Frío', 'WARM': 'Tibio', 'HOT': 'Caliente'};
+const temperatureTones = {'COLD': Tone.info, 'WARM': Tone.warning, 'HOT': Tone.danger};
+const temperatureDots = {'COLD': '🔵', 'WARM': '🟡', 'HOT': '🔴'};
+
+const lostReasonLabels = {
+  'PRICE': 'Precio',
+  'ZONE': 'Zona',
+  'TIMING': 'Tiempo',
+  'COMPETITION': 'Competencia',
+  'NO_RESPONSE': 'Dejó de responder',
+  'OTHER': 'Otro',
+};
+
+const taskTypeLabels = {
+  'CALL': '📞 Llamada',
+  'WHATSAPP': '💬 Mensaje WhatsApp',
+  'EMAIL': '📧 Correo electrónico',
+  'VISIT': '🏠 Visita al inmueble',
+  'OFFICE_MEETING': '🏢 Reunión en oficina',
+  'VIDEO_CALL': '🎥 Videollamada',
+  'PROPOSAL': '📄 Envío de propuesta',
+  'OFFER_FOLLOW_UP': '🤝 Seguimiento de oferta',
+  'NOTE': '📝 Nota interna',
+  'OTHER': '⚙️ Otro',
+};
+
+const taskResultLabels = {
+  'CONTACTED': 'Contactado',
+  'NO_ANSWER': 'No contestó',
+  'RESCHEDULED': 'Reagendó',
+  'REJECTED': 'Rechazó',
+  'INTERESTED': 'Interesado',
+  'ADVANCED': 'Avanzó',
+};
+
+const reminderLabels = {'': 'Sin recordatorio', '15': '15 minutos antes', '60': '1 hora antes', '1440': '1 día antes'};
 
 const interestLabels = {
   'BUY': 'Comprar',

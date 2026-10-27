@@ -27,6 +27,8 @@ class AppDrawer extends StatelessWidget {
     final crm = <({String href, String label, IconData icon, bool visible})>[
       (href: '/dashboard', label: 'Dashboard', icon: Icons.dashboard_outlined, visible: true),
       (href: '/leads', label: 'Leads', icon: Icons.person_search_outlined, visible: true),
+      // Control de Cambios #30: citas y actividades de seguimiento de los leads.
+      (href: '/agenda', label: 'Agenda', icon: Icons.event_available_outlined, visible: true),
       (href: '/propiedades', label: 'Propiedades', icon: Icons.house_outlined, visible: auth.can('PROPERTY_VIEW')),
       (href: '/calendario', label: 'Calendario', icon: Icons.calendar_month_outlined, visible: auth.can('CALENDAR_VIEW_ALL') || auth.can('CALENDAR_VIEW_OWN')),
       (href: '/conversaciones', label: 'Conversaciones', icon: Icons.forum_outlined, visible: auth.can('CONVERSATION_VIEW')),

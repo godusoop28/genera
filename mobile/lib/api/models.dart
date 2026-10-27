@@ -961,12 +961,63 @@ class LeadItem {
         pendingReason = _s(j['pendingReason']),
         nextShiftAt = _s(j['nextShiftAt']),
         propertyAdvisor = NamedRef.maybe(j['propertyAdvisor']),
-        coordinationNote = _s(j['coordinationNote']);
+        coordinationNote = _s(j['coordinationNote']),
+        sourceCode = _s(j['sourceCode']),
+        sourceLabel = _s(j['sourceLabel']),
+        firstContactOn = _s(j['firstContactOn']),
+        propertyTypeLabel = _s(j['propertyTypeLabel']),
+        zone = _s(j['zone']),
+        budgetMin = _dn(j['budgetMin']),
+        desiredFeatures = _s(j['desiredFeatures']),
+        temperature = _s(j['temperature']),
+        closeProbability = _in(j['closeProbability']),
+        expectedCloseOn = _s(j['expectedCloseOn']),
+        lostReasonCode = _s(j['lostReasonCode']),
+        expedienteId = j['expediente'] is Map ? _s((j['expediente'] as Map)['id']) : null,
+        expedienteFolio = j['expediente'] is Map ? _s((j['expediente'] as Map)['folio']) : null,
+        nextTaskType = j['nextTask'] is Map ? _s((j['nextTask'] as Map)['type']) : null,
+        nextTaskAt = j['nextTask'] is Map ? _s((j['nextTask'] as Map)['scheduledAt']) : null,
+        nextTaskOverdue = j['nextTask'] is Map && _b((j['nextTask'] as Map)['overdue']),
+        overdueTasks = _i(j['overdueTasks']),
+        stale = _b(j['stale']);
   final String id, name, source, interest, stage, createdAt, lastActivityAt, assignmentStatus;
   final String? phone, email, sourceDetail, assignmentMethod, summary, lostReason, conversationId, assignmentRule, pendingReason, nextShiftAt, coordinationNote;
   final LeadProperty? property;
   final NamedRef? advisor, propertyAdvisor;
   final double? budget;
+  // Controles de Cambios #29 y #30.
+  final String? sourceCode, sourceLabel, firstContactOn, propertyTypeLabel, zone, desiredFeatures, temperature, expectedCloseOn, lostReasonCode;
+  final String? expedienteId, expedienteFolio, nextTaskType, nextTaskAt;
+  final double? budgetMin;
+  final int? closeProbability;
+  final bool nextTaskOverdue, stale;
+  final int overdueTasks;
+}
+
+/// Control de Cambios #30: actividad del lead (programada o realizada).
+class LeadTaskItem {
+  LeadTaskItem.fromJson(Json j)
+      : id = _sr(j['id']),
+        leadId = _sr(j['leadId']),
+        leadName = _s(j['leadName']),
+        type = _sr(j['type']),
+        status = _sr(j['status']),
+        title = _s(j['title']),
+        scheduledAt = _s(j['scheduledAt']),
+        durationMinutes = _in(j['durationMinutes']),
+        advisor = NamedRef.maybe(j['advisor']),
+        propertyKey = _s(j['propertyKey']),
+        propertyTitle = _s(j['propertyTitle']),
+        notesBefore = _s(j['notesBefore']),
+        result = _s(j['result']),
+        outcomeNotes = _s(j['outcomeNotes']),
+        nextAction = _s(j['nextAction']),
+        overdue = _b(j['overdue']);
+  final String id, leadId, type, status;
+  final String? leadName, title, scheduledAt, propertyKey, propertyTitle, notesBefore, result, outcomeNotes, nextAction;
+  final int? durationMinutes;
+  final NamedRef? advisor;
+  final bool overdue;
 }
 
 class LeadAssignmentEntry {
@@ -1002,11 +1053,15 @@ class LeadDetail {
       : lead = LeadItem.fromJson(Json.from(j['lead'] as Map)),
         activities = _list(j['activities'], LeadActivity.fromJson),
         assignments = _list(j['assignments'], LeadAssignmentEntry.fromJson),
-        advisorNoticeStatus = _sr(j['advisorNoticeStatus'], 'NOT_REQUIRED');
+        advisorNoticeStatus = _sr(j['advisorNoticeStatus'], 'NOT_REQUIRED'),
+        tasks = _list(j['tasks'], LeadTaskItem.fromJson),
+        suggestedStage = _s(j['suggestedStage']);
   final LeadItem lead;
   final List<LeadActivity> activities;
   final List<LeadAssignmentEntry> assignments;
   final String advisorNoticeStatus;
+  final List<LeadTaskItem> tasks;
+  final String? suggestedStage;
 }
 
 class LeadPage {

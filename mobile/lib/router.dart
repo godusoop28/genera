@@ -4,6 +4,7 @@ import 'screens/calendar/calendar_screen.dart';
 import 'screens/crm/advisors_screen.dart';
 import 'screens/crm/conversations_screen.dart';
 import 'screens/crm/dashboard_screen.dart';
+import 'screens/crm/agenda_screen.dart';
 import 'screens/crm/lead_detail_screen.dart';
 import 'screens/crm/leads_screen.dart';
 import 'screens/crm/properties_screen.dart';
@@ -58,6 +59,7 @@ GoRouter buildRouter(AuthState auth) => GoRouter(
           ),
         ),
         GoRoute(path: '/leads/:id', builder: (_, s) => LeadDetailScreen(id: s.pathParameters['id']!)),
+        GoRoute(path: '/agenda', builder: (_, _) => const AgendaScreen()),
         GoRoute(path: '/propiedades', builder: (_, s) => PropertiesScreen(initialTab: s.uri.queryParameters['vista'])),
         GoRoute(path: '/propiedades/nueva', builder: (_, _) => const PropertyFormScreen()),
         GoRoute(path: '/propiedades/21online/:online21Id', builder: (_, s) => Online21PropertyScreen(online21Id: s.pathParameters['online21Id']!)),

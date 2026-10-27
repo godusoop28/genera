@@ -17,18 +17,27 @@ class StageBadge extends StatelessWidget {
 
 const sourceIcons = {
   'WHATSAPP_BOT': Icons.chat_outlined,
+  'WHATSAPP': Icons.chat_outlined,
   'PORTAL': Icons.apartment_outlined,
+  'SOCIAL': Icons.share_outlined,
   'CAMPAIGN': Icons.campaign_outlined,
   'WEBSITE': Icons.language,
+  'OUTDOOR': Icons.flag_outlined,
   'REFERRAL': Icons.person_add_alt,
   'WALK_IN': Icons.directions_walk,
+  'EVENT': Icons.event_outlined,
   'PHONE': Icons.phone_outlined,
+  'REACTIVATION': Icons.replay,
+  'OTHER': Icons.help_outline,
 };
 
 class SourceLabel extends StatelessWidget {
-  const SourceLabel({super.key, required this.source, this.detail, this.color, this.size = 13});
+  const SourceLabel({super.key, required this.source, this.detail, this.sourceLabel, this.color, this.size = 13});
   final String source;
   final String? detail;
+
+  /// Control de Cambios #29: nombre de la fuente en el catálogo (si no viene, el del canal).
+  final String? sourceLabel;
   final Color? color;
   final double size;
 
@@ -38,7 +47,13 @@ class SourceLabel extends StatelessWidget {
     return Row(mainAxisSize: MainAxisSize.min, children: [
       Icon(sourceIcons[source] ?? Icons.label_outline, size: size + 1, color: fg),
       const SizedBox(width: 5),
-      Flexible(child: Text(detail ?? label(sourceLabels, source), style: TextStyle(fontSize: size, color: fg), overflow: TextOverflow.ellipsis)),
+      Flexible(
+        child: Text(
+          [sourceLabel ?? label(sourceLabels, source), ?detail].join(' · '),
+          style: TextStyle(fontSize: size, color: fg),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
     ]);
   }
 }

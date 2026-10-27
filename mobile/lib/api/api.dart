@@ -294,8 +294,17 @@ String _sOf(dynamic v) => v?.toString() ?? '';
 Future<LeadPage> listLeads({String? q, String? group, String? advisorId, String? source, int size = 100}) async =>
     LeadPage.fromJson(_j(await _c.get('/internal/leads${_q({'q': q, 'group': group, 'advisorId': advisorId, 'source': source, 'size': size})}')));
 Future<LeadDetail> getLead(String id) async => LeadDetail.fromJson(_j(await _c.get('/internal/leads/$id')));
-Future<LeadDetail> changeLeadStage(String id, String stage, [String? lostReason]) async =>
-    LeadDetail.fromJson(_j(await _c.post('/internal/leads/$id/stage', {'stage': stage, 'lostReason': lostReason})));
+Future<LeadDetail> changeLeadStage(String id, String stage, [String? lostReason, String? lostReasonCode]) async =>
+    LeadDetail.fromJson(_j(await _c.post('/internal/leads/$id/stage', {'stage': stage, 'lostReason': lostReason, 'lostReasonCode': lostReasonCode})));
+
+// Control de Cambios #30: actividades del lead y agenda.
+Future<LeadTaskItem> createLeadTask(String leadId, Json input) async => LeadTaskItem.fromJson(_j(await _c.post('/internal/leads/$leadId/tasks', input)));
+Future<LeadTaskItem> completeLeadTask(String taskId, Json input) async => LeadTaskItem.fromJson(_j(await _c.post('/internal/lead-tasks/$taskId/complete', input)));
+Future<LeadTaskItem> cancelLeadTask(String taskId) async => LeadTaskItem.fromJson(_j(await _c.post('/internal/lead-tasks/$taskId/cancel', <String, Object?>{})));
+Future<List<LeadTaskItem>> getAgenda(String fromIso, String toIso) async {
+  final data = await _c.get('/internal/crm/agenda${_q({'from': fromIso, 'to': toIso})}');
+  return data is List ? data.whereType<Map>().map((e) => LeadTaskItem.fromJson(Json.from(e))).toList() : <LeadTaskItem>[];
+}
 Future<LeadDetail> assignLead(String id, String advisorId, [String? exceptionReason]) async =>
     LeadDetail.fromJson(_j(await _c.post('/internal/leads/$id/assign', {'advisorId': advisorId, 'exceptionReason': exceptionReason})));
 Future<LeadDetail> resendLeadNotice(String id) async => LeadDetail.fromJson(_j(await _c.post('/internal/leads/$id/resend-notice')));
