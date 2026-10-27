@@ -1,6 +1,8 @@
 "use client";
 
 import { AdvisorChip, LoadError, PropertyMini, SourceLabel, StageBadge, errorText, useApi } from "@/components/crm/CrmUi";
+import { ExpedienteLinkCard, SharedPropertiesCard, StageHistoryCard, SuggestedStageBanner, TasksCard } from "@/components/crm/LeadFollowUp";
+import { EditLeadModal } from "@/components/crm/LeadForms";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -21,6 +23,7 @@ import {
   type LeadDetail,
   type LeadItem,
   type LeadStage,
+  type LostReason,
 } from "@/lib/api/crm";
 import {
   advisorStatusLabels,
@@ -34,14 +37,35 @@ import {
   formatDateTime,
   formatPrice,
   interestLabels,
+  lostReasonLabels,
+  stageHints,
   stageLabels,
   stageOrder,
+  temperatureDots,
+  temperatureLabels,
+  temperatureTones,
   timeAgo,
   whatsappLink,
 } from "@/lib/crm/labels";
 import { useCan } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, ArrowLeft, Bell, Bot, CheckCircle2, FilePlus2, Home, MessageCircle, MessagesSquare, StickyNote, UserCheck, UserPlus } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Bell,
+  Bot,
+  CalendarCheck,
+  CheckCircle2,
+  FilePlus2,
+  FolderOpen,
+  Home,
+  MessageCircle,
+  MessagesSquare,
+  Pencil,
+  StickyNote,
+  UserCheck,
+  UserPlus,
+} from "lucide-react";
 import Link from "next/link";
 import { use, useState, type ReactNode } from "react";
 
@@ -50,6 +74,7 @@ export default function LeadDetailPage({ params }: PageProps<"/leads/[id]">) {
   const can = useCan();
   const detail = useApi(() => getLead(id), [id]);
   const advisors = useApi(() => (can("LEAD_ASSIGN") ? listAdvisors() : Promise.resolve([])), [can("LEAD_ASSIGN")]);
+  const [editing, setEditing] = useState(false);
 
   if (detail.error && !detail.data) {
     return (
@@ -68,6 +93,7 @@ export default function LeadDetailPage({ params }: PageProps<"/leads/[id]">) {
 
   const { lead, activities } = detail.data;
   const update = (next: LeadDetail) => detail.setData(next);
+  const canManage = can("LEAD_MANAGE");
 
   return (
     <PageContainer
@@ -108,20 +134,55 @@ export default function LeadDetailPage({ params }: PageProps<"/leads/[id]">) {
           </span>
         </p>
       ) : null}
+      {lead.stale ? (
+        <p className="mb-5 flex items-start gap-2.5 rounded-xl border border-warning-text/25 bg-warning-bg px-4 py-3 text-sm text-warning-text">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span>Este lead no ha tenido actividad desde {formatDateTime(lead.lastActivityAt)}: corre el riesgo de enfriarse.</span>
+        </p>
+      ) : null}
+      <SuggestedStageBanner detail={detail.data} canManage={canManage} onChange={update} />
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="min-w-0 space-y-5">
           <Card>
-            <CardHeader title="Resumen" action={<StageBadge stage={lead.stage} />} />
+            <CardHeader
+              title="Ficha del prospecto"
+              action={
+                <span className="flex items-center gap-2">
+                  {lead.temperature ? <Badge tone={temperatureTones[lead.temperature]}>{temperatureDots[lead.temperature]} {temperatureLabels[lead.temperature]}</Badge> : null}
+                  <StageBadge stage={lead.stage} />
+                  {canManage ? (
+                    <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
+                      <Pencil className="h-4 w-4" aria-hidden /> Editar
+                    </Button>
+                  ) : null}
+                </span>
+              }
+            />
             <dl className="grid grid-cols-1 gap-x-6 gap-y-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
-              <Field label="Busca">{interestLabels[lead.interest]}</Field>
+              <Field label="Tipo de operación">{interestLabels[lead.interest]}</Field>
               <Field label="Fuente">
-                <SourceLabel source={lead.source} detail={lead.sourceDetail} className="text-obsessed" />
+                <SourceLabel source={lead.source} label={lead.sourceLabel} detail={lead.sourceDetail} className="text-obsessed" />
               </Field>
-              <Field label="Presupuesto">{lead.budget ? formatPrice(lead.budget) : "—"}</Field>
-              <Field label="Recibido">{formatDateTime(lead.createdAt)}</Field>
+              <Field label="Primer contacto">{lead.firstContactOn ? formatDate(lead.firstContactOn) : formatDateTime(lead.createdAt)}</Field>
+              <Field label="Tipo de inmueble">{lead.propertyTypeLabel ?? "—"}</Field>
+              <Field label="Zona de interés">{lead.zone ?? "—"}</Field>
+              <Field label="Presupuesto">{budgetText(lead)}</Field>
+              <Field label="Probabilidad de cierre">{lead.closeProbability != null ? `${lead.closeProbability} %` : "—"}</Field>
+              <Field label="Cierre estimado">{lead.expectedCloseOn ? formatDate(lead.expectedCloseOn) : "—"}</Field>
               <Field label="Último movimiento">{timeAgo(lead.lastActivityAt)}</Field>
-              {lead.stage === "LOST" ? <Field label="Motivo de pérdida">{lead.lostReason ?? "—"}</Field> : null}
+              {lead.stage === "LOST" ? (
+                <Field label="Motivo de pérdida">
+                  {lead.lostReasonCode ? lostReasonLabels[lead.lostReasonCode] : "—"}
+                  {lead.lostReason ? ` — ${lead.lostReason}` : ""}
+                </Field>
+              ) : null}
             </dl>
+            {lead.desiredFeatures ? (
+              <p className="mt-5 whitespace-pre-wrap rounded-xl bg-app-bg px-4 py-3 text-sm text-obsessed">
+                <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-muted">Características deseadas</span>
+                {lead.desiredFeatures}
+              </p>
+            ) : null}
             {lead.summary ? (
               <p className="mt-5 whitespace-pre-wrap rounded-xl bg-app-bg px-4 py-3 text-sm text-obsessed">
                 <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-muted">Lo que nos dijo</span>
@@ -143,6 +204,10 @@ export default function LeadDetailPage({ params }: PageProps<"/leads/[id]">) {
             )}
           </Card>
 
+          <TasksCard detail={detail.data} advisors={advisors.data ?? []} canManage={canManage} onChanged={detail.reload} />
+
+          <SharedPropertiesCard detail={detail.data} canManage={canManage} onChange={update} />
+
           {lead.conversationId && can("CONVERSATION_VIEW") ? <ConversationPreview conversationId={lead.conversationId} name={lead.name} /> : null}
 
           {detail.data.assignments.length ? (
@@ -153,13 +218,15 @@ export default function LeadDetailPage({ params }: PageProps<"/leads/[id]">) {
           ) : null}
 
           <Card>
-            <CardHeader title="Historial" />
+            <CardHeader title="Historial" description="Bitácora completa de la relación con el prospecto (no se puede editar ni borrar)." />
             <Timeline items={activities} />
           </Card>
         </div>
 
         <aside className="min-w-0 space-y-5">
-          {can("LEAD_MANAGE") ? <StageCard lead={lead} onChange={update} /> : null}
+          {canManage ? <StageCard lead={lead} onChange={update} /> : null}
+          <ExpedienteLinkCard detail={detail.data} canManage={canManage} onChange={update} />
+          <StageHistoryCard detail={detail.data} />
           <Card>
             <CardHeader title="Asesor que atiende" action={<Badge tone={assignmentStatusTones[lead.assignmentStatus]}>{assignmentStatusLabels[lead.assignmentStatus]}</Badge>} />
             <AdvisorChip advisor={lead.advisor} emptyLabel={lead.assignmentStatus === "PENDING_SCHEDULE" ? "Pendiente por horario" : "Sin asignar"} />
@@ -196,11 +263,26 @@ export default function LeadDetailPage({ params }: PageProps<"/leads/[id]">) {
               </Link>
             </Card>
           ) : null}
-          {can("LEAD_MANAGE") ? <NoteCard leadId={lead.id} onChange={update} /> : null}
+          {canManage ? <NoteCard leadId={lead.id} onChange={update} /> : null}
         </aside>
       </div>
+      {canManage ? <EditLeadModal open={editing} onClose={() => setEditing(false)} lead={lead} onSaved={update} /> : null}
     </PageContainer>
   );
+}
+
+const dateOnly = new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+
+/** "2026-10-26" → "26 oct 2026" (fecha sin hora: no se convierte de zona). */
+function formatDate(date: string): string {
+  return dateOnly.format(new Date(`${date}T00:00:00Z`));
+}
+
+function budgetText(lead: LeadItem): string {
+  if (lead.budgetMin != null && lead.budget != null) return `${formatPrice(lead.budgetMin)} – ${formatPrice(lead.budget)}`;
+  if (lead.budget != null) return `Hasta ${formatPrice(lead.budget)}`;
+  if (lead.budgetMin != null) return `Desde ${formatPrice(lead.budgetMin)}`;
+  return "—";
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
@@ -240,17 +322,20 @@ function StageCard({ lead, onChange }: { lead: LeadItem; onChange: (d: LeadDetai
   const { showToast } = useToast();
   const [pending, setPending] = useState<LeadStage | null>(null);
   const [reason, setReason] = useState("");
+  const [reasonCode, setReasonCode] = useState<LostReason | "">("");
   const [saving, setSaving] = useState(false);
   const funnel = stageOrder.filter((s) => s !== "LOST");
   const reachedIndex = lead.stage === "LOST" ? -1 : funnel.indexOf(lead.stage);
+  const lostInvalid = !reasonCode || (reasonCode === "OTHER" && !reason.trim());
 
   const apply = async (stage: LeadStage) => {
-    if (stage === "LOST" && !reason.trim()) return;
+    if (stage === "LOST" && lostInvalid) return;
     setSaving(true);
     try {
-      onChange(await changeLeadStage(lead.id, stage, stage === "LOST" ? reason.trim() : undefined));
+      onChange(await changeLeadStage(lead.id, stage, stage === "LOST" ? reason.trim() || undefined : undefined, stage === "LOST" ? (reasonCode as LostReason) : undefined));
       setPending(null);
       setReason("");
+      setReasonCode("");
       showToast(`Etapa: ${stageLabels[stage]}`);
     } catch (err) {
       showToast(errorText(err));
@@ -261,7 +346,7 @@ function StageCard({ lead, onChange }: { lead: LeadItem; onChange: (d: LeadDetai
 
   return (
     <Card>
-      <CardHeader title="Etapa" description="Avanza el lead conforme progresa el seguimiento." />
+      <CardHeader title="Etapa" description="Avanza el lead conforme progresa el seguimiento. Cada cambio guarda su fecha." />
       <ol className="space-y-1.5">
         {funnel.map((stage, i) => {
           const done = i <= reachedIndex;
@@ -272,6 +357,7 @@ function StageCard({ lead, onChange }: { lead: LeadItem; onChange: (d: LeadDetai
                 type="button"
                 onClick={() => (stage === "WON" ? setPending("WON") : void apply(stage))}
                 disabled={isCurrent || saving}
+                title={stageHints[stage]}
                 className={cn(
                   "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/30",
                   isCurrent ? "bg-gold/15 font-semibold text-obsessed" : "text-muted hover:bg-app-bg hover:text-obsessed",
@@ -293,10 +379,10 @@ function StageCard({ lead, onChange }: { lead: LeadItem; onChange: (d: LeadDetai
 
       {pending === "WON" ? (
         <div className="mt-4 rounded-xl border border-success-text/30 bg-success-bg p-3 text-sm text-success-text">
-          <p>¿Confirmas que el lead cerró operación?</p>
+          <p>¿Confirmas que la transacción se concretó?</p>
           <div className="mt-2 flex gap-2">
             <Button size="sm" onClick={() => void apply("WON")} disabled={saving}>
-              Sí, cerrado ganado
+              Sí, registrar cierre
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setPending(null)}>
               Cancelar
@@ -308,18 +394,24 @@ function StageCard({ lead, onChange }: { lead: LeadItem; onChange: (d: LeadDetai
       {lead.stage !== "LOST" ? (
         pending === "LOST" ? (
           <div className="mt-4 space-y-2">
-            <label htmlFor="lost-reason" className="text-sm font-medium text-obsessed">
-              Motivo de pérdida
+            <Select
+              label="Motivo de pérdida"
+              value={reasonCode}
+              onChange={(e) => setReasonCode(e.target.value as LostReason | "")}
+              options={[{ value: "", label: "Elige el motivo" }, ...(Object.keys(lostReasonLabels) as LostReason[]).map((r) => ({ value: r, label: lostReasonLabels[r] }))]}
+            />
+            <label htmlFor="lost-reason" className="sr-only">
+              Detalle del motivo
             </label>
             <input
               id="lost-reason"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="Ej. compró con otra inmobiliaria"
+              placeholder={reasonCode === "OTHER" ? "Describe el motivo (obligatorio)" : "Detalle (opcional). Ej. compró con otra inmobiliaria"}
               className="w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm text-obsessed focus:border-gold focus:outline-none focus:ring-4 focus:ring-gold/20"
             />
             <div className="flex gap-2">
-              <Button size="sm" variant="danger" onClick={() => void apply("LOST")} disabled={!reason.trim() || saving}>
+              <Button size="sm" variant="danger" onClick={() => void apply("LOST")} disabled={lostInvalid || saving}>
                 Marcar como perdido
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setPending(null)}>
@@ -527,6 +619,10 @@ const activityIcons: Record<ActivityKind, typeof Bot> = {
   BOT: Bot,
   NOTICE: Bell,
   FOLLOW_UP: MessagesSquare,
+  TASK: CalendarCheck,
+  PROPERTY_SHARED: Home,
+  EXPEDIENTE: FolderOpen,
+  EDIT: Pencil,
 };
 
 function Timeline({ items }: { items: LeadDetail["activities"] }) {

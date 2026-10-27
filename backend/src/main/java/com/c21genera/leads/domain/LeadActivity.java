@@ -22,7 +22,13 @@ public class LeadActivity {
     NOTE,
     BOT,
     NOTICE,
-    FOLLOW_UP
+    FOLLOW_UP,
+    /** Control de Cambios #30: actividad programada, realizada o cancelada. */
+    TASK,
+    PROPERTY_SHARED,
+    EXPEDIENTE,
+    /** Cambio de datos de la ficha (incluida la fuente, CC#29). */
+    EDIT
   }
 
   @Id

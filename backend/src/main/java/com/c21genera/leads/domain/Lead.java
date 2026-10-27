@@ -5,6 +5,8 @@ import com.c21genera.leads.AssignmentStatus;
 import com.c21genera.leads.LeadInterest;
 import com.c21genera.leads.LeadSource;
 import com.c21genera.leads.LeadStage;
+import com.c21genera.leads.LeadTemperature;
+import com.c21genera.leads.LostReason;
 import com.c21genera.shared.jpa.AuditableEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -14,6 +16,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.UUID;
 
 @Entity
@@ -102,6 +106,40 @@ public class Lead extends AuditableEntity {
 
   private String coordinationNote;
 
+  // Control de Cambios #29: opción precisa del catálogo de fuentes.
+  private String sourceCode;
+
+  // Control de Cambios #30: ficha completa del prospecto.
+  private LocalDate firstContactOn;
+
+  private UUID propertyCategoryId;
+
+  private UUID propertySubtypeId;
+
+  private String propertyTypeLabel;
+
+  private String zone;
+
+  private BigDecimal budgetMin;
+
+  private String desiredFeatures;
+
+  @Enumerated(EnumType.STRING)
+  private LeadTemperature temperature;
+
+  private Integer closeProbability;
+
+  private LocalDate expectedCloseOn;
+
+  @Enumerated(EnumType.STRING)
+  private LostReason lostReasonCode;
+
+  private Instant stageEnteredAt;
+
+  private UUID expedienteId;
+
+  private String expedienteFolio;
+
   protected Lead() {}
 
   public Lead(String name, String phone, LeadSource source, String sourceDetail, LeadInterest interest, Instant now) {
@@ -113,7 +151,12 @@ public class Lead extends AuditableEntity {
     this.interest = interest == null ? LeadInterest.OTHER : interest;
     this.stage = LeadStage.NEW;
     this.lastActivityAt = now;
+    this.sourceCode = source == null ? null : source.defaultCode();
+    this.firstContactOn = LocalDate.ofInstant(now, BUSINESS_ZONE);
+    this.stageEnteredAt = now;
   }
+
+  public static final ZoneId BUSINESS_ZONE = ZoneId.of("America/Mexico_City");
 
   /** Solo dígitos y sin lada de país (52/521): así se reconoce al mismo contacto aunque cambie el formato. */
   public static String digitsOf(String phone) {
@@ -194,9 +237,69 @@ public class Lead extends AuditableEntity {
   }
 
   public void changeStage(LeadStage stage, String lostReason, Instant now) {
+    changeStage(stage, null, lostReason, now);
+  }
+
+  public void changeStage(LeadStage stage, LostReason reasonCode, String lostReason, Instant now) {
     this.stage = stage;
     this.lostReason = stage == LeadStage.LOST ? lostReason : null;
+    this.lostReasonCode = stage == LeadStage.LOST ? (reasonCode == null ? LostReason.OTHER : reasonCode) : null;
+    this.stageEnteredAt = now;
     touch(now);
+  }
+
+  /** Control de Cambios #29: fuente precisa (el canal general se deriva de ella). */
+  public void source(LeadSource channel, String code, String detail) {
+    this.source = channel;
+    this.sourceCode = code;
+    this.sourceDetail = detail == null || detail.isBlank() ? null : detail.strip();
+  }
+
+  public void rename(String name) {
+    if (name != null && !name.isBlank()) {
+      this.name = name.strip();
+    }
+  }
+
+  public void interest(LeadInterest interest) {
+    if (interest != null) {
+      this.interest = interest;
+    }
+  }
+
+  /** Control de Cambios #30: lo que busca el prospecto. */
+  public void wishes(UUID categoryId, UUID subtypeId, String typeLabel, String zone, BigDecimal budgetMin, BigDecimal budgetMax, String features) {
+    this.propertyCategoryId = categoryId;
+    this.propertySubtypeId = subtypeId;
+    this.propertyTypeLabel = blankToNull(typeLabel);
+    this.zone = blankToNull(zone);
+    this.budgetMin = budgetMin;
+    this.budget = budgetMax;
+    this.desiredFeatures = blankToNull(features);
+  }
+
+  /** Control de Cambios #30: estimación del asesor. */
+  public void outlook(LeadTemperature temperature, Integer probability, LocalDate expectedCloseOn, LocalDate firstContactOn) {
+    this.temperature = temperature;
+    this.closeProbability = probability == null ? null : Math.max(0, Math.min(100, probability));
+    this.expectedCloseOn = expectedCloseOn;
+    if (firstContactOn != null) {
+      this.firstContactOn = firstContactOn;
+    }
+  }
+
+  public void replaceSummary(String summary) {
+    this.summary = summary == null || summary.isBlank() ? null : (summary.length() > 2000 ? summary.substring(0, 2000) : summary);
+  }
+
+  /** Control de Cambios #30 parte 7: expediente del inmueble (null = desvincular). */
+  public void linkExpediente(UUID expedienteId, String folio) {
+    this.expedienteId = expedienteId;
+    this.expedienteFolio = expedienteId == null ? null : folio;
+  }
+
+  private static String blankToNull(String s) {
+    return s == null || s.isBlank() ? null : s.strip();
   }
 
   public void touch(Instant now) {
@@ -358,5 +461,65 @@ public class Lead extends AuditableEntity {
 
   public String getCoordinationNote() {
     return coordinationNote;
+  }
+
+  public String getSourceCode() {
+    return sourceCode;
+  }
+
+  public LocalDate getFirstContactOn() {
+    return firstContactOn;
+  }
+
+  public UUID getPropertyCategoryId() {
+    return propertyCategoryId;
+  }
+
+  public UUID getPropertySubtypeId() {
+    return propertySubtypeId;
+  }
+
+  public String getPropertyTypeLabel() {
+    return propertyTypeLabel;
+  }
+
+  public String getZone() {
+    return zone;
+  }
+
+  public BigDecimal getBudgetMin() {
+    return budgetMin;
+  }
+
+  public String getDesiredFeatures() {
+    return desiredFeatures;
+  }
+
+  public LeadTemperature getTemperature() {
+    return temperature;
+  }
+
+  public Integer getCloseProbability() {
+    return closeProbability;
+  }
+
+  public LocalDate getExpectedCloseOn() {
+    return expectedCloseOn;
+  }
+
+  public LostReason getLostReasonCode() {
+    return lostReasonCode;
+  }
+
+  public Instant getStageEnteredAt() {
+    return stageEnteredAt;
+  }
+
+  public UUID getExpedienteId() {
+    return expedienteId;
+  }
+
+  public String getExpedienteFolio() {
+    return expedienteFolio;
   }
 }

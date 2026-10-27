@@ -63,7 +63,7 @@ export function LeadBoard({ leads, canMove, onMoved }: { leads: LeadItem[]; canM
     <>
       {canMove ? <p className="mb-3 text-xs text-muted">Arrastra una tarjeta a otra columna para cambiar su etapa.</p> : null}
       <div className="-mx-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
-        <div className="grid min-w-[1180px] grid-cols-7 gap-3">
+        <div className="grid min-w-[1700px] grid-cols-10 gap-3">
           {stageOrder.map((stage) => {
             const items = leads.filter((l) => l.stage === stage);
             const isTarget = canMove && over === stage && dragging !== null;

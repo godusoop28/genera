@@ -48,6 +48,9 @@ public interface ExpedienteRepository extends JpaRepository<Expediente, UUID>, J
   /** Control de Cambios #27. */
   Optional<Expediente> findByPropertyKey(String propertyKey);
 
+  /** Control de Cambios #30: vincular leads por clave o referencia del inmueble. */
+  List<Expediente> findByPropertyKeyIgnoreCaseOrPropertyReferenceIgnoreCase(String propertyKey, String propertyReference);
+
   List<Expediente> findByPropertyKeyIsNotNull();
 
   List<Expediente> findByPropertyKeyIsNull();

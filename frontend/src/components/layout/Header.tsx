@@ -1,5 +1,6 @@
 "use client";
 
+import { NotificationBell } from "@/components/layout/NotificationBell";
 import { useAuth } from "@/context/AuthProvider";
 import { roleLabels } from "@/lib/labels";
 import { initials } from "@/lib/utils";
@@ -25,6 +26,7 @@ function breadcrumbFor(pathname: string): Crumb[] {
   if (pathname.startsWith("/dashboard")) return [{ label: "Dashboard" }];
   if (pathname.startsWith("/leads/")) return [{ label: "Leads", href: "/leads" }, { label: "Detalle del lead" }];
   if (pathname.startsWith("/leads")) return [{ label: "Leads" }];
+  if (pathname.startsWith("/agenda")) return [{ label: "Agenda de actividades" }];
   if (pathname.startsWith("/conversaciones")) return [{ label: "Conversaciones" }];
   if (pathname.startsWith("/asesores")) return [{ label: "Asesores" }];
   if (pathname.startsWith("/calendario")) return [{ label: "Calendario de asesores" }];
@@ -76,6 +78,8 @@ export function Header({ onMenuClick }: HeaderProps) {
           })}
         </ol>
       </nav>
+
+      <NotificationBell />
 
       <Link
         href="/configuracion"

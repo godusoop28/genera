@@ -8,7 +8,24 @@ import type { LeadProperty, LeadSource, LeadStage } from "@/lib/api/crm";
 import { ONLINE21_BASE_URL, sourceLabels, stageLabels, stageTones } from "@/lib/crm/labels";
 import { useCan } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
-import { Building2, ExternalLink, Footprints, Globe, Home, Megaphone, MessageCircle, Phone, RefreshCw, UserPlus, type LucideIcon } from "lucide-react";
+import {
+  Building2,
+  CalendarDays,
+  ExternalLink,
+  Flag,
+  Footprints,
+  Globe,
+  HelpCircle,
+  Home,
+  Megaphone,
+  MessageCircle,
+  Phone,
+  RefreshCw,
+  RotateCcw,
+  Share2,
+  UserPlus,
+  type LucideIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
@@ -95,20 +112,28 @@ export function StageBadge({ stage }: { stage: LeadStage }) {
 
 export const sourceIcons: Record<LeadSource, LucideIcon> = {
   WHATSAPP_BOT: MessageCircle,
+  WHATSAPP: MessageCircle,
   PORTAL: Building2,
+  SOCIAL: Share2,
   CAMPAIGN: Megaphone,
   WEBSITE: Globe,
+  OUTDOOR: Flag,
   REFERRAL: UserPlus,
   WALK_IN: Footprints,
+  EVENT: CalendarDays,
   PHONE: Phone,
+  REACTIVATION: RotateCcw,
+  OTHER: HelpCircle,
 };
 
-export function SourceLabel({ source, detail, className }: { source: LeadSource; detail?: string | null; className?: string }) {
-  const Icon = sourceIcons[source];
+/** label: nombre de la fuente en el catálogo (CC#29); si no viene, el del canal. */
+export function SourceLabel({ source, label, detail, className }: { source: LeadSource; label?: string | null; detail?: string | null; className?: string }) {
+  const Icon = sourceIcons[source] ?? HelpCircle;
+  const name = label ?? sourceLabels[source];
   return (
-    <span className={cn("inline-flex min-w-0 items-center gap-1.5 text-sm text-muted", className)} title={detail ? `${sourceLabels[source]} · ${detail}` : sourceLabels[source]}>
+    <span className={cn("inline-flex min-w-0 items-center gap-1.5 text-sm text-muted", className)} title={detail ? `${name} · ${detail}` : name}>
       <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
-      <span className="truncate">{detail ?? sourceLabels[source]}</span>
+      <span className="truncate">{detail ? `${name} · ${detail}` : name}</span>
     </span>
   );
 }

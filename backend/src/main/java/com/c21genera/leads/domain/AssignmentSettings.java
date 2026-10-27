@@ -35,7 +35,29 @@ public class AssignmentSettings extends AuditableEntity {
 
   private String updatedByName;
 
+  /** Control de Cambios #30: días sin actividad para considerar un lead "por enfriarse". */
+  @Column(nullable = false)
+  private int staleDays = 7;
+
+  /** Control de Cambios #30: además del aviso en el sistema, mandar los recordatorios por correo. */
+  @Column(nullable = false)
+  private boolean reminderEmail;
+
   protected AssignmentSettings() {}
+
+  public void followUp(int staleDays, boolean reminderEmail, String byName) {
+    this.staleDays = Math.max(1, Math.min(90, staleDays));
+    this.reminderEmail = reminderEmail;
+    this.updatedByName = byName;
+  }
+
+  public int getStaleDays() {
+    return staleDays;
+  }
+
+  public boolean isReminderEmail() {
+    return reminderEmail;
+  }
 
   public void update(Mode roundMode, OwnerOffShiftPolicy policy, String byName) {
     this.roundMode = roundMode;

@@ -933,6 +933,32 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
 
   @Override
   @Transactional(readOnly = true)
+  public List<ExpedienteRef> findByProperty(String keyOrReference) {
+    if (keyOrReference == null || keyOrReference.isBlank()) {
+      return List.of();
+    }
+    String value = keyOrReference.strip();
+    return expedienteRepository.findByPropertyKeyIgnoreCaseOrPropertyReferenceIgnoreCase(value, value).stream().map(ExpedienteService::refOf).toList();
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public java.util.Optional<ExpedienteRef> refByFolio(String folio) {
+    return folio == null || folio.isBlank() ? java.util.Optional.empty() : expedienteRepository.findByFolio(folio.strip().toUpperCase(java.util.Locale.ROOT)).map(ExpedienteService::refOf);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public java.util.Optional<ExpedienteRef> ref(UUID expedienteId) {
+    return expedienteRepository.findById(expedienteId).map(ExpedienteService::refOf);
+  }
+
+  private static ExpedienteRef refOf(Expediente e) {
+    return new ExpedienteRef(e.getId(), e.getFolio(), e.getOwnerDisplayName(), e.getPropertyKey(), e.getPropertyReference(), e.getAssignedAdvisorId());
+  }
+
+  @Override
+  @Transactional(readOnly = true)
   public ExpedienteSummary getSummary(UUID expedienteId) {
     Expediente e = get(expedienteId);
     List<ParticipantView> participants = participantsOf(expedienteId).stream().map(ExpedienteService::toView).toList();

@@ -1,39 +1,166 @@
-import type { AbsenceKind, AdvisorStatus, AssignmentMethod, AssignmentStatus, ConversationControl, LeadInterest, LeadSource, LeadStage, ShiftKind } from "@/lib/api/crm";
+import type {
+  AbsenceKind,
+  AdvisorStatus,
+  AssignmentMethod,
+  AssignmentStatus,
+  ConversationControl,
+  LeadInterest,
+  LeadSource,
+  LeadStage,
+  LeadTemperature,
+  LostReason,
+  ShiftKind,
+  SourceCategory,
+  TaskResult,
+  TaskType,
+} from "@/lib/api/crm";
 
 type Tone = "gold" | "obsessed" | "success" | "warning" | "danger" | "info" | "manual" | "neutral";
 
-/** Embudo de seguimiento del lead, en orden. */
-export const stageOrder: LeadStage[] = ["NEW", "CONTACTED", "APPOINTMENT", "VISITED", "NEGOTIATION", "WON", "LOST"];
+/** Pipeline de seguimiento del lead, en orden (Control de Cambios #30). */
+export const stageOrder: LeadStage[] = ["NEW", "CONTACTED", "QUALIFIED", "APPOINTMENT", "VISITED", "PROPOSAL", "NEGOTIATION", "OFFER_ACCEPTED", "WON", "LOST"];
 
 export const stageLabels: Record<LeadStage, string> = {
   NEW: "Nuevo",
-  CONTACTED: "Contactado",
+  CONTACTED: "Primer contacto",
+  QUALIFIED: "Calificado",
   APPOINTMENT: "Cita agendada",
-  VISITED: "Visitó",
+  VISITED: "Visita realizada",
+  PROPOSAL: "Propuesta enviada",
   NEGOTIATION: "Negociación",
-  WON: "Cerrado ganado",
+  OFFER_ACCEPTED: "Oferta aceptada",
+  WON: "Cierre",
   LOST: "Perdido",
+};
+
+export const stageHints: Record<LeadStage, string> = {
+  NEW: "Recién registrado, sin contacto aún",
+  CONTACTED: "Ya se hizo el primer contacto",
+  QUALIFIED: "Interés real y capacidad de compra o renta",
+  APPOINTMENT: "Visita o reunión programada",
+  VISITED: "Ya vio uno o más inmuebles",
+  PROPOSAL: "Se envió propuesta o ficha técnica",
+  NEGOTIATION: "Hay oferta o contrapropuesta en proceso",
+  OFFER_ACCEPTED: "Aceptó las condiciones: se vincula al expediente",
+  WON: "La transacción se concretó",
+  LOST: "Descartado, con motivo registrado",
 };
 
 export const stageTones: Record<LeadStage, Tone> = {
   NEW: "warning",
   CONTACTED: "info",
+  QUALIFIED: "info",
   APPOINTMENT: "gold",
   VISITED: "manual",
+  PROPOSAL: "manual",
   NEGOTIATION: "obsessed",
+  OFFER_ACCEPTED: "success",
   WON: "success",
   LOST: "danger",
 };
 
+/** Canal general (la fuente precisa viene del catálogo, CC#29). */
 export const sourceLabels: Record<LeadSource, string> = {
   WHATSAPP_BOT: "WhatsApp (asistente)",
+  WHATSAPP: "WhatsApp",
   PORTAL: "Portal inmobiliario",
+  SOCIAL: "Redes sociales",
   CAMPAIGN: "Campaña",
-  WEBSITE: "Sitio web",
+  WEBSITE: "Sitio web / búsqueda",
+  OUTDOOR: "Publicidad exterior",
   REFERRAL: "Referido",
   WALK_IN: "Oficina",
+  EVENT: "Evento",
   PHONE: "Llamada",
+  REACTIVATION: "Reactivación",
+  OTHER: "Otra",
 };
+
+export const sourceCategoryLabels: Record<SourceCategory, string> = {
+  PORTALS: "Portales inmobiliarios",
+  SOCIAL: "Redes sociales y mensajería",
+  SEARCH: "Búsqueda y digital",
+  OUTDOOR: "Publicidad exterior y física",
+  REFERRALS: "Referidos y red de contactos",
+  IN_PERSON: "Presencial y eventos",
+  REACTIVATION: "Reactivación",
+  UNKNOWN: "Sin identificar",
+};
+
+export const sourceCategoryOrder: SourceCategory[] = ["PORTALS", "SOCIAL", "SEARCH", "OUTDOOR", "REFERRALS", "IN_PERSON", "REACTIVATION", "UNKNOWN"];
+
+export const temperatureLabels: Record<LeadTemperature, string> = { COLD: "Frío", WARM: "Tibio", HOT: "Caliente" };
+export const temperatureTones: Record<LeadTemperature, Tone> = { COLD: "info", WARM: "warning", HOT: "danger" };
+export const temperatureDots: Record<LeadTemperature, string> = { COLD: "🔵", WARM: "🟡", HOT: "🔴" };
+
+export const lostReasonLabels: Record<LostReason, string> = {
+  PRICE: "Precio",
+  ZONE: "Zona",
+  TIMING: "Tiempo",
+  COMPETITION: "Competencia",
+  NO_RESPONSE: "Dejó de responder",
+  OTHER: "Otro",
+};
+
+export const taskTypeLabels: Record<TaskType, string> = {
+  CALL: "Llamada",
+  WHATSAPP: "Mensaje WhatsApp",
+  EMAIL: "Correo electrónico",
+  VISIT: "Visita al inmueble",
+  OFFICE_MEETING: "Reunión en oficina",
+  VIDEO_CALL: "Videollamada",
+  PROPOSAL: "Envío de propuesta",
+  OFFER_FOLLOW_UP: "Seguimiento de oferta",
+  NOTE: "Nota interna",
+  OTHER: "Otro",
+};
+
+export const taskTypeEmoji: Record<TaskType, string> = {
+  CALL: "📞",
+  WHATSAPP: "💬",
+  EMAIL: "📧",
+  VISIT: "🏠",
+  OFFICE_MEETING: "🏢",
+  VIDEO_CALL: "🎥",
+  PROPOSAL: "📄",
+  OFFER_FOLLOW_UP: "🤝",
+  NOTE: "📝",
+  OTHER: "⚙️",
+};
+
+export const taskResultLabels: Record<TaskResult, string> = {
+  CONTACTED: "Contactado",
+  NO_ANSWER: "No contestó",
+  RESCHEDULED: "Reagendó",
+  REJECTED: "Rechazó",
+  INTERESTED: "Interesado",
+  ADVANCED: "Avanzó",
+};
+
+export const reminderOptions = [
+  { value: "", label: "Sin recordatorio" },
+  { value: "15", label: "15 minutos antes" },
+  { value: "60", label: "1 hora antes" },
+  { value: "1440", label: "1 día antes" },
+];
+
+/** Nombre de la fuente del lead: la del catálogo (o el canal en registros viejos). */
+export function sourceName(lead: { source: LeadSource; sourceLabel?: string | null; sourceDetail?: string | null }): string {
+  const base = lead.sourceLabel ?? sourceLabels[lead.source];
+  return lead.sourceDetail ? `${base} · ${lead.sourceDetail}` : base;
+}
+
+/** "2026-10-26T15:30" en hora de CDMX → instante ISO (UTC). */
+export function mxLocalToIso(local: string): string {
+  // Ciudad de México no tiene horario de verano desde 2022: UTC-6 fijo.
+  return new Date(`${local.length === 16 ? `${local}:00` : local}-06:00`).toISOString();
+}
+
+/** Instante ISO → "2026-10-26T15:30" en hora de CDMX (para inputs datetime-local). */
+export function isoToMxLocal(iso: string): string {
+  const d = new Date(new Date(iso).getTime() - 6 * 3600_000);
+  return d.toISOString().slice(0, 16);
+}
 
 export const interestLabels: Record<LeadInterest, string> = {
   BUY: "Comprar",

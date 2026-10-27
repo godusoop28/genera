@@ -2,6 +2,7 @@
 
 import { AdvisorChip, LoadError, PropertyMini, Segmented, SourceLabel, StageBadge, StatCard, useApi } from "@/components/crm/CrmUi";
 import { LeadBoard } from "@/components/crm/LeadBoard";
+import { sourceGroups, useLeadSources } from "@/components/crm/LeadForms";
 import { NewLeadModal } from "@/components/crm/NewLeadModal";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Badge } from "@/components/ui/Badge";
@@ -9,8 +10,8 @@ import { Button } from "@/components/ui/Button";
 import { SearchInput } from "@/components/ui/SearchInput";
 import { Select } from "@/components/ui/Select";
 import { StateMessage } from "@/components/ui/StateMessage";
-import { listAdvisors, listLeads, type LeadGroup, type LeadItem, type LeadSource } from "@/lib/api/crm";
-import { interestLabels, sourceLabels, timeAgo, whatsappLink } from "@/lib/crm/labels";
+import { listAdvisors, listLeads, type LeadGroup, type LeadItem, type LeadTemperature } from "@/lib/api/crm";
+import { formatInstantMx, interestLabels, taskTypeEmoji, taskTypeLabels, temperatureDots, temperatureLabels, timeAgo, whatsappLink } from "@/lib/crm/labels";
 import { useCan } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { ArrowRight, CheckCircle2, Columns3, Inbox, List, MessageCircle, Plus, RefreshCw, UserPlus, Users } from "lucide-react";
@@ -24,7 +25,8 @@ const groupLabels: Record<LeadGroup, string> = {
   PENDING: "Pendientes por horario",
   NEW: "Nuevos",
   OPEN: "En seguimiento",
-  WON: "Ganados",
+  STALE: "Sin actividad reciente",
+  WON: "Cierres",
   LOST: "Perdidos",
 };
 
@@ -49,7 +51,10 @@ function LeadsScreen() {
   const [debounced, setDebounced] = useState("");
   const [group, setGroup] = useState<LeadGroup>(() => initialGroup(params.get("grupo")));
   const [advisorId, setAdvisorId] = useState(params.get("asesor") ?? "");
-  const [source, setSource] = useState<LeadSource | "">((params.get("fuente") as LeadSource | null) ?? "");
+  // ?fuente=<código del catálogo> (CC#29): viene del dashboard de fuentes.
+  const [sourceCode, setSourceCode] = useState(params.get("fuente") ?? "");
+  const [temperature, setTemperature] = useState<LeadTemperature | "">("");
+  const sources = useLeadSources();
   // ?propiedad=<núm. de 21Online>: viene de "Leads de esta propiedad".
   const [propertyId, setPropertyId] = useState<number | undefined>(() => Number(params.get("propiedad")) || undefined);
   const [view, setView] = useState<"list" | "board">("list");
@@ -61,12 +66,12 @@ function LeadsScreen() {
   }, [query]);
 
   const leads = useApi(
-    () => listLeads({ q: debounced, group: view === "board" ? "ALL" : group, advisorId, source, propertyId, size: 100 }),
-    [debounced, group, advisorId, source, view, propertyId],
+    () => listLeads({ q: debounced, group: view === "board" ? "ALL" : group, advisorId, sourceCode, temperature, propertyId, size: view === "board" ? 200 : 100 }),
+    [debounced, group, advisorId, sourceCode, temperature, view, propertyId],
   );
   const advisors = useApi(() => (seesAll ? listAdvisors() : Promise.resolve([])), [seesAll]);
   const counts = leads.data?.counts;
-  const filtering = debounced !== "" || advisorId !== "" || source !== "" || group !== "ALL" || propertyId !== undefined;
+  const filtering = debounced !== "" || advisorId !== "" || sourceCode !== "" || temperature !== "" || group !== "ALL" || propertyId !== undefined;
 
   return (
     <PageContainer
@@ -93,7 +98,7 @@ function LeadsScreen() {
         <StatCard icon={Users} value={counts?.ALL ?? "—"} label="Leads" hint={filtering ? "Con los filtros actuales" : "Todos los registrados"} />
         <StatCard icon={Inbox} tone="warning" value={counts?.NEW ?? "—"} label="Nuevos" hint="Aún sin primer contacto" />
         <StatCard icon={UserPlus} tone="danger" value={counts ? counts.UNASSIGNED + counts.PENDING : "—"} label="Sin asesor" hint={counts ? `${counts.PENDING} esperan turno` : "Necesitan un asesor"} />
-        <StatCard icon={CheckCircle2} tone="success" value={counts?.WON ?? "—"} label="Ganados" hint="Cerraron operación" />
+        <StatCard icon={CheckCircle2} tone="success" value={counts?.WON ?? "—"} label="Cierres" hint={counts ? `${counts.STALE} sin actividad reciente` : "Transacciones concretadas"} />
       </section>
 
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end">
@@ -110,10 +115,19 @@ function LeadsScreen() {
         ) : null}
         <Select
           aria-label="Filtrar por fuente"
-          value={source}
-          onChange={(e) => setSource(e.target.value as LeadSource | "")}
-          options={[{ value: "", label: "Todas las fuentes" }, ...(Object.keys(sourceLabels) as LeadSource[]).map((value) => ({ value, label: sourceLabels[value] }))]}
+          value={sourceCode}
+          onChange={(e) => setSourceCode(e.target.value)}
+          options={[{ value: "", label: "Todas las fuentes" }]}
+          groups={sources ? sourceGroups(sources, sourceCode, true) : []}
           containerClassName="lg:w-56"
+          className="h-11"
+        />
+        <Select
+          aria-label="Filtrar por temperatura"
+          value={temperature}
+          onChange={(e) => setTemperature(e.target.value as LeadTemperature | "")}
+          options={[{ value: "", label: "Cualquier temperatura" }, ...(Object.keys(temperatureLabels) as LeadTemperature[]).map((t) => ({ value: t, label: `${temperatureDots[t]} ${temperatureLabels[t]}` }))]}
+          containerClassName="lg:w-48"
           className="h-11"
         />
       </div>
@@ -153,7 +167,8 @@ function LeadsScreen() {
                 onClick={() => {
                   setQuery("");
                   setAdvisorId("");
-                  setSource("");
+                  setSourceCode("");
+                  setTemperature("");
                   setGroup("ALL");
                   setPropertyId(undefined);
                 }}
@@ -193,7 +208,7 @@ function LeadTable({ leads }: { leads: LeadItem[] }) {
         <span>Lead</span>
         <span>Propiedad</span>
         <span>Asesor</span>
-        <span>Etapa</span>
+        <span>Etapa y siguiente actividad</span>
         <span>Fuente</span>
         <span className="sr-only">Acción</span>
       </div>
@@ -201,7 +216,10 @@ function LeadTable({ leads }: { leads: LeadItem[] }) {
         {leads.map((lead) => (
           <li key={lead.id} className={cn("grid grid-cols-1 gap-3 px-4 py-4 sm:px-5 lg:items-center lg:gap-4", cols)}>
             <div className="min-w-0">
-              <p className="truncate font-semibold text-obsessed">{lead.name}</p>
+              <p className="truncate font-semibold text-obsessed">
+                {lead.temperature ? <span title={temperatureLabels[lead.temperature]}>{temperatureDots[lead.temperature]} </span> : null}
+                {lead.name}
+              </p>
               <p className="truncate text-xs text-muted">
                 {interestLabels[lead.interest]} · {timeAgo(lead.createdAt)}
               </p>
@@ -212,10 +230,18 @@ function LeadTable({ leads }: { leads: LeadItem[] }) {
               {lead.assignmentStatus === "PENDING_OWNER" ? <Badge tone="info">Espera su turno</Badge> : null}
               {lead.coordinationNote ? <Badge tone="warning">Coordinar</Badge> : null}
             </div>
-            <div>
+            <div className="min-w-0 space-y-1">
               <StageBadge stage={lead.stage} />
+              {lead.nextTask ? (
+                <p className={cn("truncate text-xs", lead.nextTask.overdue ? "font-medium text-danger-text" : "text-muted")} title={taskTypeLabels[lead.nextTask.type]}>
+                  {taskTypeEmoji[lead.nextTask.type]} {lead.nextTask.overdue ? "Vencida · " : ""}
+                  {formatInstantMx(lead.nextTask.scheduledAt)}
+                </p>
+              ) : lead.stale ? (
+                <p className="text-xs font-medium text-warning-text">Sin actividad reciente</p>
+              ) : null}
             </div>
-            <SourceLabel source={lead.source} detail={lead.sourceDetail} />
+            <SourceLabel source={lead.source} label={lead.sourceLabel} detail={lead.sourceDetail} />
             <div className="flex items-center gap-1 justify-self-start lg:justify-self-end">
               {lead.phone ? (
                 <a

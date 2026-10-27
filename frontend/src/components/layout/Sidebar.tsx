@@ -6,7 +6,7 @@ import { useCanSeeCrm } from "@/components/crm/CrmUi";
 import { useAuth } from "@/context/AuthProvider";
 import { useCan } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-import { BarChart3, CalendarDays, FilePlus2, Files, House, KeyRound, LayoutDashboard, LogOut, MessagesSquare, Users, UserRoundSearch, UsersRound } from "lucide-react";
+import { BarChart3, CalendarCheck, CalendarDays, FilePlus2, Files, House, KeyRound, LayoutDashboard, LogOut, MessagesSquare, Users, UserRoundSearch, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -27,6 +27,8 @@ const navItems = [
 const crmItems: { href: string; label: string; icon: typeof Files; permission?: string; anyOf?: string[] }[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/leads", label: "Leads", icon: UserRoundSearch },
+  // Control de Cambios #30: citas y actividades de seguimiento de los leads.
+  { href: "/agenda", label: "Agenda", icon: CalendarCheck },
   { href: "/propiedades", label: "Propiedades", icon: House, permission: "PROPERTY_VIEW" },
   { href: "/calendario", label: "Calendario", icon: CalendarDays, anyOf: ["CALENDAR_VIEW_ALL", "CALENDAR_VIEW_OWN"] },
   { href: "/conversaciones", label: "Conversaciones", icon: MessagesSquare, permission: "CONVERSATION_VIEW" },

@@ -3,7 +3,6 @@
 import {
   AdvisorChip,
   Avatar,
-  BarList,
   LoadError,
   PropertyMini,
   Segmented,
@@ -12,18 +11,17 @@ import {
   StatCard,
   periodFrom,
   periodLabels,
-  sourceIcons,
   useApi,
   type Period,
 } from "@/components/crm/CrmUi";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { StateMessage } from "@/components/ui/StateMessage";
-import { getCrmDashboard, listAdvisors, type CrmDashboard, type LeadSource } from "@/lib/api/crm";
+import { getCrmDashboard, listAdvisors, type CrmDashboard } from "@/lib/api/crm";
 import { listCaptured } from "@/lib/api/properties";
-import { sourceLabels, stageLabels, stageOrder, timeAgo } from "@/lib/crm/labels";
+import { formatPrice, sourceCategoryLabels, stageLabels, stageOrder, timeAgo } from "@/lib/crm/labels";
 import { useCan } from "@/lib/permissions";
-import { AlertTriangle, ArrowRight, CheckCircle2, Clock, ClipboardCheck, TrendingUp, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, CalendarCheck, CheckCircle2, Clock, ClipboardCheck, TrendingUp, Users, Wallet } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -67,7 +65,6 @@ function pct(part: number, total: number): string {
 function DashboardContent({ data }: { data: CrmDashboard }) {
   const can = useCan();
   const maxStage = Math.max(1, ...stageOrder.map((s) => data.byStage[s] ?? 0));
-  const sources = (Object.entries(data.bySource) as [LeadSource, number][]).sort((a, b) => b[1] - a[1]);
 
   return (
     <div className="space-y-5">
@@ -117,31 +114,42 @@ function DashboardContent({ data }: { data: CrmDashboard }) {
         <StatCard
           icon={TrendingUp}
           tone="success"
-          value={data.won}
-          label="Cerrados ganados"
-          hint={data.closed ? `${pct(data.won, data.closed)} de los cerrados` : "Aún sin cierres"}
+          value={`${data.conversionRate}%`}
+          label="Tasa de conversión"
+          hint={`${data.converted} en oferta aceptada o cierre · ${data.won} cierre${data.won === 1 ? "" : "s"}`}
           href="/leads?grupo=WON"
         />
       </section>
 
+      <section aria-label="Seguimiento" className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+        <StatCard icon={Wallet} tone="info" value={formatPrice(data.pipelineValue)} label="Valor del pipeline" hint="Presupuesto máximo en negociación u oferta aceptada" />
+        <StatCard icon={CalendarCheck} value={data.pendingTasks} label="Actividades pendientes" hint={data.overdueTasks ? `${data.overdueTasks} vencidas sin resultado` : "Ninguna vencida"} href="/agenda" />
+        <StatCard icon={AlertTriangle} tone="warning" value={data.staleLeads} label="Sin actividad reciente" hint={`Abiertos sin contacto en más de ${data.staleDays} días`} href="/leads?grupo=STALE" />
+        <StatCard icon={Clock} tone="danger" value={data.atRisk.length} label="En riesgo de enfriarse" hint="Propuesta, negociación u oferta sin actividad" />
+      </section>
+
       <Card>
-        <CardHeader title="Embudo" description="Leads del periodo por etapa de seguimiento." />
+        <CardHeader title="Embudo" description="Leads del periodo por etapa y tiempo promedio que pasan en cada una." />
         {data.total === 0 ? (
           <p className="py-6 text-center text-sm text-muted">Sin leads en el periodo</p>
         ) : (
-          <ol className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
+          <ol className="grid grid-cols-2 gap-3 sm:grid-cols-5 xl:grid-cols-10">
             {stageOrder.map((stage) => {
               const count = data.byStage[stage] ?? 0;
+              const time = data.stageTimes.find((t) => t.stage === stage);
               return (
                 <li key={stage} className="flex min-w-0 flex-col rounded-xl border border-border p-3">
-                  <span className="truncate text-xs text-muted">{stageLabels[stage]}</span>
+                  <span className="truncate text-xs text-muted" title={stageLabels[stage]}>
+                    {stageLabels[stage]}
+                  </span>
                   <span className="mt-1 text-2xl font-semibold tabular-nums text-obsessed">{count}</span>
                   <span className="mt-2 h-1.5 overflow-hidden rounded-full bg-app-bg">
                     <span
-                      className={`block h-full rounded-full ${stage === "LOST" ? "bg-danger-text/60" : stage === "WON" ? "bg-success-text" : "bg-gold"}`}
+                      className={`block h-full rounded-full ${stage === "LOST" ? "bg-danger-text/60" : stage === "WON" || stage === "OFFER_ACCEPTED" ? "bg-success-text" : "bg-gold"}`}
                       style={{ width: `${(count / maxStage) * 100}%` }}
                     />
                   </span>
+                  {time ? <span className="mt-1.5 text-[0.7rem] text-muted">{time.averageDays} días prom.</span> : null}
                 </li>
               );
             })}
@@ -151,33 +159,61 @@ function DashboardContent({ data }: { data: CrmDashboard }) {
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card>
-          <CardHeader title="¿De dónde llegan?" description="Leads del periodo por fuente." />
-          <BarList
-            rows={sources.map(([source, count]) => {
-              const Icon = sourceIcons[source];
-              return { key: source, label: sourceLabels[source], count, leading: <Icon className="h-4 w-4 shrink-0 text-muted" aria-hidden />, href: `/leads?fuente=${source}` };
-            })}
-          />
+          <CardHeader title="¿De dónde llegan?" description="Leads del periodo por fuente, participación y conversión (oferta aceptada o cierre)." />
+          {data.sources.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted">Sin leads en el periodo</p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {data.sources.map((s) => (
+                <li key={s.code}>
+                  <Link href={`/leads?fuente=${s.code}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-2.5 hover:bg-app-bg/50">
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium text-obsessed">{s.label}</span>
+                      <span className="text-xs text-muted">{sourceCategoryLabels[s.category]}</span>
+                      <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-app-bg">
+                        <span className="block h-full rounded-full bg-gold" style={{ width: `${s.share}%` }} />
+                      </span>
+                    </span>
+                    <span className="text-right text-sm tabular-nums">
+                      <strong className="font-semibold text-obsessed">{s.leads}</strong> <span className="text-muted">· {s.share}%</span>
+                      <span className="block text-xs text-success-text">{s.conversionRate}% conv.</span>
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
         </Card>
         <Card>
-          <CardHeader title="Leads por asesor" description="Asignados en el periodo y cuántos cerró cada uno." />
-          <BarList
-            emptyLabel="Sin asignaciones en el periodo"
-            rows={data.byAdvisor.map((row) => ({
-              key: row.advisorId,
-              label: (
-                <>
-                  {row.name}
-                  {row.won ? <span className="ml-1.5 text-xs text-success-text">· {row.won} ganado{row.won === 1 ? "" : "s"}</span> : null}
-                </>
-              ),
-              count: row.leads,
-              leading: <Avatar name={row.name} className="h-7 w-7 text-[0.65rem]" />,
-              href: `/leads?asesor=${row.advisorId}`,
-            }))}
-          />
+          <CardHeader title="Tendencia por fuente" description="Leads por mes de las fuentes con más registros (últimos 6 meses)." />
+          <SourceTrendTable trend={data.sourceTrend} />
         </Card>
       </div>
+
+      <Card>
+        <CardHeader title="Productividad por asesor" description="Leads del periodo, actividades realizadas en el periodo y estado actual de su cartera." />
+        <AdvisorProductivityTable rows={data.byAdvisor} />
+      </Card>
+
+      {data.atRisk.length ? (
+        <Card>
+          <CardHeader title="Leads en riesgo de enfriarse" description={`En propuesta, negociación u oferta aceptada, sin actividad en más de ${data.staleDays} días.`} />
+          <ul className="divide-y divide-border">
+            {data.atRisk.map((lead) => (
+              <li key={lead.id}>
+                <Link href={`/leads/${lead.id}`} className="grid grid-cols-1 gap-2 py-3 hover:bg-app-bg/50 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto] sm:items-center sm:gap-4">
+                  <span className="truncate text-sm font-semibold text-obsessed">{lead.name}</span>
+                  <AdvisorChip advisor={lead.advisor} />
+                  <span className="flex items-center gap-3 sm:justify-end">
+                    <StageBadge stage={lead.stage} />
+                    <span className="w-28 text-right text-xs text-warning-text">{timeAgo(lead.lastActivityAt)}</span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
         <Card>
@@ -219,7 +255,7 @@ function DashboardContent({ data }: { data: CrmDashboard }) {
                   >
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-semibold text-obsessed">{lead.name}</span>
-                      <SourceLabel source={lead.source} detail={lead.sourceDetail} className="text-xs" />
+                      <SourceLabel source={lead.source} label={lead.sourceLabel} detail={lead.sourceDetail} className="text-xs" />
                     </span>
                     <AdvisorChip advisor={lead.advisor} />
                     <span className="flex items-center gap-3 sm:justify-end">
@@ -233,6 +269,87 @@ function DashboardContent({ data }: { data: CrmDashboard }) {
           )}
         </Card>
       </div>
+    </div>
+  );
+}
+
+const monthShort = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+function SourceTrendTable({ trend }: { trend: CrmDashboard["sourceTrend"] }) {
+  if (trend.series.length === 0) return <p className="py-6 text-center text-sm text-muted">Sin leads en los últimos 6 meses</p>;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[420px] text-sm">
+        <thead>
+          <tr className="text-xs text-muted">
+            <th className="py-1.5 pr-3 text-left font-medium">Fuente</th>
+            {trend.months.map((m) => (
+              <th key={m} className="px-1.5 py-1.5 text-right font-medium">
+                {monthShort[Number(m.slice(5, 7)) - 1]}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {trend.series.map((s) => {
+            const max = Math.max(1, ...s.counts);
+            return (
+              <tr key={s.code}>
+                <td className="max-w-40 truncate py-2 pr-3 text-obsessed">{s.label}</td>
+                {s.counts.map((c, i) => (
+                  <td key={trend.months[i]} className="px-1.5 py-2 text-right tabular-nums">
+                    <span className="rounded px-1.5 py-0.5" style={{ background: c ? `rgba(190, 175, 135, ${0.15 + (0.55 * c) / max})` : undefined }}>
+                      {c}
+                    </span>
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function AdvisorProductivityTable({ rows }: { rows: CrmDashboard["byAdvisor"] }) {
+  if (rows.length === 0) return <p className="py-6 text-center text-sm text-muted">Sin asesores con leads</p>;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[760px] text-sm">
+        <thead>
+          <tr className="border-b border-border text-xs text-muted">
+            <th className="py-2 pr-3 text-left font-medium">Asesor</th>
+            <th className="px-2 py-2 text-right font-medium">Leads del periodo</th>
+            <th className="px-2 py-2 text-right font-medium">Conversión</th>
+            <th className="px-2 py-2 text-right font-medium">Activos</th>
+            <th className="px-2 py-2 text-right font-medium">Actividades hechas</th>
+            <th className="px-2 py-2 text-right font-medium">Pendientes</th>
+            <th className="px-2 py-2 text-right font-medium">Vencidas</th>
+            <th className="px-2 py-2 text-right font-medium">Sin actividad</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {rows.map((r) => (
+            <tr key={r.advisorId}>
+              <td className="py-2 pr-3">
+                <Link href={`/leads?asesor=${r.advisorId}`} className="flex items-center gap-2 font-medium text-obsessed hover:text-dark-gold">
+                  <Avatar name={r.name} className="h-7 w-7 text-[0.65rem]" /> {r.name}
+                </Link>
+              </td>
+              <td className="px-2 py-2 text-right tabular-nums">{r.leads}</td>
+              <td className="px-2 py-2 text-right tabular-nums">
+                {r.conversionRate}% <span className="text-xs text-muted">({r.converted})</span>
+              </td>
+              <td className="px-2 py-2 text-right tabular-nums">{r.activeLeads}</td>
+              <td className="px-2 py-2 text-right tabular-nums">{r.tasksDone}</td>
+              <td className="px-2 py-2 text-right tabular-nums">{r.pendingTasks}</td>
+              <td className={`px-2 py-2 text-right tabular-nums ${r.overdueTasks ? "font-semibold text-danger-text" : ""}`}>{r.overdueTasks}</td>
+              <td className={`px-2 py-2 text-right tabular-nums ${r.staleLeads ? "font-semibold text-warning-text" : ""}`}>{r.staleLeads}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

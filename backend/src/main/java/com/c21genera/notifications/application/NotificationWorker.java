@@ -99,13 +99,17 @@ public class NotificationWorker {
                 .findById(payload.notificationId())
                 .ifPresent(
                     entry -> {
+                      // Los avisos al personal (recordatorios, alertas) no pertenecen a un expediente: no van a su bitácora.
+                      boolean ofExpediente = entry.getExpedienteId() != null;
                       if (error == null) {
                         entry.markSent(clock.instant());
-                        events.publishEvent(
-                            new NotificationDelivered(entry.getExpedienteId(), entry.getId(), entry.getKind(), entry.maskedRecipient()));
+                        if (ofExpediente) {
+                          events.publishEvent(
+                              new NotificationDelivered(entry.getExpedienteId(), entry.getId(), entry.getKind(), entry.maskedRecipient()));
+                        }
                       } else {
                         entry.markAttemptFailed(error, finalFailure);
-                        if (finalFailure) {
+                        if (finalFailure && ofExpediente) {
                           events.publishEvent(
                               new NotificationDeliveryFailed(
                                   entry.getExpedienteId(), entry.getId(), entry.getKind(), entry.maskedRecipient(), entry.getLastError()));

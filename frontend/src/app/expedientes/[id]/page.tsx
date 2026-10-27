@@ -1,5 +1,6 @@
 "use client";
 
+import { useCanSeeCrm } from "@/components/crm/CrmUi";
 import { PropertyKeyModal } from "@/components/expediente/PropertyKeyField";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Badge } from "@/components/ui/Badge";
@@ -23,6 +24,7 @@ import { DocumentsPanel } from "./DocumentsPanel";
 import { FeasibilityTab } from "./FeasibilityTab";
 import { FollowUpTab } from "./FollowUpTab";
 import { HistoryTab } from "./HistoryTab";
+import { LeadsTab } from "./LeadsTab";
 import { ParticipantsTab } from "./ParticipantsTab";
 import { SummaryTab } from "./SummaryTab";
 
@@ -36,6 +38,8 @@ const tabs = [
   { id: "contrato", label: "Contrato y firmas" },
   { id: "seguimiento", label: "Seguimiento" },
   { id: "historial", label: "Bitácora" },
+  // Control de Cambios #30: solo para quien entra al CRM.
+  { id: "leads", label: "Leads" },
 ] as const;
 
 type TabId = (typeof tabs)[number]["id"];
@@ -70,6 +74,7 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
   };
   const { showToast } = useToast();
   const can = useCan();
+  const canSeeCrm = useCanSeeCrm();
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [keyOpen, setKeyOpen] = useState(false);
   const [unarchiving, setUnarchiving] = useState(false);
@@ -268,7 +273,7 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
       </Card>
 
       <div className="mb-6 flex gap-1 overflow-x-auto border-b border-border">
-        {tabs.map((t) => (
+        {tabs.filter((t) => t.id !== "leads" || canSeeCrm).map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
@@ -315,6 +320,7 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
         {tab === "contrato" ? <ContractTab {...context} /> : null}
         {tab === "seguimiento" ? <FollowUpTab {...context} /> : null}
         {tab === "historial" ? <HistoryTab {...context} /> : null}
+        {tab === "leads" && canSeeCrm ? <LeadsTab {...context} /> : null}
       </div>
     </PageContainer>
   );

@@ -14,6 +14,18 @@ public interface ExpedienteLifecycleApi {
 
   ExpedienteSummary getSummary(UUID expedienteId);
 
+  /**
+   * Control de Cambios #30: expedientes cuyo inmueble coincide con la clave estructurada o con la
+   * referencia capturada (sin distinguir mayúsculas), para vincular un lead en "Oferta aceptada".
+   */
+  java.util.List<ExpedienteRef> findByProperty(String keyOrReference);
+
+  java.util.Optional<ExpedienteRef> refByFolio(String folio);
+
+  java.util.Optional<ExpedienteRef> ref(UUID expedienteId);
+
+  record ExpedienteRef(UUID id, String folio, String ownerDisplayName, String propertyKey, String propertyReference, UUID assignedAdvisorId) {}
+
   ManualClientDataView getManualData(UUID expedienteId);
 
   /** Tipo de inmueble, operación, clave y asesor: lo que identifica al inmueble fuera del contrato. */

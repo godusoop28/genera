@@ -10,11 +10,13 @@ interface SelectOption {
 interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, "children"> {
   label?: string;
   options: SelectOption[];
+  /** Opciones agrupadas (optgroup), después de options. */
+  groups?: { label: string; options: SelectOption[] }[];
   containerClassName?: string;
 }
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
-  { label, options, className, containerClassName, id, ...props },
+  { label, options, groups, className, containerClassName, id, ...props },
   ref,
 ) {
   const generatedId = useId();
@@ -41,6 +43,15 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
             <option key={option.value} value={option.value}>
               {option.label}
             </option>
+          ))}
+          {groups?.map((group) => (
+            <optgroup key={group.label} label={group.label}>
+              {group.options.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
         <ChevronDown

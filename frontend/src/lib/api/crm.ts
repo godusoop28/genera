@@ -1,16 +1,37 @@
 import { apiClient } from "@/lib/api/client";
 
-// CRM (Módulo 3): leads, dashboard, ruteo de asesores y asistente de WhatsApp.
+// CRM (Módulo 3): leads, actividades y agenda (CC#30), catálogo de fuentes
+// (CC#29), dashboard, ruteo de asesores y asistente de WhatsApp.
 // Contrato del backend: leads.web.InternalLeadController y
 // assistant.web.InternalConversationController.
 
-export type LeadStage = "NEW" | "CONTACTED" | "APPOINTMENT" | "VISITED" | "NEGOTIATION" | "WON" | "LOST";
-export type LeadSource = "WHATSAPP_BOT" | "PORTAL" | "CAMPAIGN" | "WEBSITE" | "REFERRAL" | "WALK_IN" | "PHONE";
+export type LeadStage = "NEW" | "CONTACTED" | "QUALIFIED" | "APPOINTMENT" | "VISITED" | "PROPOSAL" | "NEGOTIATION" | "OFFER_ACCEPTED" | "WON" | "LOST";
+/** Canal general; la fuente precisa es sourceCode (catálogo del CC#29). */
+export type LeadSource =
+  | "WHATSAPP_BOT"
+  | "WHATSAPP"
+  | "PORTAL"
+  | "SOCIAL"
+  | "CAMPAIGN"
+  | "WEBSITE"
+  | "OUTDOOR"
+  | "REFERRAL"
+  | "WALK_IN"
+  | "EVENT"
+  | "PHONE"
+  | "REACTIVATION"
+  | "OTHER";
 export type LeadInterest = "BUY" | "RENT" | "SELL" | "LEASE_OUT" | "INVEST" | "OTHER";
+export type LeadTemperature = "COLD" | "WARM" | "HOT";
+export type LostReason = "PRICE" | "ZONE" | "TIMING" | "COMPETITION" | "NO_RESPONSE" | "OTHER";
 export type AssignmentMethod = "PROPERTY_OWNER" | "CONTINUITY" | "ROULETTE" | "GUARD" | "MANUAL";
 export type AssignmentStatus = "ASSIGNED" | "PENDING_OWNER" | "PENDING_SCHEDULE" | "UNASSIGNED";
-export type LeadGroup = "ALL" | "UNASSIGNED" | "PENDING" | "NEW" | "OPEN" | "WON" | "LOST";
-export type ActivityKind = "CREATED" | "ASSIGNED" | "REASSIGNED" | "STAGE" | "NOTE" | "BOT" | "NOTICE" | "FOLLOW_UP";
+export type LeadGroup = "ALL" | "UNASSIGNED" | "PENDING" | "NEW" | "OPEN" | "STALE" | "WON" | "LOST";
+export type ActivityKind = "CREATED" | "ASSIGNED" | "REASSIGNED" | "STAGE" | "NOTE" | "BOT" | "NOTICE" | "FOLLOW_UP" | "TASK" | "PROPERTY_SHARED" | "EXPEDIENTE" | "EDIT";
+export type SourceCategory = "PORTALS" | "SOCIAL" | "SEARCH" | "OUTDOOR" | "REFERRALS" | "IN_PERSON" | "REACTIVATION" | "UNKNOWN";
+export type TaskType = "CALL" | "WHATSAPP" | "EMAIL" | "VISIT" | "OFFICE_MEETING" | "VIDEO_CALL" | "PROPOSAL" | "OFFER_FOLLOW_UP" | "NOTE" | "OTHER";
+export type TaskStatus = "SCHEDULED" | "DONE" | "CANCELLED";
+export type TaskResult = "CONTACTED" | "NO_ANSWER" | "RESCHEDULED" | "REJECTED" | "INTERESTED" | "ADVANCED";
 
 export interface LeadProperty {
   online21Id: number | null;
@@ -31,6 +52,7 @@ export interface LeadItem {
   advisor: { id: string; name: string } | null;
   assignmentMethod: AssignmentMethod | null;
   summary: string | null;
+  /** Presupuesto máximo. */
   budget: number | null;
   lostReason: string | null;
   createdAt: string;
@@ -43,6 +65,26 @@ export interface LeadItem {
   /** Asesor responsable de la PROPIEDAD (21Online), distinto del que atiende el lead. */
   propertyAdvisor: { id: string; name: string } | null;
   coordinationNote: string | null;
+  sourceCode: string | null;
+  sourceLabel: string | null;
+  sourceCategory: SourceCategory | null;
+  firstContactOn: string | null;
+  propertyCategoryId: string | null;
+  propertySubtypeId: string | null;
+  propertyTypeLabel: string | null;
+  zone: string | null;
+  budgetMin: number | null;
+  desiredFeatures: string | null;
+  temperature: LeadTemperature | null;
+  closeProbability: number | null;
+  expectedCloseOn: string | null;
+  lostReasonCode: LostReason | null;
+  stageEnteredAt: string | null;
+  expediente: { id: string; folio: string } | null;
+  nextTask: { id: string; type: TaskType; scheduledAt: string; overdue: boolean } | null;
+  overdueTasks: number;
+  /** Abierto y sin actividad en más de los días configurados. */
+  stale: boolean;
 }
 
 export interface LeadAssignmentEntry {
@@ -66,12 +108,62 @@ export interface LeadActivity {
   createdAt: string;
 }
 
+export interface LeadTask {
+  id: string;
+  leadId: string;
+  leadName: string | null;
+  leadStage: LeadStage | null;
+  type: TaskType;
+  status: TaskStatus;
+  title: string | null;
+  scheduledAt: string | null;
+  durationMinutes: number | null;
+  advisor: { id: string; name: string } | null;
+  propertyKey: string | null;
+  propertyTitle: string | null;
+  notesBefore: string | null;
+  reminderMinutes: number | null;
+  result: TaskResult | null;
+  actualMinutes: number | null;
+  outcomeNotes: string | null;
+  nextAction: string | null;
+  nextContactAt: string | null;
+  completedAt: string | null;
+  overdue: boolean;
+  createdByName: string | null;
+}
+
+export interface StageStep {
+  stage: LeadStage;
+  enteredAt: string;
+  exitedAt: string | null;
+  days: number;
+  actorName: string | null;
+}
+
+export interface SharedProperty {
+  id: string;
+  online21Id: number | null;
+  key: string | null;
+  title: string | null;
+  note: string | null;
+  actorName: string | null;
+  createdAt: string;
+}
+
 export interface LeadDetail {
   lead: LeadItem;
   activities: LeadActivity[];
   assignments: LeadAssignmentEntry[];
   online21SyncStatus: string;
   advisorNoticeStatus: string;
+  tasks: LeadTask[];
+  stageHistory: StageStep[];
+  sharedProperties: SharedProperty[];
+  /** Etapa que sugieren las actividades registradas (null = ninguna). */
+  suggestedStage: LeadStage | null;
+  /** Expedientes con la misma clave de inmueble (al llegar a Oferta aceptada sin vínculo). */
+  expedienteCandidates: { id: string; folio: string; ownerDisplayName: string; propertyKey: string | null }[];
 }
 
 export interface LeadPage {
@@ -87,6 +179,10 @@ export interface LeadQuery {
   group?: LeadGroup;
   advisorId?: string;
   source?: LeadSource | "";
+  sourceCode?: string;
+  temperature?: LeadTemperature | "";
+  stage?: LeadStage | "";
+  expedienteId?: string;
   from?: string;
   /** Número de 21Online de la propiedad por la que preguntaron. */
   propertyId?: number;
@@ -111,8 +207,8 @@ export function getLead(id: string) {
   return apiClient.get<LeadDetail>(`/internal/leads/${id}`);
 }
 
-export function changeLeadStage(id: string, stage: LeadStage, lostReason?: string) {
-  return apiClient.post<LeadDetail>(`/internal/leads/${id}/stage`, { stage, lostReason });
+export function changeLeadStage(id: string, stage: LeadStage, lostReason?: string, lostReasonCode?: LostReason) {
+  return apiClient.post<LeadDetail>(`/internal/leads/${id}/stage`, { stage, lostReason, lostReasonCode });
 }
 
 export function assignLead(id: string, advisorId: string, exceptionReason?: string) {
@@ -127,11 +223,25 @@ export function addLeadNote(id: string, text: string) {
   return apiClient.post<LeadDetail>(`/internal/leads/${id}/notes`, { text });
 }
 
+/** Control de Cambios #30: interés y estatus de la ficha. */
+export interface LeadProfileInput {
+  firstContactOn?: string;
+  propertySubtypeId?: string;
+  zone?: string;
+  budgetMin?: number;
+  budgetMax?: number;
+  desiredFeatures?: string;
+  temperature?: LeadTemperature;
+  closeProbability?: number;
+  expectedCloseOn?: string;
+}
+
 export interface CreateLeadInput {
   name: string;
   phone?: string;
   email?: string;
-  source: LeadSource;
+  source?: LeadSource;
+  sourceCode: string;
   sourceDetail?: string;
   interest: LeadInterest;
   propertyReference?: string;
@@ -140,10 +250,149 @@ export interface CreateLeadInput {
   advisorId?: string;
   exceptionReason?: string;
   autoAssign: boolean;
+  profile?: LeadProfileInput;
 }
 
 export function createLead(input: CreateLeadInput) {
   return apiClient.post<LeadDetail>("/internal/leads", input);
+}
+
+export interface UpdateLeadInput {
+  name: string;
+  phone?: string;
+  email?: string;
+  interest: LeadInterest;
+  sourceCode?: string;
+  sourceDetail?: string;
+  summary?: string;
+  propertyReference?: string;
+  profile: LeadProfileInput;
+}
+
+export function updateLead(id: string, input: UpdateLeadInput) {
+  return apiClient.put<LeadDetail>(`/internal/leads/${id}`, input);
+}
+
+export function shareLeadProperty(id: string, reference: string, note?: string) {
+  return apiClient.post<LeadDetail>(`/internal/leads/${id}/shared-properties`, { reference, note });
+}
+
+/** folio vacío = desvincular. */
+export function linkLeadExpediente(id: string, folio: string) {
+  return apiClient.post<LeadDetail>(`/internal/leads/${id}/expediente`, { folio });
+}
+
+// --- Actividades y agenda (CC#30) --------------------------------------------
+
+export interface TaskInput {
+  type: TaskType;
+  title?: string;
+  scheduledAt?: string;
+  durationMinutes?: number;
+  advisorId?: string;
+  propertyKey?: string;
+  propertyTitle?: string;
+  notesBefore?: string;
+  reminderMinutes?: number;
+  /** true = ya se realizó (se registra con su resultado). */
+  done: boolean;
+  result?: TaskResult;
+  actualMinutes?: number;
+  outcomeNotes?: string;
+  nextAction?: string;
+  nextContactAt?: string;
+  nextType?: TaskType;
+}
+
+export interface CompleteTaskInput {
+  result: TaskResult;
+  actualMinutes?: number;
+  outcomeNotes?: string;
+  nextAction?: string;
+  nextContactAt?: string;
+  nextType?: TaskType;
+}
+
+export function createLeadTask(leadId: string, input: TaskInput) {
+  return apiClient.post<LeadTask>(`/internal/leads/${leadId}/tasks`, input);
+}
+
+export function rescheduleLeadTask(taskId: string, input: TaskInput) {
+  return apiClient.put<LeadTask>(`/internal/lead-tasks/${taskId}`, input);
+}
+
+export function completeLeadTask(taskId: string, input: CompleteTaskInput) {
+  return apiClient.post<LeadTask>(`/internal/lead-tasks/${taskId}/complete`, input);
+}
+
+export function cancelLeadTask(taskId: string, reason?: string) {
+  return apiClient.post<LeadTask>(`/internal/lead-tasks/${taskId}/cancel`, { reason });
+}
+
+export interface AgendaQuery {
+  from: string;
+  to: string;
+  advisorId?: string;
+  type?: TaskType | "";
+  leadId?: string;
+  property?: string;
+}
+
+export function getAgenda(params: AgendaQuery) {
+  return apiClient.get<LeadTask[]>(`/internal/crm/agenda${query(params)}`);
+}
+
+// --- Catálogo de fuentes (CC#29) ---------------------------------------------
+
+export interface LeadSourceOption {
+  code: string;
+  category: SourceCategory;
+  label: string;
+  description: string | null;
+  channel: LeadSource;
+  active: boolean;
+  requiresDetail: boolean;
+  /** La asigna el sistema (asistente de WhatsApp): no aparece en el alta manual. */
+  system: boolean;
+  sortOrder: number;
+}
+
+export function listLeadSources() {
+  return apiClient.get<LeadSourceOption[]>("/internal/crm/lead-sources");
+}
+
+export function updateLeadSource(code: string, input: { label: string; description?: string; active: boolean; requiresDetail: boolean }) {
+  return apiClient.put<LeadSourceOption>(`/internal/crm/lead-sources/${code}`, input);
+}
+
+export function createLeadSource(input: { category: SourceCategory; label: string; description?: string; channel?: LeadSource; requiresDetail: boolean }) {
+  return apiClient.post<LeadSourceOption>("/internal/crm/lead-sources", input);
+}
+
+// --- Dashboard ---------------------------------------------------------------
+
+export interface AdvisorProductivity {
+  advisorId: string;
+  name: string;
+  leads: number;
+  won: number;
+  converted: number;
+  conversionRate: number;
+  activeLeads: number;
+  tasksDone: number;
+  pendingTasks: number;
+  overdueTasks: number;
+  staleLeads: number;
+}
+
+export interface SourceRow {
+  code: string;
+  label: string;
+  category: SourceCategory;
+  leads: number;
+  share: number;
+  converted: number;
+  conversionRate: number;
 }
 
 export interface CrmDashboard {
@@ -158,9 +407,20 @@ export interface CrmDashboard {
   staleNew: number;
   byStage: Record<LeadStage, number>;
   bySource: Partial<Record<LeadSource, number>>;
-  byAdvisor: { advisorId: string; name: string; leads: number; won: number }[];
+  byAdvisor: AdvisorProductivity[];
   topProperties: { online21Id: number | null; key: string | null; title: string | null; leads: number }[];
   recent: LeadItem[];
+  converted: number;
+  conversionRate: number;
+  pipelineValue: number;
+  staleLeads: number;
+  staleDays: number;
+  atRisk: LeadItem[];
+  sources: SourceRow[];
+  sourceTrend: { months: string[]; series: { code: string; label: string; counts: number[] }[] };
+  stageTimes: { stage: LeadStage; averageDays: number; samples: number }[];
+  pendingTasks: number;
+  overdueTasks: number;
 }
 
 export function getCrmDashboard(from?: string) {
@@ -227,6 +487,9 @@ export interface AssignmentSettings {
   nextCoverage: string | null;
   noUpcomingCoverage: boolean;
   timezone: string;
+  /** Control de Cambios #30: días sin actividad para la alerta "por enfriarse". */
+  staleDays: number;
+  reminderEmail: boolean;
 }
 
 export function getAssignmentSettings() {
@@ -235,6 +498,10 @@ export function getAssignmentSettings() {
 
 export function updateAssignmentSettings(roundMode: RoundMode, ownerOffShiftPolicy: OwnerOffShiftPolicy) {
   return apiClient.put<AssignmentSettings>("/internal/crm/assignment-settings", { roundMode, ownerOffShiftPolicy });
+}
+
+export function updateFollowUpSettings(staleDays: number, reminderEmail: boolean) {
+  return apiClient.put<AssignmentSettings>("/internal/crm/follow-up-settings", { staleDays, reminderEmail });
 }
 
 // ---------------------------------------------------------------------------

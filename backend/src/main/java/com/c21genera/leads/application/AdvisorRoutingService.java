@@ -57,7 +57,17 @@ public class AdvisorRoutingService {
 
   public record UpdateRouting(boolean receivesLeads, int weight, Integer dailyLimit, Long online21UserId, String whatsappPhone) {}
 
-  public record SettingsView(Mode roundMode, OwnerOffShiftPolicy ownerOffShiftPolicy, String updatedByName, long pendingLeads, LocalDateTime nextCoverage, boolean noUpcomingCoverage, String timezone) {}
+  /** staleDays y reminderEmail: Control de Cambios #30 (alertas de leads sin actividad y recordatorios por correo). */
+  public record SettingsView(
+      Mode roundMode,
+      OwnerOffShiftPolicy ownerOffShiftPolicy,
+      String updatedByName,
+      long pendingLeads,
+      LocalDateTime nextCoverage,
+      boolean noUpcomingCoverage,
+      String timezone,
+      int staleDays,
+      boolean reminderEmail) {}
 
   /** Roles que pueden atender leads (el revisor documental no). */
   private static final List<String> ROUTABLE_ROLES = List.of("ADVISOR", "DIRECTOR", "ADMINISTRATOR");
@@ -117,7 +127,34 @@ public class AdvisorRoutingService {
     long pending = leads.countByAssignmentStatusIn(List.of(AssignmentStatus.PENDING_OWNER, AssignmentStatus.PENDING_SCHEDULE));
     LocalDateTime next = availability.nextCoverage(s).map(CalendarService::local).orElse(null);
     boolean anyoneNow = s.profiles().keySet().stream().filter(s::active).anyMatch(id -> availability.state(s, id).status() == Status.AVAILABLE);
-    return new SettingsView(settings.getRoundMode(), settings.getOwnerOffShiftPolicy(), settings.getUpdatedByName(), pending, next, !anyoneNow && next == null, "America/Mexico_City");
+    return new SettingsView(
+        settings.getRoundMode(),
+        settings.getOwnerOffShiftPolicy(),
+        settings.getUpdatedByName(),
+        pending,
+        next,
+        !anyoneNow && next == null,
+        "America/Mexico_City",
+        settings.getStaleDays(),
+        settings.isReminderEmail());
+  }
+
+  @Transactional(readOnly = true)
+  public int staleDays() {
+    return assignment.settings().getStaleDays();
+  }
+
+  @Transactional(readOnly = true)
+  public boolean reminderEmail() {
+    return assignment.settings().isReminderEmail();
+  }
+
+  public SettingsView updateFollowUp(int staleDays, boolean reminderEmail, CurrentUser user) {
+    AssignmentSettings settings = assignment.settings();
+    String detail = "Días sin actividad " + settings.getStaleDays() + " → " + staleDays + "; recordatorios por correo " + settings.isReminderEmail() + " → " + reminderEmail;
+    settings.followUp(staleDays, reminderEmail, user.name());
+    audits.save(new CalendarAudit("SETTINGS", null, null, "UPDATED", detail, user.id(), user.name(), clock.instant()));
+    return settings();
   }
 
   public SettingsView updateSettings(Mode mode, OwnerOffShiftPolicy policy, CurrentUser user) {

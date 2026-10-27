@@ -3,6 +3,7 @@ import { AccountSettingsForm } from "@/components/settings/AccountSettingsForm";
 import { ChangePasswordCard } from "@/components/settings/ChangePasswordCard";
 import { FeasibilityPromptsCard } from "@/components/settings/FeasibilityPromptsCard";
 import { FontSizeControl } from "@/components/settings/FontSizeControl";
+import { FollowUpSettingsCard, LeadSourcesCard } from "@/components/settings/LeadSourcesCard";
 import { NotificationSettingsCard } from "@/components/settings/NotificationSettingsCard";
 import { PropertyCatalogCard } from "@/components/settings/PropertyCatalogCard";
 import { ThemeSwitcher } from "@/components/settings/ThemeSwitcher";
@@ -22,6 +23,8 @@ export default function ConfiguracionPage() {
           <NotificationSettingsCard />
           <VisitInstructionsCard />
           <PropertyCatalogCard />
+          <LeadSourcesCard />
+          <FollowUpSettingsCard />
         </div>
         <div className="lg:col-span-2">
           <FeasibilityPromptsCard />
