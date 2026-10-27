@@ -167,6 +167,24 @@ public class PrivacyConsentService implements PrivacyApi {
 
   @Override
   @Transactional(readOnly = true)
+  public Optional<NoticeVersion> noticeFor(UUID expedienteId) {
+    Optional<PrivacyConsent> consent = privacyConsentRepository.findByExpedienteId(expedienteId);
+    Optional<LegalTemplate> template =
+        consent.map(PrivacyConsent::getNoticeTemplateId).flatMap(legalTemplateRepository::findById).or(() -> legalTemplateRepository.findByTypeAndActiveTrue(LegalTemplateType.PRIVACY_NOTICE_RECEPTION));
+    return template.map(
+        t ->
+            new NoticeVersion(
+                t.getVersion(),
+                t.getEffectiveFrom(),
+                t.getSha256(),
+                t.getStorageKey(),
+                consent.isPresent(),
+                consent.map(PrivacyConsent::getAcceptedAt).orElse(null),
+                consent.map(PrivacyConsent::getSignatureMethod).orElse(null)));
+  }
+
+  @Override
+  @Transactional(readOnly = true)
   public boolean activeContractTemplateExists() {
     return legalTemplateRepository.findByTypeAndActiveTrue(LegalTemplateType.INTERMEDIATION_CONTRACT).isPresent();
   }

@@ -25,6 +25,7 @@ import { FeasibilityTab } from "./FeasibilityTab";
 import { FollowUpTab } from "./FollowUpTab";
 import { HistoryTab } from "./HistoryTab";
 import { LeadsTab } from "./LeadsTab";
+import { ReceiptsTab } from "./ReceiptsTab";
 import { SurveysTab } from "./SurveysTab";
 import { ParticipantsTab } from "./ParticipantsTab";
 import { SummaryTab } from "./SummaryTab";
@@ -39,6 +40,8 @@ const tabs = [
   { id: "contrato", label: "Contrato y firmas" },
   { id: "seguimiento", label: "Seguimiento" },
   { id: "historial", label: "Bitácora" },
+  // Control de Cambios #31: acuse de recepción firmado por el representante legal.
+  { id: "acuse", label: "Acuse de recepción" },
   // Control de Cambios #28: encuestas NPS del cliente.
   { id: "satisfaccion", label: "Satisfacción" },
   // Control de Cambios #30: solo para quien entra al CRM.
@@ -323,6 +326,7 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
         {tab === "contrato" ? <ContractTab {...context} /> : null}
         {tab === "seguimiento" ? <FollowUpTab {...context} /> : null}
         {tab === "historial" ? <HistoryTab {...context} /> : null}
+        {tab === "acuse" ? <ReceiptsTab {...context} /> : null}
         {tab === "satisfaccion" ? <SurveysTab {...context} /> : null}
         {tab === "leads" && canSeeCrm ? <LeadsTab {...context} /> : null}
       </div>

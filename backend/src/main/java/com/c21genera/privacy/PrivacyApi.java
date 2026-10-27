@@ -13,6 +13,14 @@ public interface PrivacyApi {
 
   boolean activeContractTemplateExists();
 
+  /**
+   * Control de Cambios #31: versión del aviso de privacidad que cubre el expediente: la que aceptó
+   * el cliente o, si todavía no lo firma, la vigente. storageKey: el PDF del aviso (para adjuntarlo).
+   */
+  Optional<NoticeVersion> noticeFor(UUID expedienteId);
+
+  record NoticeVersion(int version, java.time.Instant effectiveFrom, String sha256, String storageKey, boolean acceptedByClient, java.time.Instant acceptedAt, String signatureMethod) {}
+
   /** signatureMethod: DIGITAL (en la liga) o PHYSICAL (en papel, escaneo en signedDocumentId). */
   record ConsentView(
       boolean mainPurposesAccepted,

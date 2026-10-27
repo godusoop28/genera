@@ -6,6 +6,7 @@ import { FontSizeControl } from "@/components/settings/FontSizeControl";
 import { FollowUpSettingsCard, LeadSourcesCard } from "@/components/settings/LeadSourcesCard";
 import { NotificationSettingsCard } from "@/components/settings/NotificationSettingsCard";
 import { PropertyCatalogCard } from "@/components/settings/PropertyCatalogCard";
+import { ReceiptSettingsCard } from "@/components/settings/ReceiptSettingsCard";
 import { ThemeSwitcher } from "@/components/settings/ThemeSwitcher";
 import { VisitInstructionsCard } from "@/components/settings/VisitInstructionsCard";
 
@@ -25,6 +26,7 @@ export default function ConfiguracionPage() {
           <PropertyCatalogCard />
           <LeadSourcesCard />
           <FollowUpSettingsCard />
+          <ReceiptSettingsCard />
         </div>
         <div className="lg:col-span-2">
           <FeasibilityPromptsCard />
