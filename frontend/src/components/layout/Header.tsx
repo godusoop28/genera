@@ -26,6 +26,7 @@ function breadcrumbFor(pathname: string): Crumb[] {
   if (pathname.startsWith("/dashboard")) return [{ label: "Dashboard" }];
   if (pathname.startsWith("/leads/")) return [{ label: "Leads", href: "/leads" }, { label: "Detalle del lead" }];
   if (pathname.startsWith("/leads")) return [{ label: "Leads" }];
+  if (pathname.startsWith("/nps")) return [{ label: "Satisfacción del cliente (NPS)" }];
   if (pathname.startsWith("/agenda")) return [{ label: "Agenda de actividades" }];
   if (pathname.startsWith("/conversaciones")) return [{ label: "Conversaciones" }];
   if (pathname.startsWith("/asesores")) return [{ label: "Asesores" }];

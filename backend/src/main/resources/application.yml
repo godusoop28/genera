@@ -214,6 +214,13 @@ app:
     # Plantilla aprobada para avisar al asesor (un parámetro de cuerpo). Vacío = texto libre.
     advisor-template: ${WHATSAPP_ADVISOR_TEMPLATE:}
     advisor-template-language: ${WHATSAPP_ADVISOR_TEMPLATE_LANGUAGE:es_MX}
+    # Control de Cambios #28: plantilla aprobada para mandar la encuesta NPS al cliente
+    # (un parámetro de cuerpo con el mensaje y la liga). Vacío = texto libre (solo
+    # llega si el cliente escribió en las últimas 24 h).
+    survey-template: ${WHATSAPP_SURVEY_TEMPLATE:}
+  # Control de Cambios #28: página pública de la encuesta NPS (el token va al final).
+  surveys:
+    base-url: ${SURVEY_BASE_URL:https://genera-puce.vercel.app/encuesta}
   rate-limit:
     login:
       capacity: 10

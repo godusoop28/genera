@@ -3,6 +3,7 @@
 import { AdvisorChip, LoadError, PropertyMini, SourceLabel, StageBadge, errorText, useApi } from "@/components/crm/CrmUi";
 import { ExpedienteLinkCard, SharedPropertiesCard, StageHistoryCard, SuggestedStageBanner, TasksCard } from "@/components/crm/LeadFollowUp";
 import { EditLeadModal } from "@/components/crm/LeadForms";
+import { LeadSurveysCard } from "@/components/surveys/LeadSurveysCard";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -226,6 +227,7 @@ export default function LeadDetailPage({ params }: PageProps<"/leads/[id]">) {
         <aside className="min-w-0 space-y-5">
           {canManage ? <StageCard lead={lead} onChange={update} /> : null}
           <ExpedienteLinkCard detail={detail.data} canManage={canManage} onChange={update} />
+          <LeadSurveysCard lead={lead} canManage={canManage} />
           <StageHistoryCard detail={detail.data} />
           <Card>
             <CardHeader title="Asesor que atiende" action={<Badge tone={assignmentStatusTones[lead.assignmentStatus]}>{assignmentStatusLabels[lead.assignmentStatus]}</Badge>} />

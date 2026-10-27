@@ -17,7 +17,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "app.whatsapp")
 public record WhatsAppProperties(
-    String apiVersion, String phoneNumberId, String accessToken, String verifyToken, String appSecret, String advisorTemplate, String advisorTemplateLanguage) {
+    String apiVersion,
+    String phoneNumberId,
+    String accessToken,
+    String verifyToken,
+    String appSecret,
+    String advisorTemplate,
+    String advisorTemplateLanguage,
+    // Control de Cambios #28: plantilla de la encuesta NPS al cliente (mismo idioma que la del asesor).
+    String surveyTemplate) {
 
   public WhatsAppProperties {
     if (apiVersion == null || apiVersion.isBlank()) {

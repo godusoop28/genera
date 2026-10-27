@@ -8,6 +8,8 @@ import com.c21genera.closing.infrastructure.ClosingCaseRepository;
 import com.c21genera.closing.infrastructure.ClosingNoteRepository;
 import com.c21genera.closing.infrastructure.ClosingTaskRepository;
 import com.c21genera.shared.domain.NotFoundException;
+import com.c21genera.shared.events.ClosingEvents.ClosingCompleted;
+import org.springframework.context.ApplicationEventPublisher;
 import com.c21genera.shared.events.ContractEvents.ContractDelivered;
 import com.c21genera.shared.events.ContractEvents.ContractFullySigned;
 import com.c21genera.shared.events.ExpedienteEvents.PropertyAccepted;
@@ -43,16 +45,19 @@ public class ClosingService {
   private final ClosingNoteRepository closingNoteRepository;
   private final ClosingTaskRepository taskRepository;
   private final Clock clock;
+  private final ApplicationEventPublisher events;
 
   public ClosingService(
       ClosingCaseRepository closingCaseRepository,
       ClosingNoteRepository closingNoteRepository,
       ClosingTaskRepository taskRepository,
-      Clock clock) {
+      Clock clock,
+      ApplicationEventPublisher events) {
     this.closingCaseRepository = closingCaseRepository;
     this.closingNoteRepository = closingNoteRepository;
     this.taskRepository = taskRepository;
     this.clock = clock;
+    this.events = events;
   }
 
   @ApplicationModuleListener
@@ -134,8 +139,16 @@ public class ClosingService {
 
   public ClosingCase changeStatus(UUID expedienteId, ClosingStatus status) {
     ClosingCase closingCase = get(expedienteId);
+    ClosingStatus before = closingCase.getStatus();
     closingCase.changeStatus(status);
+    publishIfCompleted(closingCase, before);
     return closingCase;
+  }
+
+  private void publishIfCompleted(ClosingCase closingCase, ClosingStatus before) {
+    if (before != ClosingStatus.COMPLETED && closingCase.getStatus() == ClosingStatus.COMPLETED) {
+      events.publishEvent(new ClosingCompleted(closingCase.getExpedienteId()));
+    }
   }
 
   public ClosingNote addNote(UUID expedienteId, UUID authorUserId, String note) {
@@ -166,7 +179,9 @@ public class ClosingService {
   private void refreshStatus(ClosingCase closingCase) {
     List<ClosingTask> tasks = taskRepository.findByClosingCaseIdOrderByCreatedAtAsc(closingCase.getId());
     if (!tasks.isEmpty() && tasks.stream().allMatch(ClosingTask::isDone)) {
+      ClosingStatus before = closingCase.getStatus();
       closingCase.changeStatus(ClosingStatus.COMPLETED);
+      publishIfCompleted(closingCase, before);
     }
   }
 

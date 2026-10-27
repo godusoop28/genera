@@ -12,6 +12,8 @@ import { SaveStatus } from "@/components/ui/SaveStatus";
 import { ORG_OFFICE_ADDRESS, ORG_OFFICE_MAPS_URL } from "@/data/organization";
 import { PRIVACY_CONSENT_TEXT, PRIVACY_SECONDARY_CONSENT_TEXT } from "@/data/privacy-reference";
 import { ApiError } from "@/lib/api/client";
+import { PortalSurveys } from "@/components/surveys/PortalSurveys";
+import { markDocumentPrepDone } from "@/lib/api/surveys";
 import {
   addPublicCoOwner,
   declareCivilStatus,
@@ -236,6 +238,7 @@ export function PublicPortal({ token }: { token: string }) {
           <Stepper steps={steps} currentStep={shownStep} maxReachedStep={maxReached} onStepClick={goTo} />
         </div>
 
+        <PortalSurveys token={token} />
         {expediente.status !== "DRAFT" && expediente.status !== "WAITING_PRIVACY" && privacySigned === false && shownStep !== 2 && shownStep !== 1 ? (
           <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-warning-text/30 bg-warning-bg p-4 text-sm text-warning-text">
             <p className="flex items-start gap-2">
@@ -829,6 +832,10 @@ function DocumentsStep({
         onContinue={() => {
           writeDraft(preparedKey, true);
           setPrepared(true);
+          // Control de Cambios #28, punto de contacto 2 (si está activo, aparece la encuesta en el portal).
+          markDocumentPrepDone(token)
+            .then(() => window.dispatchEvent(new Event("portal-surveys-refresh")))
+            .catch(() => undefined);
         }}
       />
     );

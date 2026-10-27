@@ -25,7 +25,7 @@ class WhatsAppWebhookTest {
 
   @Test
   void validatesMetaSignature() throws Exception {
-    WhatsAppProperties props = new WhatsAppProperties(null, null, null, "verify-me", "app-secret", null, null);
+    WhatsAppProperties props = new WhatsAppProperties(null, null, null, "verify-me", "app-secret", null, null, null);
     WhatsAppCloudClient client = newClient(props);
     byte[] body = "{\"entry\":[]}".getBytes(StandardCharsets.UTF_8);
     Mac mac = Mac.getInstance("HmacSHA256");
@@ -40,7 +40,7 @@ class WhatsAppWebhookTest {
 
   @Test
   void rejectsEverythingWithoutAppSecret() throws Exception {
-    WhatsAppCloudClient client = newClient(new WhatsAppProperties(null, null, null, null, null, null, null));
+    WhatsAppCloudClient client = newClient(new WhatsAppProperties(null, null, null, null, null, null, null, null));
     assertThat(client.validSignature("{}".getBytes(StandardCharsets.UTF_8), "sha256=abc")).isFalse();
     assertThat(client.verifyTokenMatches("")).isFalse();
   }
