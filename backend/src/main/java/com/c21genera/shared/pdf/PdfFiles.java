@@ -6,6 +6,7 @@ import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
+import org.apache.pdfbox.rendering.PDFRenderer;
 
 /**
  * Apertura de PDFs para documentos inmobiliarios que pueden pesar decenas de
@@ -80,6 +81,18 @@ public final class PdfFiles {
   private static PDDocument withoutResourceCache(PDDocument document) {
     document.setResourceCache(null);
     return document;
+  }
+
+  /**
+   * Renderizador que decodifica cada imagen ya reducida al tamaño en que se dibuja. Sin esto, un
+   * PDF con fotos de celular de 12 MP se decodificaba completo y no cabía en el heap ni con 160 MB
+   * (28/10: la INE de dos fotos 4032×3024 nunca terminaba y el visor daba "Ocurrió un error
+   * inesperado"); así basta con unos 60 MB a 220 DPI.
+   */
+  public static PDFRenderer renderer(PDDocument document) {
+    PDFRenderer renderer = new PDFRenderer(document);
+    renderer.setSubsamplingAllowed(true);
+    return renderer;
   }
 
   /** Documento nuevo cuyo contenido intermedio también va a disco. */
