@@ -67,6 +67,15 @@ import type { ExpedienteContext } from "./page";
 
 const IN_PROGRESS = ["UPLOADED", "PROCESSING"];
 
+// Aceptar un documento no detiene la lectura con IA: mientras la versión vigente no termina, sigue "en proceso"
+// (antes, al aceptarlo se mostraba "No se leyeron datos" y la pantalla dejaba de actualizarse).
+function isInProgress(doc: DocumentResponse): boolean {
+  if (doc.pipelineStatus && IN_PROGRESS.includes(doc.pipelineStatus)) return true;
+  const v = doc.latestVersion;
+  if (!v) return false;
+  return v.processingStatus === "QUEUED" || v.processingStatus === "PROCESSING" || (v.processingStatus === "PROCESSED" && !v.aiAssessedAt && !v.aiCheckFailed);
+}
+
 /** Nombre con el que se muestra: el capturado si se agregó a mano (Control de Cambios #1), si no el del tipo. */
 function documentName(d: Pick<DocumentResponse, "type" | "customName">): string {
   return d.customName ?? documentTypeLabel(d.type);
@@ -105,7 +114,7 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
   }, [load]);
 
   // Mientras haya archivos procesándose o en extracción, se actualiza solo (sin volver a subir nada).
-  const processing = documents?.some((d) => d.pipelineStatus && IN_PROGRESS.includes(d.pipelineStatus)) ?? false;
+  const processing = documents?.some(isInProgress) ?? false;
   useEffect(() => {
     if (!processing) return;
     const timer = setTimeout(load, 4000);
@@ -358,7 +367,7 @@ function DocumentRow({
   const v = doc.latestVersion;
   const issues = v?.blockingIssues ?? [];
   const warnings = v?.warnings ?? [];
-  const inProgress = doc.pipelineStatus ? IN_PROGRESS.includes(doc.pipelineStatus) : false;
+  const inProgress = isInProgress(doc);
   const reviewable = ["READY_FOR_REVIEW", "UPLOADED", "RETURNED"].includes(doc.status) && v && !["QUEUED", "PROCESSING"].includes(v.processingStatus);
   const mismatch = v?.aiTypeMatches === false;
   const docLabel = documentName(doc);
@@ -976,7 +985,7 @@ function ExtractedDataPanel({
 }) {
   const v = doc.latestVersion;
   if (!v) return null;
-  const inProgress = doc.pipelineStatus ? IN_PROGRESS.includes(doc.pipelineStatus) : false;
+  const inProgress = isInProgress(doc);
   const legibility =
     v.qualityLevel === "UNREADABLE"
       ? "No legible"

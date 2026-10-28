@@ -16,6 +16,14 @@ import 'notary_stages.dart';
 
 const _inProgress = ['UPLOADED', 'PROCESSING'];
 
+// Aceptar un documento no detiene la lectura con IA: mientras la versión vigente no termina, sigue "en proceso".
+bool _isInProgress(DocumentResponse d) {
+  if (d.pipelineStatus != null && _inProgress.contains(d.pipelineStatus)) return true;
+  final v = d.latestVersion;
+  if (v == null) return false;
+  return v.processingStatus == 'QUEUED' || v.processingStatus == 'PROCESSING' || (v.processingStatus == 'PROCESSED' && v.aiAssessedAt == null && !v.aiCheckFailed);
+}
+
 /// Nombre con el que se muestra: el capturado si se agregó a mano (Control de Cambios #1), si no el del tipo.
 String _documentName(DocumentResponse d) => d.customName ?? documentTypeLabel(d.type);
 
@@ -64,7 +72,7 @@ class _DocumentsTabState extends State<DocumentsTab> {
       setState(() => documents = docs);
       // Mientras haya archivos procesándose, se actualiza solo (sin volver a subir nada).
       _poll?.cancel();
-      if (docs.any((d) => d.pipelineStatus != null && _inProgress.contains(d.pipelineStatus))) {
+      if (docs.any(_isInProgress)) {
         _poll = Timer(const Duration(seconds: 4), load);
       }
     } catch (err) {
@@ -92,7 +100,7 @@ class _DocumentsTabState extends State<DocumentsTab> {
     final markedPendingCount = (docs ?? []).where((d) => d.markedPending).length;
     final requiredCount = visible.where((d) => d.required).length;
     final withFiles = (docs ?? []).where((d) => d.currentVersionNumber > 0 && d.status != 'NOT_APPLICABLE').toList();
-    final processing = (docs ?? []).any((d) => d.pipelineStatus != null && _inProgress.contains(d.pipelineStatus));
+    final processing = (docs ?? []).any(_isInProgress);
     final filtered = visible.where(_statusFilters[filter]!.matches).toList();
     final ordered = [...ctx.participants]..sort((a, b) => a.ordinal.compareTo(b.ordinal));
     final groups = [
@@ -541,7 +549,7 @@ class _DocumentRowState extends State<_DocumentRow> {
     final version = v;
     final issues = version?.blockingIssues ?? const <String>[];
     final warnings = version?.warnings ?? const <String>[];
-    final inProgress = doc.pipelineStatus != null && _inProgress.contains(doc.pipelineStatus);
+    final inProgress = _isInProgress(doc);
     final reviewable = ['READY_FOR_REVIEW', 'UPLOADED', 'RETURNED'].contains(doc.status) && version != null && !['QUEUED', 'PROCESSING'].contains(version.processingStatus);
     final mismatch = version?.aiTypeMatches == false;
     final docLabel = _documentName(doc);
@@ -812,7 +820,7 @@ class _ExtractedDataPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.c;
     final v = document.latestVersion!;
-    final inProgress = document.pipelineStatus != null && _inProgress.contains(document.pipelineStatus);
+    final inProgress = _isInProgress(document);
     final legibility = v.qualityLevel == 'UNREADABLE'
         ? 'No legible'
         : v.aiLegible == false
