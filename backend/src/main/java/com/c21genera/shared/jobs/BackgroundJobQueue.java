@@ -16,11 +16,14 @@ public class BackgroundJobQueue {
   private final BackgroundJobRepository repository;
   private final ObjectMapper objectMapper;
   private final Clock clock;
+  /** Antes de este instante ningún worker de este proceso había tomado nada. */
+  private final Instant startedAt;
 
   public BackgroundJobQueue(BackgroundJobRepository repository, ObjectMapper objectMapper, Clock clock) {
     this.repository = repository;
     this.objectMapper = objectMapper;
     this.clock = clock;
+    this.startedAt = clock.instant();
   }
 
   /**
@@ -41,10 +44,20 @@ public class BackgroundJobQueue {
    */
   static final Duration STALE_AFTER = Duration.ofMinutes(20);
 
+  /**
+   * Un candado anterior al arranque de este proceso es de un proceso que ya
+   * murió (reinicio por falta de memoria, despliegue): se recupera de
+   * inmediato en vez de esperar {@link #STALE_AFTER}. Antes, un documento
+   * cargado justo antes de un reinicio se quedaba "Procesando" 20 minutos.
+   */
   @Transactional
   public List<BackgroundJob> claimBatch(String type, String workerId, int limit) {
     Instant now = clock.instant();
-    List<BackgroundJob> jobs = repository.claimBatch(type, now, now.minus(STALE_AFTER), limit);
+    Instant staleBefore = now.minus(STALE_AFTER);
+    if (startedAt.isAfter(staleBefore)) {
+      staleBefore = startedAt;
+    }
+    List<BackgroundJob> jobs = repository.claimBatch(type, now, staleBefore, limit);
     jobs.forEach(job -> job.markLocked(workerId, clock.instant()));
     return jobs;
   }

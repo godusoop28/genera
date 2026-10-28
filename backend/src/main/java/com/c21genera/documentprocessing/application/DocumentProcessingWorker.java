@@ -46,6 +46,9 @@ public class DocumentProcessingWorker {
   private void handle(BackgroundJob job) {
     ProcessDocumentVersionPayload payload = queue.readPayload(job, ProcessDocumentVersionPayload.class);
     try {
+      if (job.exceededAttempts()) {
+        throw new IllegalStateException("El servidor se reinició varias veces procesando este archivo");
+      }
       processor.process(payload);
       queue.markDone(job);
     } catch (Exception | OutOfMemoryError e) {

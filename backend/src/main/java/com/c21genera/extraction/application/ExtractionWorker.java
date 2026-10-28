@@ -44,6 +44,9 @@ public class ExtractionWorker {
   private void handle(BackgroundJob job) {
     ExtractDocumentFieldsPayload payload = queue.readPayload(job, ExtractDocumentFieldsPayload.class);
     try {
+      if (job.exceededAttempts()) {
+        throw new IllegalStateException("El servidor se reinició varias veces analizando este archivo");
+      }
       service.extract(payload);
       queue.markDone(job);
     } catch (Exception | OutOfMemoryError e) {

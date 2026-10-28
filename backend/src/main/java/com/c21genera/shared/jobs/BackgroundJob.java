@@ -69,6 +69,15 @@ public class BackgroundJob {
     this.attempts++;
   }
 
+  /**
+   * Un job recuperado de un proceso muerto ya gastó su intento sin pasar por
+   * {@link #markFailedOrRetry}: si un archivo tumba el servidor cada vez, sin
+   * esto se reintentaría para siempre.
+   */
+  public boolean exceededAttempts() {
+    return attempts > MAX_ATTEMPTS;
+  }
+
   public void markDone() {
     this.status = JobStatus.DONE;
     this.lockedAt = null;
