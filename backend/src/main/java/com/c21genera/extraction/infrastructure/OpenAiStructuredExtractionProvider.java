@@ -507,6 +507,7 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
     return userPrompt(type, fieldNames, fieldNames, pages, pagesTotal, false)
         + "\nEstas imágenes son una versión MEJORADA del mismo documento (enderezada, en escala de grises, con más contraste"
         + " y ampliada), dividida en franjas horizontales que se traslapan: un mismo renglón puede aparecer en dos franjas."
+        + " Las franjas son solo la forma en que se te envía: no las menciones en advertencias ni observaciones."
         + " Transcribe solo lo que se ve. No completes ni corrijas caracteres por contexto: si uno no se distingue, escribe"
         + " \"?\" en su lugar y baja la confianza.";
   }
@@ -894,14 +895,20 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       }
     }
     // Las líneas largas (marco de una credencial, bordes de la foto) no son contenido: con ellas el
-    // recorte abarcaba toda la imagen y el texto seguía siendo diminuto (E2E 02/10).
+    // recorte abarcaba toda la imagen y el texto seguía siendo diminuto (E2E 02/10). Pero una línea es
+    // delgada: si hay muchas columnas (o filas) así, son contenido oscuro, no un marco (28/10: una INE con
+    // fotos de fondo gris quedaba recortada a una tira de 22 px y la IA la tomó por "fragmento de imagen").
+    int lineRows = (int) java.util.Arrays.stream(rowInk).filter(n -> n > sw / 2).count();
+    int lineCols = (int) java.util.Arrays.stream(colInk).filter(n -> n > sh / 2).count();
+    boolean skipLineRows = lineRows <= sh / 10;
+    boolean skipLineCols = lineCols <= sw / 10;
     int minX = w, minY = h, maxX = -1, maxY = -1;
     for (int yi = 0; yi < sh; yi++) {
-      if (rowInk[yi] > sw / 2) {
+      if (skipLineRows && rowInk[yi] > sw / 2) {
         continue;
       }
       for (int xi = 0; xi < sw; xi++) {
-        if (!ink[yi][xi] || colInk[xi] > sh / 2) {
+        if (!ink[yi][xi] || (skipLineCols && colInk[xi] > sh / 2)) {
           continue;
         }
         int x = xi * step;

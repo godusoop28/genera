@@ -224,6 +224,24 @@ class OpenAiExtractionStrategyTest {
     assertThat(cropped.getHeight()).isLessThan(380);
   }
 
+  /** 28/10: anverso y reverso fotografiados (fondo gris) en una hoja; el recorte dejaba una tira de 22 px. */
+  @Test
+  void darkPhotosAreContentNotFrameLines() {
+    var page = new java.awt.image.BufferedImage(2933, 1650, java.awt.image.BufferedImage.TYPE_INT_RGB);
+    var g = page.createGraphics();
+    g.setColor(java.awt.Color.WHITE);
+    g.fillRect(0, 0, 2933, 1650);
+    g.setColor(new java.awt.Color(150, 150, 150));
+    g.fillRect(940, 170, 1110, 700); // anverso
+    g.fillRect(950, 940, 1100, 690); // reverso
+    g.dispose();
+
+    var cropped = OpenAiStructuredExtractionProvider.cropToContent(page);
+
+    assertThat(cropped.getWidth()).isBetween(1100, 1250);
+    assertThat(cropped.getHeight()).isBetween(1450, 1650);
+  }
+
   @Test
   void aPageAlreadyFullOfContentIsNotCropped() {
     var page = new java.awt.image.BufferedImage(1000, 1400, java.awt.image.BufferedImage.TYPE_INT_RGB);
