@@ -113,8 +113,14 @@ public class DocumentFieldExtractionService implements ExtractionApi {
       deleteQuietly(pdf);
     }
 
-    transactions.executeWithoutResult(status -> saveResult(payload, result));
+    // Las lecturas corren en paralelo, pero se guardan de una en una: cada una compara sus datos con los
+    // de los demás documentos del expediente (conflictos) y así siempre ve lo que la anterior ya guardó.
+    synchronized (saving) {
+      transactions.executeWithoutResult(status -> saveResult(payload, result));
+    }
   }
+
+  private final Object saving = new Object();
 
   /**
    * Guarda TODO lo leído (también si el archivo parece otro documento, o si

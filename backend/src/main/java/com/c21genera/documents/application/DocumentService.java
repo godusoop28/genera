@@ -51,6 +51,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -183,6 +184,22 @@ public class DocumentService implements DocumentsApi {
   public Optional<DocumentVersion> latestVersion(UUID documentId) {
     // La vigente: la más reciente que no se eliminó.
     return versionRepository.findByDocumentIdAndRemovedAtIsNullOrderByVersionNumberDesc(documentId).stream().findFirst();
+  }
+
+  /**
+   * La versión vigente de cada documento en una sola consulta. La lista de un expediente se consulta
+   * cada 4 s mientras hay archivos en proceso, y antes hacía una consulta por documento.
+   */
+  @Transactional(readOnly = true)
+  public Map<UUID, DocumentVersion> latestVersions(Collection<UUID> documentIds) {
+    if (documentIds.isEmpty()) {
+      return Map.of();
+    }
+    Map<UUID, DocumentVersion> latest = new HashMap<>();
+    for (DocumentVersion version : versionRepository.findByDocumentIdInAndRemovedAtIsNull(documentIds)) {
+      latest.merge(version.getDocumentId(), version, (a, b) -> a.getVersionNumber() >= b.getVersionNumber() ? a : b);
+    }
+    return latest;
   }
 
   @Transactional(readOnly = true)

@@ -1,10 +1,14 @@
 package com.c21genera.extraction.application;
 
+import com.c21genera.shared.config.CoreConfig;
 import com.c21genera.shared.jobs.BackgroundJob;
 import com.c21genera.shared.jobs.BackgroundJobQueue;
 import com.c21genera.shared.jobs.JobStatus;
 import com.c21genera.shared.jobs.MemoryRelief;
-import java.util.List;
+import jakarta.annotation.PreDestroy;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -20,25 +24,49 @@ import org.springframework.stereotype.Component;
 public class ExtractionWorker {
 
   private static final Logger log = LoggerFactory.getLogger(ExtractionWorker.class);
-  // De uno en uno: el candado del job refleja cuándo empezó de verdad, y si el
-  // servidor se reinicia a medias solo queda abandonado ese job (se recupera solo).
-  private static final int BATCH_SIZE = 1;
   private static final String WORKER_ID = "extraction-worker";
+
+  /**
+   * Lecturas con IA a la vez. Casi todo el tiempo de una lectura es esperar la respuesta de OpenAI
+   * (decenas de segundos), que no ocupa memoria; la parte pesada (renderizar y preparar las
+   * imágenes) sigue siendo de una en una gracias a {@code HeavyImageWork}. Antes iban de una en una
+   * y diez documentos cargados juntos tardaban diez veces lo de uno (29/10).
+   */
+  static final int PARALLEL_JOBS = 3;
 
   private final BackgroundJobQueue queue;
   private final DocumentFieldExtractionService service;
+  private final ExecutorService executor = Executors.newFixedThreadPool(PARALLEL_JOBS, CoreConfig.backgroundThreads("ai-extraction-"));
+  private final AtomicInteger running = new AtomicInteger();
 
   public ExtractionWorker(BackgroundJobQueue queue, DocumentFieldExtractionService service) {
     this.queue = queue;
     this.service = service;
   }
 
-  @Scheduled(fixedDelayString = "PT7S", initialDelayString = "PT15S")
+  /** Toma tantos jobs como lugares libres haya; el candado de cada job se pone justo al empezar. */
+  @Scheduled(fixedDelayString = "PT3S", initialDelayString = "PT15S")
   public void pollAndProcess() {
-    List<BackgroundJob> jobs = queue.claimBatch(ExtractionListener.JOB_TYPE, WORKER_ID, BATCH_SIZE);
-    for (BackgroundJob job : jobs) {
-      handle(job);
+    int free = PARALLEL_JOBS - running.get();
+    if (free <= 0) {
+      return;
     }
+    for (BackgroundJob job : queue.claimBatch(ExtractionListener.JOB_TYPE, WORKER_ID, free)) {
+      running.incrementAndGet();
+      executor.execute(
+          () -> {
+            try {
+              handle(job);
+            } finally {
+              running.decrementAndGet();
+            }
+          });
+    }
+  }
+
+  @PreDestroy
+  void stop() {
+    executor.shutdownNow();
   }
 
   private void handle(BackgroundJob job) {

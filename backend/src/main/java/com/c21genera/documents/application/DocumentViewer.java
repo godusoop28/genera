@@ -3,6 +3,7 @@ package com.c21genera.documents.application;
 import com.c21genera.documents.DocumentsApi.PageView;
 import com.c21genera.documents.domain.DocumentVersion;
 import com.c21genera.shared.domain.NotFoundException;
+import com.c21genera.shared.pdf.HeavyImageWork;
 import com.c21genera.shared.pdf.PdfFiles;
 import com.c21genera.shared.storage.FileStorage;
 import java.awt.AlphaComposite;
@@ -28,7 +29,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.Semaphore;
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageWriteParam;
@@ -53,9 +53,6 @@ public class DocumentViewer {
   private static final Duration CACHE_TTL = Duration.ofMinutes(10);
   private static final int CACHE_SIZE = 2;
   private static final DateTimeFormatter WHEN = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm").withZone(ZoneId.of("America/Mexico_City"));
-
-  /** El servidor tiene 512 MB: las páginas se renderizan de una en una. */
-  private final Semaphore rendering = new Semaphore(1);
 
   private final DocumentService documentService;
   private final FileStorage fileStorage;
@@ -94,18 +91,21 @@ public class DocumentViewer {
   /** JPEG de la página (1 = la primera) con la marca de agua de quien consulta. */
   public byte[] page(UUID versionId, int pageNumber, String viewerName) {
     DocumentVersion version = documentService.getVersion(versionId);
+    // El servidor tiene 512 MB: una página a la vez, y nunca junto con la IA o el procesamiento de un archivo.
     try {
-      rendering.acquire();
+      return HeavyImageWork.exclusively(
+          () -> {
+            BufferedImage image = render(version, versionId, pageNumber);
+            watermark(image, viewerName);
+            return jpeg(image);
+          });
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new IllegalStateException("Se interrumpió la consulta del documento", e);
-    }
-    try {
-      BufferedImage image = render(version, versionId, pageNumber);
-      watermark(image, viewerName);
-      return jpeg(image);
-    } finally {
-      rendering.release();
+    } catch (RuntimeException e) {
+      throw e;
+    } catch (Exception e) {
+      throw new IllegalStateException("No se pudo mostrar la página", e);
     }
   }
 

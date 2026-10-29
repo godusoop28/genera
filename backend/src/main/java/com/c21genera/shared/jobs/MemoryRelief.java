@@ -20,8 +20,11 @@ import javax.management.ObjectName;
  *       arranque).
  * </ul>
  *
- * Los trabajos corren de uno en uno (spring.task.scheduling.pool.size=1), así
- * que la pausa (décimas de segundo) no detiene a ningún otro trabajo.
+ * Las recolecciones completas detienen todo el servidor, también las peticiones
+ * de los usuarios: medido el 29/10, ~1.3 s por trabajo y 79 recolecciones
+ * completas en 13 minutos, así que con varios documentos en fila el sistema se
+ * "trababa" a cada rato. Por eso solo se hace cuando el trabajo dejó el heap
+ * crecido (cerca de su tope); tras un trabajo ligero no hay nada que devolver.
  */
 public final class MemoryRelief {
 
@@ -34,9 +37,17 @@ public final class MemoryRelief {
     return lastRun;
   }
 
+  /** Fracción del heap máximo comprometida a partir de la cual vale la pena encogerlo. */
+  static final double GROWN_HEAP_RATIO = 0.85;
+
   public static void afterHeavyWork() {
     long start = System.nanoTime();
     long before = committedHeapMb();
+    long max = ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getMax() / 1048576;
+    if (max > 0 && before < max * GROWN_HEAP_RATIO) {
+      lastRun = "%s: omitida, heap comprometido %d de %d MB".formatted(java.time.Instant.now(), before, max);
+      return;
+    }
     // HotSpot encoge el heap de forma gradual entre recolecciones completas sucesivas (0%, 10%, 40%,
     // 100% de lo que sobra) para no oscilar: con una sola, 199 MB solo bajaban a 161 (E2E 02/10).
     for (int i = 0; i < 4; i++) {

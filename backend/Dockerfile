@@ -34,7 +34,9 @@ EXPOSE 8080
 # nuevo (p. ej. el primer render de un PDF grande) y llevaba el proceso por encima del límite.
 # Min/MaxHeapFreeRatio: tras la recolección completa que hace MemoryRelief al terminar cada trabajo pesado, el
 # heap se encoge y le regresa al sistema lo que no usa (si no, se quedaba comprometido en 199 MB para siempre).
+# ThreadPriorityPolicy=1 + JavaPriority1_To_OSPriority=10: los hilos de trabajos de fondo (prioridad mínima, ver
+# CoreConfig) corren con nice 10 y Linux le da la CPU primero a las peticiones de las pantallas.
 # glibc crea un arena de malloc por hilo y infla la memoria nativa del JVM en contenedores chicos.
 ENV MALLOC_ARENA_MAX=2
-ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=40 -XX:+UseSerialGC -Xss512k -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=48m -XX:TieredStopAtLevel=1 -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=30"
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=40 -XX:+UseSerialGC -Xss512k -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=48m -XX:TieredStopAtLevel=1 -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=30 -XX:ThreadPriorityPolicy=1 -XX:JavaPriority1_To_OSPriority=10"
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

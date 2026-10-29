@@ -5,6 +5,7 @@ import com.c21genera.shared.jobs.BackgroundJob;
 import com.c21genera.shared.jobs.BackgroundJobQueue;
 import com.c21genera.shared.jobs.JobStatus;
 import com.c21genera.shared.jobs.MemoryRelief;
+import com.c21genera.shared.pdf.HeavyImageWork;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,7 +50,11 @@ public class DocumentProcessingWorker {
       if (job.exceededAttempts()) {
         throw new IllegalStateException("El servidor se reinició varias veces procesando este archivo");
       }
-      processor.process(payload);
+      // Normalizar fotos y armar el PDF ocupa mucha memoria: nunca a la vez que el visor o la IA preparan imágenes.
+      HeavyImageWork.exclusively(() -> {
+        processor.process(payload);
+        return null;
+      });
       queue.markDone(job);
     } catch (Exception | OutOfMemoryError e) {
       log.error("Fallo procesando documentVersionId={}", payload.documentVersionId(), e);

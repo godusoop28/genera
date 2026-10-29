@@ -90,20 +90,23 @@ public final class PdfFiles {
    * Renderizador que decodifica cada imagen ya reducida al tamaño en que se dibuja. Sin esto, un
    * PDF con fotos de celular de 12 MP se decodificaba completo y no cabía en el heap ni con 160 MB
    * (28/10: la INE de dos fotos 4032×3024 nunca terminaba y el visor daba "Ocurrió un error
-   * inesperado"); así basta con unos 60 MB a 220 DPI.
+   * inesperado"); así basta con unos 60 MB a 220 DPI. Las imágenes grandes en Flate (capturas de
+   * pantalla) se decodifican con {@link LeanPdfRenderer}.
    */
   public static PDFRenderer renderer(PDDocument document) {
-    PDFRenderer renderer = new PDFRenderer(document);
+    PDFRenderer renderer = new LeanPdfRenderer(document);
     renderer.setSubsamplingAllowed(true);
     return renderer;
   }
 
   /**
-   * Tope de píxeles de una página renderizada (~48 MB en RGB). Una captura de pantalla larga del
+   * Tope de píxeles de una página renderizada (~24 MB en RGB). Una captura de pantalla larga del
    * iPhone (página de 1265×4327 pt, 29/10) a 220 DPI pedía 3865×13224 px, unos 204 MB, y agotaba
-   * el heap: ni se leía con IA ni se mostraba en el visor.
+   * el heap: ni se leía con IA ni se mostraba en el visor. Con 12 MP tampoco cabía en producción,
+   * donde el heap ya trae ~95 MB ocupados y PDFBox hace copias del escaneo para convertir el color.
+   * 6 MP alcanzan para una hoja tamaño oficio a 220 DPI y para esa captura a su resolución original.
    */
-  public static final long MAX_RENDER_PIXELS = 12_000_000L;
+  public static final long MAX_RENDER_PIXELS = 6_000_000L;
 
   /** Renderiza la página (0 = la primera) en RGB, bajando los DPI si excede {@link #MAX_RENDER_PIXELS}. */
   public static BufferedImage renderPage(PDFRenderer renderer, PDDocument document, int pageIndex, float dpi) throws IOException {

@@ -195,7 +195,9 @@ public class InternalDocumentController {
   @GetMapping("/api/v1/internal/expedientes/{expedienteId}/documents")
   public List<DocumentResponse> listByExpediente(@PathVariable UUID expedienteId, @AuthenticationPrincipal Jwt jwt) {
     requireExpediente(expedienteId, jwt);
-    return documentService.documentsOf(expedienteId).stream().map(this::toResponse).toList();
+    List<Document> documents = documentService.documentsOf(expedienteId);
+    var latest = documentService.latestVersions(documents.stream().map(Document::getId).toList());
+    return documents.stream().map(d -> DocumentResponse.from(d, latest.get(d.getId()))).toList();
   }
 
   @GetMapping("/api/v1/internal/documents/{documentId}")

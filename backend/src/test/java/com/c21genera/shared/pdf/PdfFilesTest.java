@@ -42,7 +42,7 @@ class PdfFilesTest {
       BufferedImage rendered = PdfFiles.renderPage(PdfFiles.renderer(document), document, 0, 220);
 
       assertThat((long) rendered.getWidth() * rendered.getHeight()).isLessThanOrEqualTo(PdfFiles.MAX_RENDER_PIXELS);
-      assertThat(rendered.getHeight()).isGreaterThan(6000);
+      assertThat(rendered.getHeight()).isGreaterThan(4000);
     }
   }
 

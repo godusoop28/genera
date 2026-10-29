@@ -43,10 +43,12 @@ public class PublicDocumentController {
   @GetMapping
   public List<PublicDocumentResponse> list(@PathVariable String token) {
     UUID expedienteId = resolve(token);
-    return documentService.documentsOf(expedienteId).stream()
-        .filter(d -> d.isRequired() || d.getCurrentVersionNumber() > 0 || isOptionalButUseful(d))
-        .map(this::toResponse)
-        .toList();
+    List<Document> documents =
+        documentService.documentsOf(expedienteId).stream()
+            .filter(d -> d.isRequired() || d.getCurrentVersionNumber() > 0 || isOptionalButUseful(d))
+            .toList();
+    var latest = documentService.latestVersions(documents.stream().map(Document::getId).toList());
+    return documents.stream().map(d -> PublicDocumentResponse.from(d, latest.get(d.getId()))).toList();
   }
 
   @GetMapping("/{documentId}")
