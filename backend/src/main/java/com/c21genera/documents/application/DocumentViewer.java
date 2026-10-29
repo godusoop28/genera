@@ -35,7 +35,6 @@ import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
 import javax.imageio.stream.MemoryCacheImageOutputStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.rendering.ImageType;
 import org.springframework.stereotype.Service;
 
 /**
@@ -121,7 +120,7 @@ public class DocumentViewer {
         if (pageNumber < 1 || pageNumber > document.getNumberOfPages()) {
           throw new NotFoundException("La página " + pageNumber + " no existe.");
         }
-        return PdfFiles.renderer(document).renderImageWithDPI(pageNumber - 1, PDF_DPI, ImageType.RGB);
+        return PdfFiles.renderPage(PdfFiles.renderer(document), document, pageNumber - 1, PDF_DPI);
       } catch (IOException e) {
         throw new UncheckedIOException("No se pudo mostrar la página", e);
       }

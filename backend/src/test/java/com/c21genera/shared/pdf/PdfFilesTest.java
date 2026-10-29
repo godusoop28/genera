@@ -32,4 +32,22 @@ class PdfFilesTest {
       assertThat(rendered.getWidth()).isEqualTo(1466);
     }
   }
+
+  /** 29/10: una captura de pantalla larga del iPhone (1265×4327 pt) pedía 204 MB a 220 DPI. */
+  @Test
+  void hugePagesAreRenderedWithinThePixelCap() throws Exception {
+    try (PDDocument document = PdfFiles.create()) {
+      document.addPage(new PDPage(new PDRectangle(1265, 4327)));
+
+      BufferedImage rendered = PdfFiles.renderPage(PdfFiles.renderer(document), document, 0, 220);
+
+      assertThat((long) rendered.getWidth() * rendered.getHeight()).isLessThanOrEqualTo(PdfFiles.MAX_RENDER_PIXELS);
+      assertThat(rendered.getHeight()).isGreaterThan(6000);
+    }
+  }
+
+  @Test
+  void normalPagesKeepTheirDpi() {
+    assertThat(PdfFiles.cappedDpi(PDRectangle.LETTER, 220)).isEqualTo(220f);
+  }
 }

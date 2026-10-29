@@ -1,11 +1,14 @@
 package com.c21genera.shared.pdf;
 
+import java.awt.image.BufferedImage;
 import java.io.IOException;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
+import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
 
 /**
@@ -93,6 +96,26 @@ public final class PdfFiles {
     PDFRenderer renderer = new PDFRenderer(document);
     renderer.setSubsamplingAllowed(true);
     return renderer;
+  }
+
+  /**
+   * Tope de píxeles de una página renderizada (~48 MB en RGB). Una captura de pantalla larga del
+   * iPhone (página de 1265×4327 pt, 29/10) a 220 DPI pedía 3865×13224 px, unos 204 MB, y agotaba
+   * el heap: ni se leía con IA ni se mostraba en el visor.
+   */
+  public static final long MAX_RENDER_PIXELS = 12_000_000L;
+
+  /** Renderiza la página (0 = la primera) en RGB, bajando los DPI si excede {@link #MAX_RENDER_PIXELS}. */
+  public static BufferedImage renderPage(PDFRenderer renderer, PDDocument document, int pageIndex, float dpi) throws IOException {
+    return renderer.renderImageWithDPI(pageIndex, cappedDpi(document.getPage(pageIndex).getCropBox(), dpi), ImageType.RGB);
+  }
+
+  static float cappedDpi(PDRectangle box, float dpi) {
+    double pixels = (box.getWidth() / 72.0 * dpi) * (box.getHeight() / 72.0 * dpi);
+    if (pixels <= MAX_RENDER_PIXELS) {
+      return dpi;
+    }
+    return (float) (dpi * Math.sqrt(MAX_RENDER_PIXELS / pixels));
   }
 
   /** Documento nuevo cuyo contenido intermedio también va a disco. */
