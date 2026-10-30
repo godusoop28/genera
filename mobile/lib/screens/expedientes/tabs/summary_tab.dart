@@ -6,6 +6,8 @@ import '../../../api/api.dart' as api;
 import '../../../api/client.dart';
 import '../../../api/models.dart';
 import '../../../labels.dart';
+import '../../../money.dart';
+import '../../../share_links.dart';
 import '../../../state/auth.dart';
 import '../../../ui/file_pick.dart';
 import '../../../ui/property_type_picker.dart';
@@ -25,7 +27,9 @@ class _SummaryTabState extends State<SummaryTab> {
   bool busy = false;
   // Controles de cambios #14 y #22: documentos pendientes de entrega y servicios del inmueble.
   int? pendingDocs;
-  String? services;
+  // Servicios (CC#22), precio sugerido por el cliente (CC#34) y datos de contacto (CC#39).
+  Json? clientData;
+  String? get services => clientData?['availableServices'] as String?;
 
   ExpedienteResponse get e => widget.ctx.expediente;
 
@@ -43,7 +47,7 @@ class _SummaryTabState extends State<SummaryTab> {
       if (!mounted) return;
       setState(() {
         pendingDocs = docs.where((d) => d.markedPending).length;
-        services = data['availableServices'] as String?;
+        clientData = data;
       });
     } catch (_) {}
   }
@@ -121,6 +125,14 @@ class _SummaryTabState extends State<SummaryTab> {
                   FieldView('Domicilio del inmueble', (e.propertyAddress?.isNotEmpty ?? false) ? e.propertyAddress : 'Se tomará de la escritura o el predial', upper: true),
                   if (e.propertyReference != null) FieldView('Referencia que ve el cliente', e.propertyReference, upper: true),
                   FieldView('Servicios con los que cuenta', (services?.trim().isNotEmpty ?? false) ? services : 'Sin capturar (Datos del contrato)', upper: true),
+                  if (e.operationType != 'RENT')
+                    FieldView(
+                      'Precio de venta sugerido por el cliente',
+                      clientData?['suggestedPrice'] != null && clientData?['suggestedPrice'] != ''
+                          ? '${formatMoneyWithCurrency(clientData!['suggestedPrice'])} (informativo)'
+                          : 'El cliente no lo indicó',
+                      upper: true,
+                    ),
                   FieldView('Documentos pendientes de entrega',
                       pendingDocs == null ? '—' : (pendingDocs == 0 ? 'Ninguno' : '$pendingDocs (no bloquean el avance)'), upper: true),
                   FieldView('Creado', formatDateTime(e.createdAt), upper: true),
@@ -193,14 +205,11 @@ class _SummaryTabState extends State<SummaryTab> {
                         ),
                       ),
                       IconButton(tooltip: 'Copiar liga', icon: const Icon(Icons.copy, size: 18), onPressed: () => copyText(context, newLink, 'Liga copiada.')),
-                      IconButton(
-                        tooltip: 'Compartir liga',
-                        icon: const Icon(Icons.share_outlined, size: 18),
-                        onPressed: () => SharePlus.instance.share(ShareParams(text: newLink, subject: 'Liga de tu expediente ${e.folio}')),
-                      ),
                     ],
                   ),
                 ),
+                const SizedBox(height: 10),
+                _ShareMessage(message: uploadLinkMessage(uploadLinkIdentifier(e), newLink), phone: clientData?['phone'] as String?, subject: 'Liga de tu expediente ${e.folio}'),
               ],
               if (auth.can('PUBLIC_LINK_GENERATE')) ...[
                 const SizedBox(height: 12),
@@ -305,7 +314,22 @@ class _SummaryTabState extends State<SummaryTab> {
       'operationType': e.operationType,
       'declaredLegalStatus': e.declaredLegalStatus,
       'propertyAddress': e.propertyAddress ?? '',
+      'propertyReference': e.propertyReference ?? '',
     };
+    // CC#39: datos de contacto del cliente que también se corrigen desde este menú.
+    final initialContact = {
+      'email': (clientData?['email'] as String?) ?? '',
+      'phone': (clientData?['phone'] as String?) ?? '',
+      'notificationAddress': (clientData?['notificationAddress'] as String?) ?? '',
+    };
+    final contact = {...initialContact};
+    String? emailError() {
+      final email = contact['email']!.trim();
+      if (email.isNotEmpty && !_emailPattern.hasMatch(email)) return 'Escribe un correo válido, por ejemplo nombre@correo.com.';
+      if (email.isEmpty && initialContact['email']!.trim().isNotEmpty) return 'El correo no se puede dejar vacío; escribe el correcto.';
+      return null;
+    }
+
     var reason = '';
     var saving = false;
     await showAppSheet(
@@ -359,11 +383,37 @@ class _SummaryTabState extends State<SummaryTab> {
           ),
           const SizedBox(height: 12),
           AppTextField(label: 'Domicilio del inmueble', value: config['propertyAddress'] as String, maxLines: 2, onChanged: (v) => config['propertyAddress'] = v),
+          const SizedBox(height: 12),
+          AppTextField(
+            label: 'Nombre o referencia del inmueble (lo ve el cliente)',
+            value: config['propertyReference'] as String,
+            maxLength: 120,
+            hint: 'Ej. Casa Las Flores',
+            helper: 'Ayuda al cliente a reconocer su liga y la identifica al compartirla por WhatsApp. No cambia el contrato.',
+            onChanged: (v) => config['propertyReference'] = v,
+          ),
           const SizedBox(height: 6),
           ToggleRow(label: 'Régimen de condominio', value: config['condominiumRegime'] == true, onChanged: (v) => setSheet(() => config['condominiumRegime'] = v)),
           if (config['personType'] == 'FISICA')
             ToggleRow(label: 'Firma un apoderado', value: config['signedByAttorney'] == true, onChanged: (v) => setSheet(() => config['signedByAttorney'] = v)),
           const SizedBox(height: 10),
+          Divider(color: ctx.c.border),
+          const SizedBox(height: 6),
+          Text('Datos de contacto del cliente', style: TextStyle(fontWeight: FontWeight.w600, color: ctx.c.fg)),
+          const SizedBox(height: 10),
+          AppTextField(
+            label: 'Correo electrónico',
+            value: contact['email'],
+            keyboardType: TextInputType.emailAddress,
+            error: emailError(),
+            helper: 'Es el correo de contacto del cliente; no cambia el acceso de ningún usuario del sistema.',
+            onChanged: (v) => setSheet(() => contact['email'] = v),
+          ),
+          const SizedBox(height: 12),
+          AppTextField(label: 'Teléfono', value: contact['phone'], keyboardType: TextInputType.phone, onChanged: (v) => contact['phone'] = v),
+          const SizedBox(height: 12),
+          AppTextField(label: 'Domicilio para notificaciones', value: contact['notificationAddress'], maxLines: 2, onChanged: (v) => contact['notificationAddress'] = v),
+          const SizedBox(height: 12),
           AppTextField(
             label: 'Motivo de la corrección',
             maxLines: 2,
@@ -377,11 +427,21 @@ class _SummaryTabState extends State<SummaryTab> {
         Btn(
           'Guardar corrección',
           loading: saving,
-          onPressed: reason.trim().length < 5
+          onPressed: reason.trim().length < 5 || emailError() != null
               ? null
               : () async {
                   setSheet(() => saving = true);
-                  await run(() => api.correctExpediente(e.id, config, reason.trim()), 'Datos corregidos y registrados en la bitácora.');
+                  // Solo los datos de contacto que cambiaron; el correo del cliente no toca ninguna cuenta del personal.
+                  final changed = {
+                    for (final k in contact.keys)
+                      if (contact[k]!.trim() != initialContact[k]!.trim()) k: contact[k]!.trim(),
+                  };
+                  await run(() async {
+                    await api.correctExpediente(e.id, {...config, 'propertyReference': (config['propertyReference'] as String).trim()}, reason.trim());
+                    if (changed.isNotEmpty) await api.updateClientData(e.id, {...changed, 'reason': reason.trim()});
+                    final data = await api.getClientData(e.id);
+                    if (mounted) setState(() => clientData = data);
+                  }, 'Datos corregidos y registrados en la bitácora.');
                   if (ctx.mounted) Navigator.pop(ctx);
                 },
         ),
@@ -481,6 +541,40 @@ class _SummaryTabState extends State<SummaryTab> {
                 },
         ),
       ],
+    );
+  }
+}
+
+final _emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$');
+
+/// CC#35: vista previa del mensaje con el que se comparte la liga (identificador + texto + liga).
+class _ShareMessage extends StatelessWidget {
+  const _ShareMessage({required this.message, required this.phone, required this.subject});
+  final String message, subject;
+  final String? phone;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: c.border)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const MutedText('MENSAJE PARA WHATSAPP (VISTA PREVIA)', size: 11),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(color: c.appBg, borderRadius: BorderRadius.circular(8)),
+          child: SelectableText(message, style: TextStyle(fontSize: 13.5, color: c.fg)),
+        ),
+        const SizedBox(height: 10),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          Btn('Copiar mensaje', icon: Icons.copy, small: true, variant: BtnVariant.secondary, onPressed: () => copyText(context, message, 'Mensaje copiado con la liga.')),
+          Btn('Abrir en WhatsApp', icon: Icons.chat_outlined, small: true, variant: BtnVariant.secondary, onPressed: () => openUrl(context, whatsappShareUrl(message, phone))),
+          Btn('Compartir', icon: Icons.share_outlined, small: true, variant: BtnVariant.secondary, onPressed: () => SharePlus.instance.share(ShareParams(text: message, subject: subject))),
+        ]),
+      ]),
     );
   }
 }

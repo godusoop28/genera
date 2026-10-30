@@ -41,6 +41,7 @@ GoRouter buildRouter(AuthState auth) => GoRouter(
             initialSubtype: s.uri.queryParameters['subtipo'],
             initialOperation: s.uri.queryParameters['operacion'],
             initialAdvisor: s.uri.queryParameters['asesor'],
+            initialClosed: s.uri.queryParameters['cerradas'] == '1',
           ),
         ),
         GoRoute(path: '/expedientes/nuevo', builder: (_, _) => const NewExpedienteScreen()),

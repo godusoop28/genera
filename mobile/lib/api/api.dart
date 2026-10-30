@@ -97,12 +97,14 @@ Future<ExpedienteOverview> getExpedienteOverview({
   String? subtypeId,
   String? operationType,
   String? advisorId,
+  // CC#32: solo los que tienen el cierre completado.
+  bool closed = false,
   int page = 0,
   int size = 18,
 }) async => ExpedienteOverview.fromJson(
   _j(
     await _c.get(
-      '/internal/expedientes/overview${_q({'page': page, 'size': size, 'sort': 'updatedAt,desc', 'q': q?.trim(), 'group': group, ..._portfolio(categoryId, subtypeId, operationType, advisorId)})}',
+      '/internal/expedientes/overview${_q({'page': page, 'size': size, 'sort': 'updatedAt,desc', 'q': q?.trim(), 'group': group, 'closed': closed ? 'true' : null, ..._portfolio(categoryId, subtypeId, operationType, advisorId)})}',
     ),
   ),
 );
@@ -354,6 +356,34 @@ Future<InventoryPage> listInventory({String? q, String? status, String? operatio
     InventoryPage.fromJson(_j(await _c.get('/internal/properties/inventory${_q({'q': q?.trim(), 'status': status, 'operation': operation, 'page': page})}')));
 Future<InventoryItem> getInventoryItem(String online21Id) async => InventoryItem.fromJson(_j(await _c.get('/internal/properties/inventory/$online21Id')));
 Future<CapturedOverview> listCaptured() async => CapturedOverview.fromJson(_j(await _c.get('/internal/properties')));
+/// CC#36: listado "En Genera" filtrado, ordenado (NEWEST, OLDEST, PRICE_ASC, PRICE_DESC) y paginado en el
+/// servidor sobre todas las propiedades. Importes crudos ("5000000"); límites inclusivos; página desde 1.
+Future<CapturedPage> listCapturedPage({
+  String? q,
+  String? tag,
+  String? status,
+  String? operation,
+  String? minPrice,
+  String? maxPrice,
+  String? currency,
+  String sort = 'NEWEST',
+  int page = 1,
+  int size = 20,
+}) async =>
+    CapturedPage.fromJson(_j(await _c.get('/internal/properties${_q({
+      'q': q?.trim(),
+      'tag': tag,
+      'status': status,
+      'operation': operation,
+      'minPrice': minPrice,
+      'maxPrice': maxPrice,
+      'currency': currency,
+      'sort': sort,
+      'page': page,
+      'size': size,
+    })}')));
+/// Trae ya todo el inventario de 21Online (el backend también lo hace solo cada pocos minutos).
+Future<Json> importInventory() async => _j(await _c.post('/internal/properties/import'));
 Future<CapturedProperty> getCaptured(String id) async => CapturedProperty.fromJson(_j(await _c.get('/internal/properties/$id')));
 Future<CapturedProperty> createProperty(Json data) async => CapturedProperty.fromJson(_j(await _c.post('/internal/properties', data)));
 Future<CapturedProperty> updateProperty(String id, Json data) async => CapturedProperty.fromJson(_j(await _c.put('/internal/properties/$id', data)));

@@ -10,6 +10,7 @@ import '../../api/models.dart';
 import '../../config.dart';
 import '../../labels.dart';
 import '../../state/auth.dart';
+import '../../ui/money_field.dart';
 import '../../ui/property_type_picker.dart';
 import '../../ui/shell.dart';
 import '../../ui/widgets.dart';
@@ -17,7 +18,7 @@ import 'crm_ui.dart';
 
 // Propiedades del CRM vinculadas con 21Online (frontend/src/app/propiedades).
 // El inventario se consulta en vivo en 21Online; lo que se da de alta aquí se
-// publica allá y su estado de envío se ve en "Capturadas en Genera".
+// publica allá y su estado de envío se ve en "En Genera".
 
 const _noKey =
     'La conexión con 21Online aún no está configurada (falta la llave ONLINE21_API_KEY en el servidor). Puedes capturar propiedades: quedan pendientes y se envían a 21Online en cuanto se configure.';
@@ -39,20 +40,30 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
   InventoryPage? inventory;
   String? inventoryError;
   CapturedOverview? captured;
-  String? capturedError;
   Timer? _debounce;
   int _request = 0;
+
+  // CC#36: filtros de "En Genera"; se aplican en el servidor sobre todas las propiedades.
+  String cQuery = '', cTag = '', cStatus = '', cOperation = '', minPrice = '', maxPrice = '', currency = 'MXN', sort = 'NEWEST';
+  int cPage = 1;
+  CapturedPage? capturedPage;
+  String? capturedPageError;
+  Timer? _capturedDebounce;
+  int _capturedRequest = 0;
+  bool importing = false;
 
   @override
   void initState() {
     super.initState();
     loadInventory();
     loadCaptured();
+    loadCapturedPage();
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
+    _capturedDebounce?.cancel();
     super.dispose();
   }
 
@@ -71,21 +82,82 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     }
   }
 
+  // Solo para el conteo de la pestaña y los pendientes de envío; el listado sale de [loadCapturedPage].
   Future<void> loadCaptured() async {
     try {
       final result = await api.listCaptured();
-      if (mounted) {
+      if (mounted) setState(() => captured = result);
+    } catch (_) {}
+  }
+
+  /// Importe crudo sin el punto final que puede quedar mientras se escribe ("5000." → "5000").
+  static String _amount(String raw) => raw.replaceAll(RegExp(r'\.$'), '');
+
+  String? get priceError => minPrice.isNotEmpty && maxPrice.isNotEmpty && num.parse(_amount(minPrice)) > num.parse(_amount(maxPrice))
+      ? 'El precio mínimo no puede ser mayor que el máximo.'
+      : null;
+
+  bool get usesPrice => minPrice.isNotEmpty || maxPrice.isNotEmpty || sort == 'PRICE_ASC' || sort == 'PRICE_DESC';
+
+  Future<void> loadCapturedPage() async {
+    final id = ++_capturedRequest;
+    if (priceError != null) return;
+    try {
+      final result = await api.listCapturedPage(
+        q: cQuery,
+        tag: cTag.isEmpty ? null : cTag,
+        status: cStatus.isEmpty ? null : cStatus,
+        operation: cOperation.isEmpty ? null : cOperation,
+        minPrice: minPrice.isEmpty ? null : _amount(minPrice),
+        maxPrice: maxPrice.isEmpty ? null : _amount(maxPrice),
+        currency: usesPrice ? currency : null,
+        sort: sort,
+        page: cPage,
+        size: 20,
+      );
+      if (mounted && id == _capturedRequest) {
         setState(() {
-          captured = result;
-          capturedError = null;
+          capturedPage = result;
+          capturedPageError = null;
         });
       }
     } catch (err) {
-      if (mounted) setState(() => capturedError = crmErrorText(err));
+      if (mounted && id == _capturedRequest) setState(() => capturedPageError = crmErrorText(err));
     }
   }
 
-  Future<void> refresh() => Future.wait([loadInventory(), loadCaptured()]);
+  /// Cambiar un filtro regresa a la primera página; texto y precios se aplican tras una pausa al escribir.
+  void changeCaptured(VoidCallback patch, {bool immediate = true}) {
+    setState(() {
+      patch();
+      cPage = 1;
+    });
+    _capturedDebounce?.cancel();
+    if (immediate) {
+      loadCapturedPage();
+    } else {
+      _capturedDebounce = Timer(const Duration(milliseconds: 400), loadCapturedPage);
+    }
+  }
+
+  /// Trae ya todo el inventario de 21Online (el backend también lo hace solo cada pocos minutos).
+  Future<void> importNow() async {
+    setState(() => importing = true);
+    try {
+      final r = await api.importInventory();
+      if (!mounted) return;
+      final imported = (r['imported'] as num?)?.toInt() ?? 0, updated = (r['updated'] as num?)?.toInt() ?? 0, total = (r['total'] as num?)?.toInt() ?? 0;
+      showToast(context, imported > 0 || updated > 0 ? '21Online: $imported nuevas y $updated actualizadas de $total.' : 'Todo al día: $total propiedades en 21Online.');
+      loadCaptured();
+      loadCapturedPage();
+    } catch (err) {
+      if (mounted) showToast(context, crmErrorText(err));
+    } finally {
+      if (mounted) setState(() => importing = false);
+    }
+  }
+
+  Future<void> refresh() => Future.wait([loadInventory(), loadCaptured(), loadCapturedPage()]);
 
   void onQuery(String v) {
     query = v;
@@ -129,7 +201,7 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
             value: tab,
             options: [
               (id: 'inventory', label: 'Inventario 21Online', count: null),
-              (id: 'captured', label: 'Capturadas en Genera', count: captured?.captured.length),
+              (id: 'captured', label: 'En Genera', count: captured?.captured.length),
             ],
             onChanged: (t) => setState(() => tab = t),
           ),
@@ -139,7 +211,7 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
                 onTap: () => setState(() => tab = 'captured')),
           ],
           const SizedBox(height: 14),
-          if (tab == 'inventory') ..._inventory(configured) else ..._captured(),
+          if (tab == 'inventory') ..._inventory(configured) else ..._captured(auth.can('PROPERTY_MANAGE') && auth.can('LEAD_VIEW_ALL') && configured),
         ],
       ),
     );
@@ -153,6 +225,23 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
       ];
     }
     return [
+      // CC#36: la API de 21Online no filtra ni ordena por precio; el inventario completo con esos filtros está en "En Genera".
+      Text.rich(
+        TextSpan(style: TextStyle(fontSize: 13.5, color: context.c.muted), children: [
+          const TextSpan(text: '¿Buscas por rango de precio u orden por precio o antigüedad? '),
+          WidgetSpan(
+            alignment: PlaceholderAlignment.baseline,
+            baseline: TextBaseline.alphabetic,
+            child: GestureDetector(
+              onTap: () => setState(() => tab = 'captured'),
+              child: Text('Usa la vista En Genera',
+                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: context.c.goldText, decoration: TextDecoration.underline, decorationColor: context.c.goldText)),
+            ),
+          ),
+          const TextSpan(text: ': tiene todo el inventario de la oficina (se actualiza desde 21Online cada pocos minutos).'),
+        ]),
+      ),
+      const SizedBox(height: 12),
       AppTextField(hint: 'Buscar por número de 21Online o colonia', onChanged: onQuery, value: query),
       const SizedBox(height: 10),
       AppSelect<String>(
@@ -221,25 +310,162 @@ class _PropertiesScreenState extends State<PropertiesScreen> {
     ];
   }
 
-  List<Widget> _captured() {
-    final data = captured;
-    if (capturedError != null && data == null) return [LoadError(message: capturedError!, onRetry: loadCaptured)];
-    if (data == null) return const [StateMessage(kind: StateKind.loading, title: 'Cargando propiedades…')];
-    if (data.captured.isEmpty) {
-      return const [
-        StateMessage(kind: StateKind.empty, title: 'Aún no hay propiedades capturadas', description: 'Las que des de alta en Genera aparecerán aquí con su estado de envío a 21Online.'),
-      ];
-    }
-    return spaced(
-      data.captured.map((p) => _CapturedCard(
-            property: p,
-            onTap: () async {
-              await context.push('/propiedades/${p.id}');
-              loadCaptured();
-            },
-          )),
-      10,
-    );
+  static const _sortOptions = [
+    (value: 'NEWEST', label: 'Más recientes primero'),
+    (value: 'OLDEST', label: 'Más antiguas primero'),
+    (value: 'PRICE_ASC', label: 'Precio: de menor a mayor'),
+    (value: 'PRICE_DESC', label: 'Precio: de mayor a menor'),
+  ];
+
+  /// CC#36: todo el inventario que hay en Genera (capturadas aquí e importadas de 21Online) con búsqueda,
+  /// filtros de precio y un criterio de orden, aplicados en el servidor sobre el conjunto completo.
+  List<Widget> _captured(bool canImport) {
+    final data = capturedPage;
+    final anyFilter = cQuery.trim().isNotEmpty || cTag.isNotEmpty || cStatus.isNotEmpty || cOperation.isNotEmpty || minPrice.isNotEmpty || maxPrice.isNotEmpty;
+    return [
+      if (canImport) ...[
+        const MutedText('Todo el inventario de la oficina en 21Online se trae solo cada pocos minutos, con sus fotos y características.', size: 13),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Btn(importing ? 'Trayendo de 21Online…' : 'Traer de 21Online ahora',
+              icon: Icons.refresh, variant: BtnVariant.secondary, small: true, loading: importing, onPressed: importing ? null : importNow),
+        ),
+        const SizedBox(height: 14),
+      ],
+      AppTextField(hint: 'Buscar por título, colonia, asesor, número o etiqueta', value: cQuery, onChanged: (v) => changeCaptured(() => cQuery = v, immediate: false)),
+      const SizedBox(height: 10),
+      AppSelect<String>(
+        value: cStatus,
+        options: [
+          (value: '', label: 'Todos los estatus'),
+          for (final s in ['enPromocion', 'suspendida', 'conIntencion', 'conContratoFirmado', 'cerrada', 'cancelada']) (value: s, label: listingStatusLabels[s]!),
+        ],
+        onChanged: (v) => changeCaptured(() => cStatus = v),
+      ),
+      const SizedBox(height: 10),
+      AppSelect<String>(value: cOperation, options: optionsOf(listingOperationLabels, empty: 'Venta y renta'), onChanged: (v) => changeCaptured(() => cOperation = v)),
+      if (data != null && data.tags.isNotEmpty) ...[
+        const SizedBox(height: 10),
+        AppSelect<String>(
+          value: data.tags.contains(cTag) ? cTag : '',
+          options: [(value: '', label: 'Todas las etiquetas'), for (final t in data.tags) (value: t, label: t)],
+          onChanged: (v) => changeCaptured(() => cTag = v),
+        ),
+      ],
+      const SizedBox(height: 12),
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(
+          child: MoneyField(
+            label: 'Precio mínimo',
+            hint: 'Sin mínimo',
+            currency: currency,
+            value: minPrice,
+            error: priceError,
+            onChanged: (v) => changeCaptured(() => minPrice = v, immediate: false),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: MoneyField(label: 'Precio máximo', hint: 'Sin máximo', currency: currency, value: maxPrice, onChanged: (v) => changeCaptured(() => maxPrice = v, immediate: false)),
+        ),
+      ]),
+      const SizedBox(height: 10),
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(
+          width: 110,
+          child: AppSelect<String>(
+            label: 'Moneda',
+            value: currency,
+            options: const [(value: 'MXN', label: 'MXN'), (value: 'USD', label: 'USD')],
+            onChanged: (v) => changeCaptured(() => currency = v),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(child: AppSelect<String>(label: 'Ordenar por', value: sort, options: _sortOptions, onChanged: (v) => changeCaptured(() => sort = v))),
+      ]),
+      if (usesPrice) ...[
+        const SizedBox(height: 8),
+        MutedText(
+          'Los precios se comparan en $currency con el precio de la operación (venta o renta mensual); los límites incluyen el importe indicado. '
+          'Las propiedades sin precio quedan fuera del rango y al final del orden por precio.',
+          size: 12,
+        ),
+      ],
+      const SizedBox(height: 14),
+      if (priceError != null)
+        StateMessage(kind: StateKind.noResults, title: 'Revisa el rango de precios', description: priceError)
+      else if (capturedPageError != null && data == null)
+        LoadError(message: capturedPageError!, onRetry: loadCapturedPage)
+      else if (data == null)
+        const StateMessage(kind: StateKind.loading, title: 'Cargando propiedades…')
+      else if (data.totalItems == 0)
+        anyFilter
+            ? StateMessage(
+                kind: StateKind.noResults,
+                title: 'Sin resultados',
+                description: 'Ninguna propiedad coincide con estos filtros.',
+                action: Btn(
+                  'Quitar filtros',
+                  variant: BtnVariant.secondary,
+                  onPressed: () => changeCaptured(() {
+                    cQuery = '';
+                    cTag = '';
+                    cStatus = '';
+                    cOperation = '';
+                    minPrice = '';
+                    maxPrice = '';
+                  }),
+                ),
+              )
+            : const StateMessage(
+                kind: StateKind.empty,
+                title: 'Aún no hay propiedades en Genera',
+                description: 'Aquí aparecen las que des de alta en Genera y todo el inventario que se trae de 21Online.',
+              )
+      else ...[
+        ...spaced(
+          data.captured.map((p) => _CapturedCard(
+                property: p,
+                onTap: () async {
+                  await context.push('/propiedades/${p.id}');
+                  loadCaptured();
+                  loadCapturedPage();
+                },
+              )),
+          10,
+        ),
+        const SizedBox(height: 14),
+        Row(children: [
+          Expanded(
+            child: MutedText(
+              'Página ${data.page} de ${data.totalPages < 1 ? 1 : data.totalPages} · ${data.totalItems} ${data.totalItems == 1 ? 'propiedad' : 'propiedades'}',
+              size: 12.5,
+            ),
+          ),
+          IconButton(
+            tooltip: 'Página anterior',
+            onPressed: data.page <= 1
+                ? null
+                : () {
+                    setState(() => cPage = data.page - 1);
+                    loadCapturedPage();
+                  },
+            icon: const Icon(Icons.chevron_left),
+          ),
+          IconButton(
+            tooltip: 'Página siguiente',
+            onPressed: data.page >= data.totalPages
+                ? null
+                : () {
+                    setState(() => cPage = data.page + 1);
+                    loadCapturedPage();
+                  },
+            icon: const Icon(Icons.chevron_right),
+          ),
+        ]),
+      ],
+    ];
   }
 }
 
@@ -335,12 +561,33 @@ class _CapturedCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.c;
     final d = property.data;
+    final photo = property.photos.isNotEmpty ? property.photos.first : null;
+    final noPhoto = Container(width: 64, height: 48, color: c.appBg, alignment: Alignment.center, child: Icon(Icons.hide_image_outlined, size: 16, color: c.muted));
     return AppCard(
       onTap: onTap,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(d.headline, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: c.fg), maxLines: 2, overflow: TextOverflow.ellipsis),
-        Text('${subtypeLabel(d.subtype)} · ${d.neighborhood}, ${d.municipality} · ${timeAgo(property.createdAt)}',
-            style: TextStyle(fontSize: 12, color: c.muted), overflow: TextOverflow.ellipsis),
+        Row(children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: photo == null ? noPhoto : Image.network(photo, width: 64, height: 48, fit: BoxFit.cover, errorBuilder: (_, _, _) => noPhoto),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(d.headline, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: c.fg), maxLines: 2, overflow: TextOverflow.ellipsis),
+              Text(
+                '${subtypeLabel(d.subtype)} · ${d.neighborhood}, ${d.municipality} · ${property.origin == 'ONLINE21' ? 'de 21Online' : 'capturada'} · alta ${timeAgo(property.listedAt ?? property.createdAt)}',
+                style: TextStyle(fontSize: 12, color: c.muted),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ]),
+          ),
+        ]),
+        if (property.tags.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Wrap(spacing: 4, runSpacing: 4, children: [for (final t in property.tags) AppBadge(t, tone: Tone.gold, icon: Icons.sell_outlined)]),
+        ],
         const SizedBox(height: 6),
         Text(listingPrice(d.operation, d.salePrice, d.rentPrice, d.currency), style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.fg)),
         const SizedBox(height: 10),

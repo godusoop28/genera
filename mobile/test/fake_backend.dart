@@ -593,7 +593,7 @@ final List<({String method, String path, Object? body})> sentRequests = [];
     ]);
   }
   if (p == '/internal/properties/inventory/634294') return (200, {'listing': _listing, 'advisor': _ana, 'generaId': null});
-  if (p == '/internal/properties') return (200, {'configured': true, 'captured': [_captured]});
+  if (p == '/internal/properties') return (200, {'configured': true, 'captured': [_captured], 'page': 1, 'size': 20, 'totalItems': 1, 'totalPages': 1, 'tags': []});
   if (p == '/internal/properties/prop-1') return (200, _captured);
   if (p == '/internal/crm/advisors') return (200, _advisors);
   if (p == '/internal/crm/assignment-settings') {

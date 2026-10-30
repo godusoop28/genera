@@ -556,6 +556,7 @@ class AppTextField extends StatefulWidget {
     this.inputFormatters,
     this.autofillHints,
     this.controller,
+    this.suffixText,
   });
 
   final String? label;
@@ -571,6 +572,9 @@ class AppTextField extends StatefulWidget {
   final List<TextInputFormatter>? inputFormatters;
   final Iterable<String>? autofillHints;
   final TextEditingController? controller;
+
+  /// Texto fijo al final del campo (p. ej. la moneda "MXN").
+  final String? suffixText;
 
   @override
   State<AppTextField> createState() => _AppTextFieldState();
@@ -620,7 +624,7 @@ class _AppTextFieldState extends State<AppTextField> {
           inputFormatters: widget.inputFormatters,
           autofillHints: widget.autofillHints,
           style: TextStyle(fontSize: 15, color: widget.enabled ? c.fg : c.muted),
-          decoration: InputDecoration(hintText: widget.hint, helperText: widget.helper, errorText: widget.error, counterText: ''),
+          decoration: InputDecoration(hintText: widget.hint, helperText: widget.helper, helperMaxLines: 3, errorText: widget.error, errorMaxLines: 3, counterText: '', suffixText: widget.suffixText),
         ),
       ],
     );

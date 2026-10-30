@@ -186,6 +186,7 @@ class ExpedienteResponse {
         assignedAdvisorName = _s(j['assignedAdvisorName']),
         decisionReason = _s(j['decisionReason']),
         correctable = _b(j['correctable']),
+        closingCompletedOn = _s(j['closingCompletedOn']),
         createdAt = _sr(j['createdAt']),
         updatedAt = _sr(j['updatedAt']);
   final String id, folio, ownerDisplayName, status, personType, signerCharacter, accreditationType, propertyCaseType, operationType, declaredLegalStatus;
@@ -197,6 +198,9 @@ class ExpedienteResponse {
 
   /// Control de Cambios #24: asesor responsable (null = sin asignar).
   final String? assignedAdvisorId, assignedAdvisorName;
+
+  /// CC#32: fecha ("2026-10-29") en que se completó el seguimiento de cierre; null = no cerrada.
+  final String? closingCompletedOn;
   final String createdAt, updatedAt;
 
   /// Control de Cambios #26: catálogo de inmuebles. Sin subcategoría = pendiente de clasificación.
@@ -329,9 +333,13 @@ class ExpedienteOverview {
         total = _i((j['counts'] as Map?)?['total']),
         pending = _i((j['counts'] as Map?)?['pending']),
         inReview = _i((j['counts'] as Map?)?['inReview']),
-        complete = _i((j['counts'] as Map?)?['complete']);
+        complete = _i((j['counts'] as Map?)?['complete']),
+        closed = _i(j['closed']);
   final PageResponse<ExpedienteOverviewItem> page;
   final int total, pending, inReview, complete;
+
+  /// CC#32: cuántos activos tienen el cierre completado.
+  final int closed;
 }
 
 /// Participante (respuesta) — también se usa como borrador editable con [toRequest].
@@ -507,8 +515,13 @@ class ComplianceChecklist {
 }
 
 class ClosingCase {
-  ClosingCase.fromJson(Json j) : status = _sr(j['status']);
+  ClosingCase.fromJson(Json j)
+      : status = _sr(j['status']),
+        closedOn = _s(j['closedOn']);
   final String status;
+
+  /// CC#32: fecha de cierre ("2026-10-29") cuando el seguimiento está completado.
+  final String? closedOn;
 }
 
 class ClosingTask {
@@ -1420,8 +1433,19 @@ class CapturedProperty {
         createdBy = NamedRef.maybe(j['createdBy']),
         createdAt = _sr(j['createdAt']),
         canEdit = _b(j['canEdit']),
-        propertyTypeLabel = _s(j['propertyTypeLabel']);
+        propertyTypeLabel = _s(j['propertyTypeLabel']),
+        origin = _s(j['origin']),
+        photos = (j['photos'] as List? ?? const []).whereType<String>().toList(),
+        tags = (j['tags'] as List? ?? const []).whereType<String>().toList(),
+        listedAt = _s(j['listedAt']);
   final String id, syncStatus, createdAt;
+
+  /// GENERA (capturada aquí) u ONLINE21 (traída de 21Online).
+  final String? origin;
+  final List<String> photos, tags;
+
+  /// CC#36: fecha de alta (fechaAlta de 21Online o la de captura en Genera).
+  final String? listedAt;
   final int? online21Id;
   final String? syncError, syncedAt;
 
@@ -1438,6 +1462,23 @@ class CapturedOverview {
         captured = _list(j['captured'], CapturedProperty.fromJson);
   final bool configured;
   final List<CapturedProperty> captured;
+}
+
+/// CC#36: página del listado "En Genera" con filtros y orden aplicados en el servidor.
+class CapturedPage {
+  CapturedPage.fromJson(Json j)
+      : configured = j['configured'] != false,
+        captured = _list(j['captured'], CapturedProperty.fromJson),
+        page = _i(j['page'], 1),
+        totalItems = _i(j['totalItems']),
+        totalPages = _i(j['totalPages']),
+        tags = (j['tags'] as List? ?? const []).whereType<String>().toList();
+  final bool configured;
+  final List<CapturedProperty> captured;
+  final int page, totalItems, totalPages;
+
+  /// Todas las etiquetas existentes (para el filtro).
+  final List<String> tags;
 }
 
 // ---------------------------------------------------------------------------

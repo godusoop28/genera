@@ -7,7 +7,9 @@ import '../../../api/api.dart' as api;
 import '../../../api/client.dart';
 import '../../../api/models.dart';
 import '../../../labels.dart';
+import '../../../money.dart';
 import '../../../ui/file_pick.dart';
+import '../../../ui/money_field.dart';
 import '../../../ui/widgets.dart';
 import '../expediente_detail_screen.dart';
 import '../feasibility_chat_screen.dart';
@@ -38,7 +40,8 @@ class _FeasibilityTabState extends State<FeasibilityTab> {
   List<FeasibilityReport>? reports;
   late String operation = widget.ctx.expediente.operationType == 'RENT' ? 'RENT' : 'SALE';
   String authorizedPrice = '';
-  final price = TextEditingController();
+  // CC#38: importe crudo ("6900000"); el formato con "$" y comas es solo visual.
+  String askingPrice = '';
   String notes = '';
   List<UploadFile> photos = [];
   bool sending = false;
@@ -55,16 +58,15 @@ class _FeasibilityTabState extends State<FeasibilityTab> {
     api.getContractData(id).then((c) {
       final p = num.tryParse(c.price) ?? 0;
       if (p <= 0 || !mounted) return;
-      authorizedPrice = p.toStringAsFixed(0);
+      authorizedPrice = moneyToRaw(p);
       // El precio autorizado del contrato es de venta: no aplica a una renta mensual.
-      if (operation == 'SALE' && price.text.isEmpty) setState(() => price.text = authorizedPrice);
+      if (operation == 'SALE' && askingPrice.isEmpty) setState(() => askingPrice = authorizedPrice);
     }).catchError((_) => null);
   }
 
   @override
   void dispose() {
     poll?.cancel();
-    price.dispose();
     super.dispose();
   }
 
@@ -99,7 +101,7 @@ class _FeasibilityTabState extends State<FeasibilityTab> {
     try {
       await api.requestFeasibility(id,
           operation: operation,
-          askingPrice: price.text.replaceAll(RegExp(r'[^0-9.]'), ''), notes: notes, photos: photos, onProgress: (p) => mounted ? setState(() => progress = p) : null);
+          askingPrice: askingPrice.replaceAll(RegExp(r'\.$'), ''), notes: notes, photos: photos, onProgress: (p) => mounted ? setState(() => progress = p) : null);
       setState(() => photos = []);
       if (mounted) showToast(context, 'Factibilidad en proceso. La IA está analizando los documentos e investigando el mercado; tarda varios minutos.');
       await load();
@@ -146,16 +148,16 @@ class _FeasibilityTabState extends State<FeasibilityTab> {
                 // Cambiar de operación cambia el sentido del precio (total de venta vs. renta mensual).
                 setState(() {
                   operation = v;
-                  price.text = v == 'SALE' ? authorizedPrice : '';
+                  askingPrice = v == 'SALE' ? authorizedPrice : '';
                 });
               },
             ),
             const SizedBox(height: 10),
-            AppTextField(
-              label: operation == 'RENT' ? 'Renta mensual solicitada (MXN)' : 'Precio de venta solicitado (MXN)',
-              controller: price,
-              keyboardType: TextInputType.number,
-              hint: operation == 'RENT' ? 'Ej. 25000' : 'Ej. 6900000',
+            MoneyField(
+              label: operation == 'RENT' ? 'Renta mensual solicitada' : 'Precio de venta solicitado',
+              value: askingPrice,
+              onChanged: (v) => setState(() => askingPrice = v),
+              hint: operation == 'RENT' ? r'Ej. $25,000' : r'Ej. $6,900,000',
               helper: operation == 'RENT' ? 'Renta por mes. Si no la sabes, la IA propone una.' : 'Se toma del precio autorizado si ya se capturó.',
             ),
             const SizedBox(height: 10),
@@ -232,7 +234,8 @@ class _ReportCard extends StatelessWidget {
     final cls = _classification[s?.classification];
     final c = context.c;
     final rent = r.operation == 'RENT';
-    String money(int? v) => v == null ? '—' : (rent ? '${formatMoney(v)}/mes' : formatMoney(v));
+    // CC#38: importes con separadores de miles y moneda ("$5,000,000 MXN").
+    String money(int? v) => v == null ? '—' : (rent ? '${formatMoneyWithCurrency(v)}/mes' : formatMoneyWithCurrency(v));
     return AppCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
@@ -268,7 +271,7 @@ class _ReportCard extends StatelessWidget {
             const SizedBox(height: 12),
             FieldGrid(children: [
               FieldView('Expectativa del propietario', money(s.ownerPrice)),
-              FieldView(rent ? 'Rango de renta sugerido' : 'Rango sugerido', s.rangeMin != null && s.rangeMax != null ? '${formatMoney(s.rangeMin)} – ${money(s.rangeMax)}' : '—'),
+              FieldView(rent ? 'Rango de renta sugerido' : 'Rango sugerido', s.rangeMin != null && s.rangeMax != null ? '${formatMoneyWithCurrency(s.rangeMin)} – ${money(s.rangeMax)}' : '—'),
               FieldView(rent ? 'Renta mensual recomendada' : 'Precio recomendado de salida', money(s.recommendedPrice)),
               FieldView('Comparables', '${s.comparables.length}'),
             ]),

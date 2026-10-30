@@ -11,6 +11,7 @@ import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../labels.dart';
 import '../../state/auth.dart';
+import '../../ui/closed_badge.dart';
 import '../../ui/shell.dart';
 import '../../ui/property_type_picker.dart';
 import '../../ui/widgets.dart';
@@ -28,8 +29,11 @@ String _operationText(ExpedienteResponse e) {
 
 class ExpedientesScreen extends StatefulWidget {
   /// Control de Cambios #24/#26: los reportes abren el listado ya filtrado (?categoria=&subtipo=&operacion=&asesor=).
-  const ExpedientesScreen({super.key, this.initialCategory, this.initialSubtype, this.initialOperation, this.initialAdvisor});
+  const ExpedientesScreen({super.key, this.initialCategory, this.initialSubtype, this.initialOperation, this.initialAdvisor, this.initialClosed = false});
   final String? initialCategory, initialSubtype, initialOperation, initialAdvisor;
+
+  /// CC#32: ?cerradas=1 abre solo las operaciones con el cierre completado.
+  final bool initialClosed;
 
   @override
   State<ExpedientesScreen> createState() => _ExpedientesScreenState();
@@ -42,6 +46,8 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
   late String subtypeId = widget.initialSubtype ?? '';
   late String operationType = operationLabels.containsKey(widget.initialOperation) ? widget.initialOperation! : '';
   late String advisorId = widget.initialAdvisor ?? '';
+  // CC#32: solo los que tienen el cierre completado.
+  late bool closedOnly = widget.initialClosed;
   List<AdvisorOption> advisors = [];
   List<ExpedienteOverviewItem>? items;
   ExpedienteOverview? last;
@@ -94,7 +100,7 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
     final id = ++_request;
     setState(() => loading = true);
     try {
-      final res = await api.getExpedienteOverview(q: query, group: group.isEmpty ? null : group, page: 0, size: _pageSize, categoryId: _portfolio.categoryId, subtypeId: _portfolio.subtypeId, operationType: _portfolio.operationType, advisorId: _portfolio.advisorId);
+      final res = await api.getExpedienteOverview(q: query, group: group.isEmpty ? null : group, page: 0, size: _pageSize, categoryId: _portfolio.categoryId, subtypeId: _portfolio.subtypeId, operationType: _portfolio.operationType, advisorId: _portfolio.advisorId, closed: closedOnly);
       if (!mounted || id != _request) return;
       setState(() {
         last = res;
@@ -121,7 +127,7 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
       moreError = null;
     });
     try {
-      final res = await api.getExpedienteOverview(q: query, group: group.isEmpty ? null : group, page: page + 1, size: _pageSize, categoryId: _portfolio.categoryId, subtypeId: _portfolio.subtypeId, operationType: _portfolio.operationType, advisorId: _portfolio.advisorId);
+      final res = await api.getExpedienteOverview(q: query, group: group.isEmpty ? null : group, page: page + 1, size: _pageSize, categoryId: _portfolio.categoryId, subtypeId: _portfolio.subtypeId, operationType: _portfolio.operationType, advisorId: _portfolio.advisorId, closed: closedOnly);
       if (!mounted || id != _request) return;
       final seen = items!.map((i) => i.expediente.id).toSet();
       setState(() {
@@ -155,6 +161,7 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
       );
 
   bool get filtering =>
+      closedOnly ||
       query.trim().isNotEmpty || group.isNotEmpty || categoryId.isNotEmpty || subtypeId.isNotEmpty || operationType.isNotEmpty || advisorId.isNotEmpty;
 
   @override
@@ -212,6 +219,24 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
                     setState(() => group = g);
                     load();
                   },
+                ),
+                const SizedBox(height: 8),
+                // CC#32: operaciones con el cierre completado (se combina con los demás filtros).
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: FilterChip(
+                    avatar: Icon(Icons.flag_outlined, size: 16, color: closedOnly ? Colors.white : context.c.muted),
+                    label: Text('Cerradas${last != null ? ' · ${last!.closed}' : ''}'),
+                    selected: closedOnly,
+                    showCheckmark: false,
+                    selectedColor: context.c.successText,
+                    labelStyle: TextStyle(color: closedOnly ? Colors.white : context.c.muted, fontWeight: FontWeight.w500),
+                    tooltip: 'Expedientes cuyo seguimiento de cierre ya se completó',
+                    onSelected: (v) {
+                      setState(() => closedOnly = v);
+                      load();
+                    },
+                  ),
                 ),
                 const SizedBox(height: 12),
                 PropertyTypeFilters(
@@ -273,7 +298,11 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
                               ? StateMessage(
                                   kind: StateKind.noResults,
                                   title: 'Sin resultados',
-                                  description: query.trim().isNotEmpty ? 'Ningún expediente coincide con “${query.trim()}” en este filtro.' : 'No hay expedientes en este filtro.',
+                                  description: query.trim().isNotEmpty
+                                      ? 'Ningún expediente coincide con “${query.trim()}” en este filtro.'
+                                      : closedOnly
+                                      ? 'No hay operaciones con el cierre completado en este filtro.'
+                                      : 'No hay expedientes en este filtro.',
                                   action: Btn(
                                     'Quitar filtros',
                                     variant: BtnVariant.secondary,
@@ -285,6 +314,7 @@ class _ExpedientesScreenState extends State<ExpedientesScreen> {
                                         subtypeId = '';
                                         operationType = '';
                                         advisorId = '';
+                                        closedOnly = false;
                                       });
                                       load();
                                     },
@@ -404,6 +434,7 @@ class ExpedienteCard extends StatelessWidget {
               Flexible(child: AppBadge(label(backendStatusLabels, e.status), tone: backendStatusTone[e.status] ?? Tone.neutral)),
             ],
           ),
+          if (e.closingCompletedOn != null) ...[const SizedBox(height: 8), ClosedBadge(closedOn: e.closingCompletedOn!)],
           const SizedBox(height: 12),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -444,6 +475,20 @@ class ExpedienteCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Divider(color: c.border),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(Icons.person_outline, size: 16, color: c.muted),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  '${e.closingCompletedOn != null ? 'Asesor responsable: ' : ''}${e.assignedAdvisorName ?? 'Sin asesor asignado'}',
+                  style: TextStyle(fontSize: 13, color: c.muted),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -552,6 +597,7 @@ class ExpedienteRow extends StatelessWidget {
                     runSpacing: 4,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
+                      if (e.closingCompletedOn != null) ClosedBadge(closedOn: e.closingCompletedOn!),
                       AppBadge(label(backendStatusLabels, e.status), tone: backendStatusTone[e.status] ?? Tone.neutral),
                       MutedText(pct == null ? 'Sin documentos obligatorios' : 'Aprobados ${p.accepted} de ${p.required} ($pct%)', size: 12),
                     ],

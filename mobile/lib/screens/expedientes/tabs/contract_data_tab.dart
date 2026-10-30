@@ -8,8 +8,10 @@ import '../../../api/api.dart' as api;
 import '../../../api/client.dart';
 import '../../../api/models.dart';
 import '../../../detected_data.dart';
+import '../../../money.dart';
 import '../../../property_services.dart';
 import '../../../state/auth.dart';
+import '../../../ui/money_field.dart';
 import '../../../ui/widgets.dart';
 import '../expediente_detail_screen.dart';
 
@@ -94,6 +96,9 @@ class _ContractDataTabState extends State<ContractDataTab> {
     try {
       final results = await Future.wait([api.getClientData(e.id), api.getLegalDetails(e.id), api.loadDraft(draftKey).catchError((_) => null)]);
       final serverData = results[0] as Json;
+      // CC#38: el precio se edita como importe crudo ("5000000"), sin ceros decimales de más.
+      final rawPrice = moneyToRaw(serverData['authorizedPrice']);
+      serverData['authorizedPrice'] = rawPrice.isEmpty ? null : rawPrice;
       final serverLegal = results[1] as Json;
       final payload = results[2] as String?;
       savedSnapshot = jsonEncode({'data': serverData, 'legal': serverLegal});
@@ -182,7 +187,7 @@ class _ContractDataTabState extends State<ContractDataTab> {
     Object? blankNull(Object? v) => v == '' ? null : v;
     try {
       await api.updateClientData(e.id, {
-        'authorizedPrice': blankNull(d['authorizedPrice']),
+        'authorizedPrice': d['authorizedPrice'] == null || d['authorizedPrice'] == '' ? null : '${d['authorizedPrice']}'.replaceAll(RegExp(r'\.$'), ''),
         'contractSignatureDate': blankNull(d['contractSignatureDate']),
         'email': d['email'],
         'phone': d['phone'],
@@ -328,7 +333,21 @@ class _ContractDataTabState extends State<ContractDataTab> {
           AppCard(
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               const CardHeader(title: 'Precio, firma y autorizaciones'),
-              field('Precio autorizado (MXN)', d['authorizedPrice'], (v) => setData('authorizedPrice', numOrNull(v)), number: true),
+              // CC#38: importe con separadores de miles y moneda; el valor guardado no cambia.
+              MoneyField(
+                label: 'Precio autorizado',
+                enabled: editable,
+                value: d['authorizedPrice'] is num ? moneyToRaw(d['authorizedPrice']) : '${d['authorizedPrice'] ?? ''}',
+                onChanged: (raw) => setData('authorizedPrice', raw.isEmpty ? null : raw),
+              ),
+              // CC#34: lo que sugirió el cliente desde su liga; solo informativo.
+              Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 14),
+                child: MutedText(
+                  'Sugerido por el cliente: ${formatMoneyWithCurrency(d['suggestedPrice'], fallback: 'no lo indicó')} (informativo; no cambia este precio).',
+                  size: 12,
+                ),
+              ),
               field('Fecha de firma del contrato', d['contractSignatureDate'], (v) => setData('contractSignatureDate', v.isEmpty ? null : v), date: true),
               field('Medios de publicidad autorizados por el cliente', legal!['advertisingMedia'], (v) => changed(() => legal = {...legal!, 'advertisingMedia': v}),
                   hint: 'Ej. portales inmobiliarios, redes sociales y letrero en el inmueble.'),

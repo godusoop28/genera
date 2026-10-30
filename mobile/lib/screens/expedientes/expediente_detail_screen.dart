@@ -8,6 +8,7 @@ import '../../api/models.dart';
 import '../../config.dart';
 import '../../labels.dart';
 import '../../state/auth.dart';
+import '../../ui/closed_badge.dart';
 import '../../ui/property_key_sheet.dart';
 import '../../ui/shell.dart';
 import '../../ui/widgets.dart';
@@ -216,7 +217,25 @@ class _ExpedienteDetailScreenState extends State<ExpedienteDetailScreen> with Ti
                     const AppBadge('Sin clave', tone: Tone.warning),
                   AppBadge(label(backendStatusLabels, e.status), tone: backendStatusTone[e.status] ?? Tone.neutral),
                   if (!e.correctable) const AppBadge('Datos bloqueados (contrato firmado o expediente decidido)'),
+                  if (e.closingCompletedOn != null) ClosedBadge(closedOn: e.closingCompletedOn!, withDate: false),
                 ]),
+                // CC#32: la operación ya tiene el seguimiento de cierre completado.
+                if (e.closingCompletedOn != null) ...[
+                  const SizedBox(height: 12),
+                  Notice(
+                    tone: Tone.success,
+                    icon: Icons.flag_outlined,
+                    child: Text.rich(
+                      TextSpan(children: [
+                        const TextSpan(text: 'Operación cerrada', style: TextStyle(fontWeight: FontWeight.w600)),
+                        TextSpan(
+                          text: ' el ${formatClosingDate(e.closingCompletedOn!, long: true)} · Asesor responsable: ${e.assignedAdvisorName ?? 'sin asesor asignado'}. '
+                              'El historial y los datos anteriores se conservan en la pestaña Seguimiento y la Bitácora.',
+                        ),
+                      ]),
+                    ),
+                  ),
+                ],
                 if (next != null) ...[
                   const SizedBox(height: 12),
                   Container(

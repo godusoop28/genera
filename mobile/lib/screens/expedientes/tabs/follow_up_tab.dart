@@ -6,6 +6,7 @@ import '../../../api/client.dart';
 import '../../../api/models.dart';
 import '../../../labels.dart';
 import '../../../state/auth.dart';
+import '../../../ui/closed_badge.dart';
 import '../../../ui/widgets.dart';
 import '../expediente_detail_screen.dart';
 
@@ -62,6 +63,7 @@ class _FollowUpTabState extends State<FollowUpTab> {
     final auth = context.watch<AuthState>();
     final c = context.c;
     final cl = closing;
+    final closedOn = cl is ClosingCase ? (cl.closedOn ?? widget.ctx.expediente.closingCompletedOn) : null;
     return TabBody(
       onRefresh: load,
       children: [
@@ -71,7 +73,19 @@ class _FollowUpTabState extends State<FollowUpTab> {
             if (cl == null) const MutedText('Cargando…'),
             if (cl == 'not_started') const MutedText('Todavía no inicia: el contrato no se ha firmado por todas las partes.'),
             if (cl is ClosingCase) ...[
-              Align(alignment: Alignment.centerLeft, child: AppBadge(label(closingStatusLabels, cl.status), tone: cl.status == 'COMPLETED' ? Tone.success : Tone.info)),
+              Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                AppBadge(label(closingStatusLabels, cl.status), tone: cl.status == 'COMPLETED' ? Tone.success : Tone.info),
+                // CC#32: operación cerrada, con fecha de cierre y asesor responsable.
+                if (cl.status == 'COMPLETED') ClosedBadge(closedOn: closedOn ?? '', withDate: closedOn != null),
+              ]),
+              if (cl.status == 'COMPLETED') ...[
+                const SizedBox(height: 6),
+                MutedText(
+                  '${closedOn != null ? 'Fecha de cierre: ${formatClosingDate(closedOn, long: true)}' : 'Fecha de cierre sin registrar'}'
+                  ' · Asesor responsable: ${widget.ctx.expediente.assignedAdvisorName ?? 'sin asesor asignado'}',
+                  size: 12.5,
+                ),
+              ],
               const SizedBox(height: 10),
               for (final t in tasks)
                 Container(
