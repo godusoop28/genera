@@ -3,10 +3,12 @@
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import { MoneyInput } from "@/components/ui/MoneyInput";
 import { SaveStatus } from "@/components/ui/SaveStatus";
 import { useToast } from "@/components/ui/Toast";
 import { getContractReadiness, getVisitInstructions } from "@/lib/api/contracts";
 import { getClientData, getLegalDetails, updateClientData, updateLegalDetails } from "@/lib/api/expedientes";
+import { formatMoneyWithCurrency, moneyToRaw } from "@/lib/money";
 import { autofillExpediente, getExpedienteExtractedFields } from "@/lib/api/extraction";
 import type { ContractReadinessResponse, LegalDetails, ManualClientDataResponse } from "@/lib/api/types";
 import { DraftSync, type DraftSaveState } from "@/lib/draft-sync";
@@ -94,8 +96,10 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
         loadSide();
         return Promise.all([getClientData(expediente.id), getLegalDetails(expediente.id), sync.restore()]);
       })
-      .then(([serverData, serverLegal, payload]) => {
+      .then(([rawServerData, serverLegal, payload]) => {
         if (!active) return;
+        // CC#38: el precio se edita como importe crudo ("5000000"), sin ceros decimales de más.
+        const serverData = { ...rawServerData, authorizedPrice: moneyToRaw(rawServerData.authorizedPrice) || null };
         savedSnapshot.current = JSON.stringify({ data: serverData, legal: serverLegal });
         let draft: ContractDataDraft | null = null;
         try {
@@ -194,7 +198,7 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
     setSaving(true);
     try {
       await updateClientData(expediente.id, {
-        authorizedPrice: data.authorizedPrice === "" ? null : data.authorizedPrice,
+        authorizedPrice: data.authorizedPrice === "" || data.authorizedPrice == null ? null : String(data.authorizedPrice).replace(/\.$/, ""),
         contractSignatureDate: data.contractSignatureDate || null,
         email: data.email,
         phone: data.phone,
@@ -307,7 +311,19 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
       <Card>
         <CardHeader title="Precio, firma y autorizaciones" />
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field disabled={!editable} label="Precio autorizado (MXN)" type="number" value={data.authorizedPrice} onChange={(v) => setData2({ authorizedPrice: num(v) })} />
+          <div>
+            {/* CC#38: importe con separadores de miles y moneda; el valor guardado no cambia. */}
+            <MoneyInput
+              disabled={!editable}
+              label="Precio autorizado"
+              value={typeof data.authorizedPrice === "string" ? data.authorizedPrice : moneyToRaw(data.authorizedPrice)}
+              onChange={(raw) => setData2({ authorizedPrice: raw === "" ? null : raw })}
+            />
+            {/* CC#34: lo que sugirió el cliente desde su liga; solo informativo. */}
+            <p className="mt-1 text-xs text-muted">
+              Sugerido por el cliente: {formatMoneyWithCurrency(data.suggestedPrice, "MXN", "no lo indicó")} (informativo; no cambia este precio).
+            </p>
+          </div>
           <Field disabled={!editable} label="Fecha de firma del contrato" type="date" value={data.contractSignatureDate} onChange={(v) => setData2({ contractSignatureDate: v })} />
           <Field disabled={!editable}
             label="Medios de publicidad autorizados por el cliente"

@@ -158,7 +158,12 @@ class Online21Listings implements PropertyListings {
   }
 
   private static RemoteListing remote(JsonNode node) {
-    return new RemoteListing(node.path("id").asLong(), Online21ListingMapper.toDraft(node), instant(node.get("fechaModificacion")), Online21ListingMapper.photos(node));
+    return new RemoteListing(
+        node.path("id").asLong(),
+        Online21ListingMapper.toDraft(node),
+        instant(node.get("fechaModificacion")),
+        Online21ListingMapper.photos(node),
+        instant(node.get("fechaAlta")));
   }
 
   /** Consulta ligera (solo id y fecha) en lotes de 30 con el filtro id[] de 21Online. */

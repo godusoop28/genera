@@ -1,6 +1,7 @@
 "use client";
 
 import { useCanSeeCrm } from "@/components/crm/CrmUi";
+import { ClosedBadge, formatClosingDate } from "@/components/expediente/ClosedBadge";
 import { PropertyKeyModal } from "@/components/expediente/PropertyKeyField";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Badge } from "@/components/ui/Badge";
@@ -15,7 +16,7 @@ import type { ExpedienteResponse, ParticipantResponse, SigningLinkResponse } fro
 import { readDraft, writeDraft } from "@/lib/drafts";
 import { useCan } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-import { Archive, ArchiveRestore, ArrowRight, KeyRound, RefreshCw } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowRight, Flag, KeyRound, RefreshCw } from "lucide-react";
 import { use, useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { ConsistencyTab } from "./ConsistencyTab";
 import { ContractDataTab } from "./ContractDataTab";
@@ -222,6 +223,7 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
             <Badge tone={backendStatusTone[expediente.status]}>{backendStatusLabels[expediente.status]}</Badge>
             {!expediente.correctable ? <Badge tone="neutral">Datos bloqueados (contrato firmado o expediente decidido)</Badge> : null}
             {expediente.archivedAt ? <Badge tone="neutral">Archivado</Badge> : null}
+            {expediente.closingCompletedOn ? <ClosedBadge closedOn={expediente.closingCompletedOn} withDate={false} /> : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {can("EXPEDIENT_KEY_ASSIGN") ? (
@@ -256,6 +258,16 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
               Archivado el {new Intl.DateTimeFormat("es-MX", { dateStyle: "long" }).format(new Date(expediente.archivedAt))}
               {expediente.archiveReason ? `. Motivo: ${expediente.archiveReason}` : ""}. No aparece en el listado de trabajo ni en los totales y la liga
               del cliente quedó revocada.
+            </span>
+          </p>
+        ) : null}
+        {/* CC#32: la operación ya tiene el seguimiento de cierre completado. */}
+        {expediente.closingCompletedOn ? (
+          <p className="mt-4 flex items-start gap-2 rounded-xl border border-success-text/30 bg-success-bg p-3 text-sm text-success-text">
+            <Flag className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            <span>
+              <strong>Operación cerrada</strong> el {formatClosingDate(expediente.closingCompletedOn, "long")} · Asesor responsable:{" "}
+              {expediente.assignedAdvisorName ?? "sin asesor asignado"}. El historial y los datos anteriores se conservan en la pestaña Seguimiento y la Bitácora.
             </span>
           </p>
         ) : null}

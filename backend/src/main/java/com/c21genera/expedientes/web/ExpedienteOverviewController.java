@@ -88,8 +88,8 @@ public class ExpedienteOverviewController {
 
   public record Counts(long total, long pending, long inReview, long complete) {}
 
-  /** counts: solo los activos; archived: cuántos archivados puede ver el usuario. */
-  public record OverviewResponse(PageResponse<OverviewItem> page, Counts counts, long archived) {}
+  /** counts: solo los activos; archived: cuántos archivados puede ver el usuario; closed (CC#32): activos con cierre completado. */
+  public record OverviewResponse(PageResponse<OverviewItem> page, Counts counts, long archived, long closed) {}
 
   /**
    * Nivel 1 del reporte (Control de Cambios #24/#26): categoría → subcategoría + operación. subtypeId
@@ -132,13 +132,15 @@ public class ExpedienteOverviewController {
       @RequestParam(required = false) UUID advisorId,
       @RequestParam(defaultValue = "false") boolean unassigned,
       @RequestParam(defaultValue = "false") boolean archived,
+      // CC#32: solo los que tienen el cierre completado.
+      @RequestParam(defaultValue = "false") boolean closed,
       @PageableDefault(size = 18, sort = "updatedAt", direction = Sort.Direction.DESC) Pageable pageable,
       @AuthenticationPrincipal Jwt jwt) {
     CurrentUser user = CurrentUser.from(jwt);
     UUID owner = user.hasPermission("EXPEDIENT_VIEW_ALL") ? null : user.id();
     PortfolioFilter filter = new PortfolioFilter(categoryId, subtypeId, unclassified, operationType, advisorId, unassigned);
 
-    Page<Expediente> page = expedienteService.search(owner, q, group == null ? null : group.statuses(), filter, archived, Pagination.cap(pageable));
+    Page<Expediente> page = expedienteService.search(owner, q, group == null ? null : group.statuses(), filter, archived, closed, Pagination.cap(pageable));
     Map<UUID, DocumentProgressView> progress = documentsApi.documentProgressOf(page.map(Expediente::getId).getContent());
     PageResponse<OverviewItem> items =
         PageResponse.of(
@@ -149,7 +151,7 @@ public class ExpedienteOverviewController {
                       ExpedienteResponse.from(e), p == null ? new DocumentProgress(0, 0, 0) : new DocumentProgress(p.required(), p.received(), p.accepted()));
                 }));
 
-    return new OverviewResponse(items, countsOf(expedienteService.countByStatus(owner, filter)), expedienteService.countArchived(owner));
+    return new OverviewResponse(items, countsOf(expedienteService.countByStatus(owner, filter)), expedienteService.countArchived(owner), expedienteService.countClosed(owner));
   }
 
   @GetMapping("/portfolio")

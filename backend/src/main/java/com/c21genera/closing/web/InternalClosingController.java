@@ -77,7 +77,7 @@ public class InternalClosingController {
   public ClosingCaseResponse changeStatus(
       @PathVariable UUID expedienteId, @Valid @RequestBody ChangeStatusRequest request, @AuthenticationPrincipal Jwt jwt) {
     requireAccess(expedienteId, jwt);
-    return ClosingCaseResponse.from(closingService.changeStatus(expedienteId, request.status()));
+    return ClosingCaseResponse.from(closingService.changeStatus(expedienteId, request.status(), request.closedOn()));
   }
 
   private CurrentUser requireAccess(UUID expedienteId, Jwt jwt) {

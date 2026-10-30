@@ -8,6 +8,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 /**
@@ -35,6 +36,9 @@ public class ClosingCase extends AuditableEntity {
 
   private UUID signedContractId;
 
+  /** CC#32: fecha de cierre (null mientras el seguimiento no se completa). */
+  private LocalDate closedOn;
+
   protected ClosingCase() {}
 
   public ClosingCase(UUID expedienteId) {
@@ -50,6 +54,11 @@ public class ClosingCase extends AuditableEntity {
 
   public void changeStatus(ClosingStatus status) {
     this.status = status;
+  }
+
+  /** CC#32: al completarse se registra la fecha de cierre; si se reabre, se quita. */
+  public void recordClosedOn(LocalDate closedOn) {
+    this.closedOn = closedOn;
   }
 
   public void markContractDelivered(Instant when) {
@@ -79,5 +88,9 @@ public class ClosingCase extends AuditableEntity {
 
   public UUID getSignedContractId() {
     return signedContractId;
+  }
+
+  public LocalDate getClosedOn() {
+    return closedOn;
   }
 }

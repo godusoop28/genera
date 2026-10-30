@@ -3,7 +3,7 @@
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
+import { MoneyInput } from "@/components/ui/MoneyInput";
 import { useToast } from "@/components/ui/Toast";
 import { getContractData } from "@/lib/api/contracts";
 import {
@@ -16,7 +16,8 @@ import {
 } from "@/lib/api/feasibility";
 import { errorText } from "@/lib/errors";
 import { shrinkImages } from "@/lib/image-shrink";
-import { formatDateTime, formatMoney } from "@/lib/labels";
+import { formatDateTime } from "@/lib/labels";
+import { formatMoneyWithCurrency, moneyToRaw } from "@/lib/money";
 import { FeasibilityChat } from "@/components/feasibility/FeasibilityChat";
 import { Download, ExternalLink, ImagePlus, Loader2, MessagesSquare, Presentation, Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -73,9 +74,10 @@ export function FeasibilityTab({ expediente }: ExpedienteContext) {
     getContractData(expediente.id)
       .then((c) => {
         if (Number(c.price) > 0) {
-          setAuthorizedPrice(String(Number(c.price)));
+          const raw = moneyToRaw(c.price);
+          setAuthorizedPrice(raw);
           // El precio autorizado del contrato es de venta: no aplica a una renta mensual.
-          if (expediente.operationType !== "RENT") setAskingPrice((current) => current || String(Number(c.price)));
+          if (expediente.operationType !== "RENT") setAskingPrice((current) => current || raw);
         }
       })
       .catch(() => undefined);
@@ -108,7 +110,8 @@ export function FeasibilityTab({ expediente }: ExpedienteContext) {
     setProgress(null);
     try {
       const shrunk = await shrinkImages(photos);
-      const price = askingPrice.replace(/[^0-9.]/g, "");
+      // CC#38: el formato es solo visual; se manda el importe tal cual ("5000000" o "5000000.5").
+      const price = askingPrice.replace(/[^0-9.]/g, "").replace(/\.$/, "");
       await requestFeasibility(expediente.id, { operation, askingPrice: price || undefined, notes, photos: shrunk }, (p) => setProgress(p.percent));
       setPhotos([]);
       showToast("Factibilidad en proceso. La IA está analizando los documentos e investigando el mercado; tarda varios minutos.");
@@ -176,12 +179,11 @@ export function FeasibilityTab({ expediente }: ExpedienteContext) {
               ))}
             </div>
           </div>
-          <Input
-            label={operation === "RENT" ? "Renta mensual solicitada por el propietario (MXN)" : "Precio de venta solicitado por el propietario (MXN)"}
-            inputMode="decimal"
-            placeholder={operation === "RENT" ? "Ej. 25000" : "Ej. 6900000"}
+          <MoneyInput
+            label={operation === "RENT" ? "Renta mensual solicitada por el propietario" : "Precio de venta solicitado por el propietario"}
+            placeholder={operation === "RENT" ? "Ej. $25,000" : "Ej. $6,900,000"}
             value={askingPrice}
-            onChange={(e) => setAskingPrice(e.target.value)}
+            onChange={setAskingPrice}
             hint={
               operation === "RENT"
                 ? "Renta por mes. Si no la sabes, la IA la marca como dato faltante y propone una."
@@ -269,7 +271,8 @@ function ReportCard({ report: r, onDownload }: { report: FeasibilityResponse; on
   const classification = s?.classification ? classificationLabels[s.classification] : null;
   const rent = r.operation === "RENT";
   const [chatOpen, setChatOpen] = useState(false);
-  const money = (value: number | null) => (value === null ? "—" : rent ? `${formatMoney(value)}/mes` : formatMoney(value));
+  // CC#38: importes con separadores de miles y moneda ("$5,000,000 MXN").
+  const money = (value: number | null) => (value === null ? "—" : rent ? `${formatMoneyWithCurrency(value)}/mes` : formatMoneyWithCurrency(value));
   return (
     <Card>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -309,7 +312,7 @@ function ReportCard({ report: r, onDownload }: { report: FeasibilityResponse; on
             <>
               <dl className="mb-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                 <Info k="Expectativa del propietario" v={money(s.ownerPrice)} />
-                <Info k={rent ? "Rango de renta sugerido" : "Rango sugerido"} v={s.rangeMin && s.rangeMax ? `${formatMoney(s.rangeMin)} – ${money(s.rangeMax)}` : "—"} />
+                <Info k={rent ? "Rango de renta sugerido" : "Rango sugerido"} v={s.rangeMin && s.rangeMax ? `${formatMoneyWithCurrency(s.rangeMin)} – ${money(s.rangeMax)}` : "—"} />
                 <Info k={rent ? "Renta mensual recomendada" : "Precio recomendado de salida"} v={money(s.recommendedPrice)} strong />
                 <Info k="Comparables" v={String(s.comparables.length)} />
               </dl>

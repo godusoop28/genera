@@ -8,7 +8,9 @@ import com.c21genera.closing.infrastructure.ClosingCaseRepository;
 import com.c21genera.closing.infrastructure.ClosingNoteRepository;
 import com.c21genera.closing.infrastructure.ClosingTaskRepository;
 import com.c21genera.shared.domain.NotFoundException;
+import com.c21genera.shared.domain.UnprocessableException;
 import com.c21genera.shared.events.ClosingEvents.ClosingCompleted;
+import com.c21genera.shared.events.ClosingEvents.ClosingReopened;
 import org.springframework.context.ApplicationEventPublisher;
 import com.c21genera.shared.events.ContractEvents.ContractDelivered;
 import com.c21genera.shared.events.ContractEvents.ContractFullySigned;
@@ -138,17 +140,45 @@ public class ClosingService {
   }
 
   public ClosingCase changeStatus(UUID expedienteId, ClosingStatus status) {
+    return changeStatus(expedienteId, status, null);
+  }
+
+  /**
+   * CC#32: closedOn es la fecha de cierre que registra el staff al completarlo (null = hoy). Solo
+   * aplica al completar; si el cierre ya estaba completado, corrige la fecha.
+   */
+  public ClosingCase changeStatus(UUID expedienteId, ClosingStatus status, LocalDate closedOn) {
     ClosingCase closingCase = get(expedienteId);
     ClosingStatus before = closingCase.getStatus();
+    if (closedOn != null && closedOn.isAfter(today())) {
+      throw new UnprocessableException("CLOSING_DATE_IN_FUTURE", "La fecha de cierre no puede ser posterior a hoy.");
+    }
     closingCase.changeStatus(status);
-    publishIfCompleted(closingCase, before);
+    publishIfCompleted(closingCase, before, closedOn);
+    if (before == ClosingStatus.COMPLETED && status == ClosingStatus.COMPLETED && closedOn != null && !closedOn.equals(closingCase.getClosedOn())) {
+      closingCase.recordClosedOn(closedOn);
+      events.publishEvent(new ClosingCompleted(closingCase.getExpedienteId(), closedOn));
+    }
     return closingCase;
   }
 
   private void publishIfCompleted(ClosingCase closingCase, ClosingStatus before) {
+    publishIfCompleted(closingCase, before, null);
+  }
+
+  private void publishIfCompleted(ClosingCase closingCase, ClosingStatus before, LocalDate closedOn) {
     if (before != ClosingStatus.COMPLETED && closingCase.getStatus() == ClosingStatus.COMPLETED) {
-      events.publishEvent(new ClosingCompleted(closingCase.getExpedienteId()));
+      LocalDate date = closedOn != null ? closedOn : today();
+      closingCase.recordClosedOn(date);
+      events.publishEvent(new ClosingCompleted(closingCase.getExpedienteId(), date));
+    } else if (before == ClosingStatus.COMPLETED && closingCase.getStatus() != ClosingStatus.COMPLETED) {
+      closingCase.recordClosedOn(null);
+      events.publishEvent(new ClosingReopened(closingCase.getExpedienteId()));
     }
+  }
+
+  private LocalDate today() {
+    return LocalDate.now(clock.withZone(ZoneId.of("America/Mexico_City")));
   }
 
   public ClosingNote addNote(UUID expedienteId, UUID authorUserId, String note) {

@@ -59,7 +59,8 @@ public interface PropertyListings {
   void cancel(long id);
 
   /** photos: URLs de las fotos en el orden de 21Online (solo lectura: se suben allá). */
-  record RemoteListing(long id, ListingDraft draft, Instant updatedAt, List<String> photos) {}
+  /** listedAt: fechaAlta de 21Online (CC#36: antigüedad de la propiedad), null si no la trae. */
+  record RemoteListing(long id, ListingDraft draft, Instant updatedAt, List<String> photos, Instant listedAt) {}
 
   record ListingFilter(String query, String status, String operation, String subtype, String municipality, int page) {}
 

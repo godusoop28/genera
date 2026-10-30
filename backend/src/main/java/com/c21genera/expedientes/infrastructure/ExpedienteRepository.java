@@ -43,6 +43,11 @@ public interface ExpedienteRepository extends JpaRepository<Expediente, UUID>, J
 
   long countByArchivedAtIsNotNull();
 
+  /** CC#32: activos con el cierre completado. */
+  long countByClosingCompletedOnIsNotNullAndArchivedAtIsNull();
+
+  long countByAssignedAdvisorIdAndClosingCompletedOnIsNotNullAndArchivedAtIsNull(UUID assignedAdvisorId);
+
   long countByAssignedAdvisorIdAndArchivedAtIsNotNull(UUID assignedAdvisorId);
 
   /** Control de Cambios #27. */

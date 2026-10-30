@@ -53,6 +53,13 @@ public class ManualClientData {
   @Column(name = "built_area_m2", precision = 12, scale = 2)
   private BigDecimal builtAreaM2;
 
+  /**
+   * CC#34: precio de venta que sugiere el propio cliente desde su liga (MXN). Es solo informativo:
+   * no es el precio autorizado del contrato ni el de publicación, factibilidad o cierre.
+   */
+  @Column(precision = 14, scale = 2)
+  private BigDecimal suggestedPrice;
+
   protected ManualClientData() {}
 
   public ManualClientData(UUID expedienteId) {
@@ -84,6 +91,9 @@ public class ManualClientData {
     if (update.contractSignatureDate() != null) this.contractSignatureDate = update.contractSignatureDate();
     if (update.landAreaM2() != null) this.landAreaM2 = update.landAreaM2();
     if (update.builtAreaM2() != null) this.builtAreaM2 = update.builtAreaM2();
+    // CC#34: el cliente puede dejarlo vacío, así que aquí sí se permite borrarlo explícitamente.
+    if (update.suggestedPrice() != null) this.suggestedPrice = update.suggestedPrice();
+    else if (update.clearSuggestedPrice()) this.suggestedPrice = null;
   }
 
   /** Valores legibles por campo, para registrar el historial de correcciones (antes/después). */
@@ -107,6 +117,7 @@ public class ManualClientData {
     values.put("Fecha de firma del contrato", str(contractSignatureDate));
     values.put("Superficie de terreno (m²)", str(landAreaM2));
     values.put("Superficie de construcción (m²)", str(builtAreaM2));
+    values.put(SUGGESTED_PRICE_FIELD, str(suggestedPrice));
     return values;
   }
 
@@ -193,6 +204,13 @@ public class ManualClientData {
     return builtAreaM2;
   }
 
+  public BigDecimal getSuggestedPrice() {
+    return suggestedPrice;
+  }
+
+  /** Nombre del campo en el historial; no forma parte del contrato (CC#34). */
+  public static final String SUGGESTED_PRICE_FIELD = "Precio de venta sugerido por el cliente (MXN)";
+
   public record ManualClientDataUpdate(
       CivilStatus civilStatus,
       BigDecimal authorizedPrice,
@@ -211,13 +229,21 @@ public class ManualClientData {
       String relevantFeatures,
       LocalDate contractSignatureDate,
       BigDecimal landAreaM2,
-      BigDecimal builtAreaM2) {
+      BigDecimal builtAreaM2,
+      // CC#34: null = conserva el valor; clearSuggestedPrice = true lo borra.
+      BigDecimal suggestedPrice,
+      boolean clearSuggestedPrice) {
 
     /** Lo único que el cliente puede modificar desde su liga pública. */
     public static ManualClientDataUpdate fromClient(String email, String phone, String notificationAddress, CivilStatus civilStatus) {
+      return fromClient(email, phone, notificationAddress, civilStatus, null, false);
+    }
+
+    public static ManualClientDataUpdate fromClient(
+        String email, String phone, String notificationAddress, CivilStatus civilStatus, BigDecimal suggestedPrice, boolean clearSuggestedPrice) {
       return new ManualClientDataUpdate(
           civilStatus, null, email, phone, notificationAddress, null, null, null, null, null, null, null, null, null, null, null,
-          null, null);
+          null, null, suggestedPrice, clearSuggestedPrice);
     }
   }
 }

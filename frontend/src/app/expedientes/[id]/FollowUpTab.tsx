@@ -1,5 +1,6 @@
 "use client";
 
+import { ClosedBadge, formatClosingDate } from "@/components/expediente/ClosedBadge";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -49,9 +50,21 @@ export function FollowUpTab({ expediente }: ExpedienteContext) {
         {closing === "not_started" ? <p className="text-sm text-muted">Todavía no inicia: el contrato no se ha firmado por todas las partes.</p> : null}
         {closing && closing !== "not_started" ? (
           <>
-            <Badge tone={closing.status === "COMPLETED" ? "success" : "info"} className="mb-3">
-              {label(closingStatusLabels, closing.status)}
-            </Badge>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <Badge tone={closing.status === "COMPLETED" ? "success" : "info"}>{label(closingStatusLabels, closing.status)}</Badge>
+              {/* CC#32: operación cerrada, con fecha de cierre y asesor responsable. */}
+              {closing.status === "COMPLETED" ? (
+                <>
+                  <ClosedBadge closedOn={closing.closedOn ?? expediente.closingCompletedOn ?? ""} withDate={Boolean(closing.closedOn ?? expediente.closingCompletedOn)} />
+                  <span className="text-sm text-muted">
+                    {closing.closedOn ?? expediente.closingCompletedOn
+                      ? `Fecha de cierre: ${formatClosingDate((closing.closedOn ?? expediente.closingCompletedOn) as string, "long")}`
+                      : "Fecha de cierre sin registrar"}
+                    {" · "}Asesor responsable: {expediente.assignedAdvisorName ?? "sin asesor asignado"}
+                  </span>
+                </>
+              ) : null}
+            </div>
             <ul className="flex flex-col gap-2">
               {tasks.map((t) => (
                 <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">

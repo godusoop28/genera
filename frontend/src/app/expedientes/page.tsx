@@ -1,5 +1,6 @@
 "use client";
 
+import { ClosedBadge } from "@/components/expediente/ClosedBadge";
 import { ExpedienteStatusBadge } from "@/components/expediente/ExpedienteStatusBadge";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Button } from "@/components/ui/Button";
@@ -22,7 +23,7 @@ import { PropertyTypeFilters } from "@/components/property/PropertyTypeSelect";
 import { operationLabels, propertyTypeLabels } from "@/lib/labels";
 import { useCan } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
-import { Archive, ArrowRight, Calendar, CheckCircle2, Clock, FileText, FolderOpen, Home, LayoutGrid, List, MapPin, Plus, RefreshCw, UserRound } from "lucide-react";
+import { Archive, ArrowRight, Calendar, CheckCircle2, Clock, FileText, Flag, FolderOpen, Home, LayoutGrid, List, MapPin, Plus, RefreshCw, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -78,6 +79,7 @@ interface LoadedPage {
   items: ExpedienteOverviewItem[];
   counts: ExpedienteOverview["counts"];
   archived: number;
+  closed: number;
   page: number;
   totalPages: number;
   totalElements: number;
@@ -110,6 +112,8 @@ function ExpedientesContent() {
   const [group, setGroup] = useState<ExpedienteStatusGroup | null>(null);
   // Archivados: fuera del listado de trabajo y de los totales; se consultan aparte.
   const [archived, setArchived] = useState(params.get("archivados") === "1");
+  // CC#32: solo los que tienen el cierre completado.
+  const [closedOnly, setClosedOnly] = useState(params.get("cerradas") === "1");
   // Control de Cambios #24/#26: filtros de cartera; los reportes enlazan aquí con ?categoria=&subtipo=&operacion=&asesor=.
   const [categoryId, setCategoryId] = useState<string | null>(params.get("categoria"));
   const [subtypeId, setSubtypeId] = useState<string | null>(params.get("subtipo"));
@@ -126,7 +130,7 @@ function ExpedientesContent() {
 
   // Cada combinación de búsqueda + filtro (+ "Actualizar") es una carga distinta;
   // "cargando" = la última respuesta no corresponde a lo que se pidió.
-  const key = `${debouncedQuery.trim()}|${group ?? ""}|${categoryId ?? ""}|${subtypeId ?? ""}|${operationType ?? ""}|${advisorId}|${archived ? "A" : ""}|${reloadToken}`;
+  const key = `${debouncedQuery.trim()}|${group ?? ""}|${categoryId ?? ""}|${subtypeId ?? ""}|${operationType ?? ""}|${advisorId}|${archived ? "A" : ""}|${closedOnly ? "C" : ""}|${reloadToken}`;
   const portfolio = { categoryId, subtypeId, operationType, advisorId: advisorId || null };
   const currentKey = useRef(key);
   useEffect(() => {
@@ -147,10 +151,19 @@ function ExpedientesContent() {
 
   useEffect(() => {
     let cancelled = false;
-    getExpedienteOverview({ q: debouncedQuery, group: archived ? null : group, archived, page: 0, size: PAGE_SIZE, ...portfolio })
+    getExpedienteOverview({ q: debouncedQuery, group: archived ? null : group, archived, closed: closedOnly, page: 0, size: PAGE_SIZE, ...portfolio })
       .then((res) => {
         if (cancelled) return;
-        setData({ key, items: res.page.items, counts: res.counts, archived: res.archived ?? 0, page: 0, totalPages: res.page.totalPages, totalElements: res.page.totalElements });
+        setData({
+          key,
+          items: res.page.items,
+          counts: res.counts,
+          archived: res.archived ?? 0,
+          closed: res.closed ?? 0,
+          page: 0,
+          totalPages: res.page.totalPages,
+          totalElements: res.page.totalElements,
+        });
         setFailure(null);
         setMoreError(null);
       })
@@ -162,7 +175,7 @@ function ExpedientesContent() {
     };
     // portfolio se deriva de los mismos valores que key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, debouncedQuery, group, archived]);
+  }, [key, debouncedQuery, group, archived, closedOnly]);
 
   const error = failure?.key === key ? failure : null;
   const loading = data?.key !== key && !error;
@@ -173,7 +186,7 @@ function ExpedientesContent() {
     const requestedFor = data.key;
     setLoadingMore(true);
     setMoreError(null);
-    getExpedienteOverview({ q: debouncedQuery, group: archived ? null : group, archived, page: data.page + 1, size: PAGE_SIZE, ...portfolio })
+    getExpedienteOverview({ q: debouncedQuery, group: archived ? null : group, archived, closed: closedOnly, page: data.page + 1, size: PAGE_SIZE, ...portfolio })
       .then((res) => {
         if (currentKey.current !== requestedFor) return;
         setData((prev) => {
@@ -184,6 +197,7 @@ function ExpedientesContent() {
             items: [...prev.items, ...res.page.items.filter((i) => !seen.has(i.expediente.id))],
             counts: res.counts,
             archived: res.archived ?? prev.archived,
+            closed: res.closed ?? prev.closed,
             page: prev.page + 1,
             totalPages: res.page.totalPages,
             totalElements: res.page.totalElements,
@@ -197,7 +211,7 @@ function ExpedientesContent() {
   const counts = data?.counts;
   const countFor = (id: ExpedienteStatusGroup | null) =>
     !counts ? null : id === null ? counts.total : id === "PENDING" ? counts.pending : id === "IN_REVIEW" ? counts.inReview : counts.complete;
-  const filtering = archived || debouncedQuery.trim().length > 0 || group !== null || categoryId !== null || subtypeId !== null || operationType !== null || advisorId !== "";
+  const filtering = archived || closedOnly || debouncedQuery.trim().length > 0 || group !== null || categoryId !== null || subtypeId !== null || operationType !== null || advisorId !== "";
   // Si el asesor del enlace ya no está activo, igual se muestra como opción para poder quitarlo.
   const advisorOptions = [
     { value: "", label: "Todos los asesores" },
@@ -287,6 +301,21 @@ function ExpedientesContent() {
                 Archivados
                 {data ? <span className={cn("rounded-full px-1.5 text-xs tabular-nums", archived ? "bg-white/20" : "bg-app-bg")}>{data.archived}</span> : null}
               </button>
+              {/* CC#32: operaciones con el cierre completado (se combina con los demás filtros). */}
+              <button
+                type="button"
+                onClick={() => setClosedOnly((c) => !c)}
+                aria-pressed={closedOnly}
+                title="Expedientes cuyo seguimiento de cierre ya se completó"
+                className={cn(
+                  "inline-flex min-h-10 items-center gap-2 rounded-full border px-4 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/30",
+                  closedOnly ? "border-success-text bg-success-text text-white" : "border-border bg-card text-muted hover:border-gold/60 hover:text-obsessed",
+                )}
+              >
+                <Flag className="h-4 w-4" aria-hidden />
+                Cerradas
+                {data && !archived ? <span className={cn("rounded-full px-1.5 text-xs tabular-nums", closedOnly ? "bg-white/20" : "bg-app-bg")}>{data.closed}</span> : null}
+              </button>
             </div>
             <div className="flex shrink-0 gap-1 self-start rounded-xl border border-border bg-card p-1 lg:self-auto" role="group" aria-label="Vista">
               <ViewButton active={view === "grid"} onClick={() => storeView("grid")} label="Ver como tarjetas" icon={LayoutGrid} />
@@ -355,7 +384,9 @@ function ExpedientesContent() {
                         ? `Ningún expediente coincide con “${debouncedQuery.trim()}” en este filtro.`
                         : archived
                           ? "No hay expedientes archivados en este filtro."
-                          : "No hay expedientes en este filtro."
+                          : closedOnly
+                            ? "No hay operaciones con el cierre completado en este filtro."
+                            : "No hay expedientes en este filtro."
                     }
                     action={
                       <Button
@@ -365,6 +396,7 @@ function ExpedientesContent() {
                           setDebouncedQuery("");
                           setGroup(null);
                           setArchived(false);
+                          setClosedOnly(false);
                           setCategoryId(null);
                           setSubtypeId(null);
                           setOperationType(null);
@@ -537,6 +569,7 @@ function ExpedienteCard({ item }: { item: ExpedienteOverviewItem }) {
         </span>
         <span className="flex flex-wrap items-center gap-1.5">
           {e.archivedAt ? <ArchivedBadge /> : null}
+          {e.closingCompletedOn ? <ClosedBadge closedOn={e.closingCompletedOn} /> : null}
           <ExpedienteStatusBadge status={e.status} received={item.documents?.received} />
         </span>
       </div>
@@ -559,7 +592,10 @@ function ExpedienteCard({ item }: { item: ExpedienteOverviewItem }) {
       <div className="mt-4 space-y-3 border-t border-border pt-4">
         <p className="flex items-center gap-2 text-sm text-muted">
           <UserRound className="h-4 w-4 shrink-0" aria-hidden />
-          <span className="truncate">{e.assignedAdvisorName ?? "Sin asesor asignado"}</span>
+          <span className="truncate">
+            {e.closingCompletedOn ? "Asesor responsable: " : ""}
+            {e.assignedAdvisorName ?? "Sin asesor asignado"}
+          </span>
         </p>
         <p className="flex items-start gap-2 text-sm text-muted">
           <MapPin className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
@@ -633,6 +669,7 @@ function ExpedienteList({ items }: { items: ExpedienteOverviewItem[] }) {
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 {e.archivedAt ? <ArchivedBadge /> : null}
+                {e.closingCompletedOn ? <ClosedBadge closedOn={e.closingCompletedOn} /> : null}
                 <ExpedienteStatusBadge status={e.status} received={item.documents?.received} />
               </div>
               <DocumentsProgress progress={item.documents} compact />

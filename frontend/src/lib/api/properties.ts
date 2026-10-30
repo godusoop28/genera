@@ -177,11 +177,41 @@ export interface CapturedProperty {
   /** Notas internas y etiquetas: solo en Genera, nunca se mandan a 21Online. */
   privateNotes: string | null;
   tags: string[];
+  /** CC#36: fecha de alta (fechaAlta de 21Online o la de captura en Genera). */
+  listedAt?: string;
 }
 
 export interface CapturedOverview {
   configured: boolean;
   captured: CapturedProperty[];
+}
+
+/** CC#36: un solo criterio de orden a la vez. */
+export type CapturedSort = "NEWEST" | "OLDEST" | "PRICE_ASC" | "PRICE_DESC";
+
+/** CC#36: filtros del listado "En Genera"; se aplican en el servidor sobre todas las propiedades. */
+export interface CapturedQuery {
+  q?: string;
+  tag?: string;
+  status?: string;
+  operation?: Operation | "";
+  /** Importes crudos ("5000000"); límites inclusivos. */
+  minPrice?: string;
+  maxPrice?: string;
+  currency?: string;
+  sort?: CapturedSort;
+  /** Desde 1. */
+  page: number;
+  size?: number;
+}
+
+export interface CapturedPage extends CapturedOverview {
+  page: number;
+  size: number;
+  totalItems: number;
+  totalPages: number;
+  /** Todas las etiquetas existentes (para el filtro). */
+  tags: string[];
 }
 
 function query(params: object): string {
@@ -203,6 +233,10 @@ export function getInventoryItem(online21Id: number | string) {
 
 export function listCaptured() {
   return apiClient.get<CapturedOverview>("/internal/properties");
+}
+
+export function listCapturedPage(params: CapturedQuery) {
+  return apiClient.get<CapturedPage>(`/internal/properties${query(params)}`);
 }
 
 export function getPropertyAttributes() {

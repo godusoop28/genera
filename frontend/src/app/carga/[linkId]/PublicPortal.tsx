@@ -8,6 +8,7 @@ import { SignatureMock } from "@/components/privacy/SignatureMock";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
+import { MoneyInput } from "@/components/ui/MoneyInput";
 import { SaveStatus } from "@/components/ui/SaveStatus";
 import { ORG_OFFICE_ADDRESS, ORG_OFFICE_MAPS_URL } from "@/data/organization";
 import { PRIVACY_CONSENT_TEXT, PRIVACY_SECONDARY_CONSENT_TEXT } from "@/data/privacy-reference";
@@ -38,6 +39,7 @@ import type {
   PublicParticipantResponse,
 } from "@/lib/api/types";
 import { documentTypeLabel } from "@/lib/document-type-labels";
+import { moneyToRaw } from "@/lib/money";
 import { readDraft, writeDraft } from "@/lib/drafts";
 import { DraftSync, type DraftSaveState } from "@/lib/draft-sync";
 import { ACCEPTED_FILE_TYPES, UploadValidationError } from "@/lib/upload-limits";
@@ -273,6 +275,7 @@ export function PublicPortal({ token }: { token: string }) {
             <ClientDataStep
               token={token}
               personType={expediente.personType}
+              asksSuggestedPrice={expediente.operationType !== "RENT"}
               ownersEditable={canEditOwners(expediente)}
               onOwnersChanged={() => void loadExpediente()}
               onContinue={() => goTo(4)}
@@ -458,18 +461,22 @@ function PrivacyStep({ token, onContinue }: { token: string; onContinue: () => v
 interface ClientDataDraft {
   email: string;
   phone: string;
+  /** CC#34: valor crudo ("4500000"); "" = vacío. Ausente en borradores anteriores. */
+  suggestedPrice?: string;
   civil: Record<string, Pick<PublicParticipantResponse, "civilStatus" | "maritalRegime">>;
 }
 
 function ClientDataStep({
   token,
   personType,
+  asksSuggestedPrice,
   ownersEditable,
   onOwnersChanged,
   onContinue,
 }: {
   token: string;
   personType: PublicExpedienteResponse["personType"];
+  asksSuggestedPrice: boolean;
   ownersEditable: boolean;
   onOwnersChanged: () => void;
   onContinue: () => void;
@@ -477,6 +484,8 @@ function ClientDataStep({
   const [loaded, setLoaded] = useState(false);
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  // CC#34: precio de venta sugerido por el cliente (opcional e informativo).
+  const [suggestedPrice, setSuggestedPrice] = useState("");
   const [participants, setParticipants] = useState<PublicParticipantResponse[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -511,6 +520,7 @@ function ClientDataStep({
         }
         setEmail(draft?.email ?? d.email ?? "");
         setPhone(draft?.phone ?? d.phone ?? "");
+        setSuggestedPrice(draft?.suggestedPrice ?? moneyToRaw(d.suggestedPrice));
         // Solo los titulares persona física declaran estado civil aquí.
         const owners = personType === "FISICA" ? p.filter((participant) => participant.role === "OWNER" || participant.role === "CO_OWNER") : [];
         setParticipants(owners.map((participant) => ({ ...participant, ...(draft?.civil?.[participant.id] ?? {}) })));
@@ -534,15 +544,17 @@ function ClientDataStep({
       JSON.stringify({
         email,
         phone,
+        suggestedPrice,
         civil: Object.fromEntries(participants.map((p) => [p.id, { civilStatus: p.civilStatus, maritalRegime: p.maritalRegime }])),
       } satisfies ClientDataDraft),
     );
-  }, [loaded, email, phone, participants]);
+  }, [loaded, email, phone, suggestedPrice, participants]);
 
   const setParticipant = (id: string, patch: Partial<PublicParticipantResponse>) =>
     setParticipants((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
 
   const civilStatusMissing = personType === "FISICA" && participants.some((p) => !p.civilStatus);
+  const suggestedPriceError = asksSuggestedPrice && suggestedPrice !== "" && !(Number(suggestedPrice) > 0) ? "Escribe un importe mayor a cero o deja el campo vacío." : undefined;
 
   // Corrección de propietarios: se guarda al momento en el servidor, que
   // recalcula qué documentos pedir (p. ej. los del copropietario agregado).
@@ -588,7 +600,12 @@ function ClientDataStep({
     setSubmitting(true);
     setError(null);
     try {
-      await updateClientData(token, { email, phone });
+      await updateClientData(
+        token,
+        asksSuggestedPrice
+          ? { email, phone, suggestedPrice: suggestedPrice || null, clearSuggestedPrice: suggestedPrice === "" }
+          : { email, phone },
+      );
       for (const p of participants) {
         if (p.civilStatus) {
           await declareCivilStatus(token, p.id, p.civilStatus, p.civilStatus === "CASADO" ? p.maritalRegime : null);
@@ -632,6 +649,23 @@ function ClientDataStep({
               />
             </div>
           </div>
+
+          {asksSuggestedPrice ? (
+            <div className="border-t border-border pt-4">
+              <MoneyInput
+                label="Precio de venta sugerido por el cliente (opcional)"
+                placeholder="$0"
+                value={suggestedPrice}
+                onChange={setSuggestedPrice}
+                error={suggestedPriceError}
+                hint="Importe en pesos mexicanos (MXN). Puedes dejarlo vacío."
+                containerClassName="sm:max-w-sm"
+              />
+              <p className="mt-2 text-xs text-muted">
+                Este precio es únicamente informativo y no establece el precio de publicación ni el precio definitivo de venta del inmueble.
+              </p>
+            </div>
+          ) : null}
 
           {personType === "FISICA" && participants.length > 0 ? (
             <div className="border-t border-border pt-4">
@@ -759,7 +793,7 @@ function ClientDataStep({
           {error ? <p className="text-sm text-danger-text">{error}</p> : null}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <SaveStatus status={draftStatus} lastSavedAt={draftSavedAt} />
-            <Button size="lg" disabled={!email.trim() || !phone.trim() || civilStatusMissing || submitting} onClick={handleContinue}>
+            <Button size="lg" disabled={!email.trim() || !phone.trim() || civilStatusMissing || Boolean(suggestedPriceError) || submitting} onClick={handleContinue}>
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
               Continuar
             </Button>
@@ -810,6 +844,8 @@ function DocumentsStep({
   const toFix = (documents ?? []).filter((d) => d.status === "RETURNED" || d.status === "REJECTED" || d.qualityIssue || d.updateRequestNote);
   const [savedNotice, setSavedNotice] = useState(false);
   const allRequiredUploaded = documents !== null && required.every((d) => d.status !== "PENDING");
+  // CC#37: qué falta para poder enviar (los que el asesor dejó para después no cuentan).
+  const missing = required.filter((d) => d.status === "PENDING");
   const canSubmit = status === "WAITING_DOCUMENTS";
   const anyUploaded = (documents ?? []).some((d) => d.currentVersionNumber > 0);
 
@@ -916,7 +952,30 @@ function DocumentsStep({
         </div>
       </Card>
 
-      {error ? <p className="text-sm text-danger-text">{error}</p> : null}
+      {/* CC#37: instrucciones visibles durante la carga. */}
+      {canSubmit ? (
+        <Card>
+          <div className="flex items-start gap-3">
+            <HelpCircle className="mt-0.5 h-5 w-5 shrink-0 text-dark-gold" aria-hidden />
+            <div className="text-sm">
+              <p className="font-medium text-obsessed">¿Te falta algún documento o no sabes cómo continuar?</p>
+              <p className="mt-1 text-muted">
+                Si por alguna razón no cuentas con uno de los documentos solicitados, contacta a tu asesor para que te indique cómo continuar.
+              </p>
+              <p className="mt-1 text-muted">
+                Subir los archivos no significa que ya los hayas enviado. Para completar la entrega, presiona &apos;Enviar documentos&apos; cuando el botón
+                esté habilitado y espera la confirmación del sistema.
+              </p>
+            </div>
+          </div>
+        </Card>
+      ) : null}
+
+      {error ? (
+        <p role="alert" className="rounded-xl bg-danger-bg px-4 py-3 text-sm text-danger-text">
+          {error} Los archivos que ya subiste se conservan.
+        </p>
+      ) : null}
       {/* Control de Cambios #5: cada archivo se guarda al subirlo; el cliente puede salir y volver con la misma liga. */}
       {savedNotice ? (
         <div className="flex items-start gap-2 rounded-2xl border border-success-text/30 bg-success-bg p-4 text-sm text-success-text">
@@ -927,24 +986,46 @@ function DocumentsStep({
           </p>
         </div>
       ) : null}
-      {canSubmit && !allRequiredUploaded ? (
-        <div className="flex justify-start">
-          <Button variant="secondary" onClick={() => setSavedNotice(true)}>
-            Guardar avance y continuar después
-          </Button>
-        </div>
-      ) : null}
       {canSubmit ? (
-        <div className="flex flex-col items-end gap-2">
-          {!allRequiredUploaded ? (
-            <p className="text-xs text-muted">
-              Carga los documentos que se piden ahora para poder enviarlos{later.length > 0 ? "; los de después puedes subirlos más adelante" : ""}.
-            </p>
-          ) : null}
-          <Button size="lg" disabled={!allRequiredUploaded || submitting} onClick={handleSubmit}>
-            {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-            Enviar documentación
-          </Button>
+        <div className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-end sm:justify-between">
+          {/* CC#37: "Guardar avance" no envía nada; "Enviar documentos" es la entrega. */}
+          <div className="flex flex-col gap-1.5">
+            <Button variant="secondary" onClick={() => setSavedNotice(true)}>
+              Guardar avance y continuar después
+            </Button>
+            <p className="text-xs text-muted">Conserva lo que subiste; todavía no se envía.</p>
+          </div>
+          <div className="flex flex-col gap-2 sm:items-end">
+            {documents !== null && missing.length > 0 ? (
+              <div className="rounded-lg bg-app-bg px-3 py-2 text-sm text-obsessed sm:max-w-md" role="status">
+                <p className="font-medium">
+                  {missing.length === 1 ? "Falta 1 documento para poder enviar:" : `Faltan ${missing.length} documentos para poder enviar:`}
+                </p>
+                <ul className="ml-5 mt-1 list-disc text-muted">
+                  {missing.map((d) => (
+                    <li key={d.id}>
+                      {d.customName ?? documentTypeLabel(d.type)}
+                      {d.participantId && names[d.participantId] ? ` — ${names[d.participantId]}` : ""}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1 text-xs text-muted">
+                  Si no cuentas con alguno, contacta a tu asesor{later.length > 0 ? ". Los de \"Puedes subirlos después\" no impiden enviar" : ""}.
+                </p>
+              </div>
+            ) : null}
+            <Button
+              size="lg"
+              variant={allRequiredUploaded ? "primary" : "ghost"}
+              className={allRequiredUploaded ? "w-full sm:w-auto" : "w-full border border-border bg-app-bg text-obsessed/70 sm:w-auto"}
+              disabled={!allRequiredUploaded || submitting}
+              aria-disabled={!allRequiredUploaded || submitting}
+              onClick={handleSubmit}
+            >
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+              {submitting ? "Enviando documentos…" : "Enviar documentos"}
+            </Button>
+          </div>
         </div>
       ) : (
         <p className="text-right text-sm text-muted">

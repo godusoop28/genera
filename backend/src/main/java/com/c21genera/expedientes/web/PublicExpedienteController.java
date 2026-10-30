@@ -4,6 +4,7 @@ import com.c21genera.documents.DocumentsApi;
 import com.c21genera.expedientes.CivilStatus;
 import com.c21genera.expedientes.ExpedienteStatus;
 import com.c21genera.expedientes.MaritalRegime;
+import com.c21genera.expedientes.OperationType;
 import com.c21genera.expedientes.PersonType;
 import com.c21genera.expedientes.application.ExpedienteService;
 import com.c21genera.expedientes.domain.Expediente;
@@ -63,7 +64,13 @@ public class PublicExpedienteController {
   }
 
   public record PublicExpedienteResponse(
-      String folio, ExpedienteStatus status, PersonType personType, String maskedOwnerName, String maskedPropertyAddress) {}
+      String folio,
+      ExpedienteStatus status,
+      PersonType personType,
+      String maskedOwnerName,
+      String maskedPropertyAddress,
+      // CC#34: el precio sugerido por el cliente se pide solo en una venta.
+      OperationType operationType) {}
 
   @GetMapping
   public PublicExpedienteResponse get(@PathVariable String token) {
@@ -73,7 +80,8 @@ public class PublicExpedienteController {
         expediente.getStatus(),
         expediente.getPersonType(),
         maskName(expediente.getOwnerDisplayName()),
-        propertyHint(expediente.getPropertyAddress(), expediente.getPropertyReference()));
+        propertyHint(expediente.getPropertyAddress(), expediente.getPropertyReference()),
+        expediente.getOperationType());
   }
 
   /**
@@ -96,7 +104,13 @@ public class PublicExpedienteController {
     ManualClientData updated =
         expedienteService.updateManualData(
             resolve(token),
-            ManualClientDataUpdate.fromClient(request.email(), request.phone(), request.notificationAddress(), request.civilStatus()),
+            ManualClientDataUpdate.fromClient(
+                request.email(),
+                request.phone(),
+                request.notificationAddress(),
+                request.civilStatus(),
+                request.suggestedPrice(),
+                request.suggestedPrice() == null && Boolean.TRUE.equals(request.clearSuggestedPrice())),
             Actor.client(),
             null);
     return PublicClientDataResponse.from(updated);

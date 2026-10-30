@@ -147,6 +147,10 @@ public class CrmProperty extends AuditableEntity {
   @Convert(converter = JsonStringListConverter.class)
   private List<String> tags = new ArrayList<>();
 
+  /** CC#36: la misma columna como texto, solo para buscar por etiqueta en el listado (no se escribe). */
+  @Column(name = "tags", insertable = false, updatable = false)
+  private String tagsJson;
+
   /** GENERA (capturada aquí) u ONLINE21 (dada de alta en 21Online y vinculada desde Genera). */
   @Column(nullable = false, length = 16)
   private String origin = ORIGIN_GENERA;
@@ -156,6 +160,12 @@ public class CrmProperty extends AuditableEntity {
 
   /** fechaModificacion de 21Online la última vez que se trajo. */
   private Instant remoteModifiedAt;
+
+  /**
+   * CC#36: fecha de alta (fechaAlta de 21Online). Null en las capturadas en Genera que aún no
+   * aparecen en el inventario de 21Online: para ordenar se usa entonces la fecha de captura.
+   */
+  private Instant listedAt;
 
   public static final String ORIGIN_GENERA = "GENERA";
   public static final String ORIGIN_ONLINE21 = "ONLINE21";
@@ -431,6 +441,17 @@ public class CrmProperty extends AuditableEntity {
 
   public String getSyncedDraft() {
     return syncedDraft;
+  }
+
+  public Instant getListedAt() {
+    return listedAt;
+  }
+
+  /** CC#36: solo se reemplaza con una fecha conocida (nunca se borra). */
+  public void recordListedAt(Instant listedAt) {
+    if (listedAt != null) {
+      this.listedAt = listedAt;
+    }
   }
 
   public Instant getRemoteModifiedAt() {

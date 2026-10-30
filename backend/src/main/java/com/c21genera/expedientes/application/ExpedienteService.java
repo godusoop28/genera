@@ -33,6 +33,8 @@ import com.c21genera.shared.domain.RequiredDocumentSpec;
 import com.c21genera.shared.domain.ReviewDecision;
 import com.c21genera.shared.domain.UnprocessableException;
 import com.c21genera.shared.events.Actor;
+import com.c21genera.shared.events.ClosingEvents.ClosingCompleted;
+import com.c21genera.shared.events.ClosingEvents.ClosingReopened;
 import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsApproved;
 import com.c21genera.shared.events.DocumentEvents.AllRequiredDocumentsUploaded;
 import com.c21genera.shared.events.DocumentEvents.DocumentReviewed;
@@ -78,6 +80,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional
 public class ExpedienteService implements ExpedienteLifecycleApi {
+
+  private static final java.time.ZoneId MEXICO_CITY = java.time.ZoneId.of("America/Mexico_City");
 
   private final ExpedienteRepository expedienteRepository;
   private final ExpedienteParticipantRepository participantRepository;
@@ -273,8 +277,18 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
   @Transactional(readOnly = true)
   public Page<Expediente> search(
       UUID ownerUserId, String query, Set<ExpedienteStatus> statuses, PortfolioFilter filter, boolean archived, Pageable pageable) {
+    return search(ownerUserId, query, statuses, filter, archived, false, pageable);
+  }
+
+  /** closedOnly (CC#32): solo los que tienen el seguimiento de cierre completado. */
+  @Transactional(readOnly = true)
+  public Page<Expediente> search(
+      UUID ownerUserId, String query, Set<ExpedienteStatus> statuses, PortfolioFilter filter, boolean archived, boolean closedOnly, Pageable pageable) {
     Specification<Expediente> spec = visibleWith(ownerUserId, filter);
     spec = spec.and((root, q, cb) -> archived ? cb.isNotNull(root.get("archivedAt")) : cb.isNull(root.get("archivedAt")));
+    if (closedOnly) {
+      spec = spec.and((root, q, cb) -> cb.isNotNull(root.get("closingCompletedOn")));
+    }
     if (statuses != null && !statuses.isEmpty()) {
       spec = spec.and((root, q, cb) -> root.get("status").in(statuses));
     }
@@ -298,6 +312,14 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
   @Transactional(readOnly = true)
   public long countArchived(UUID ownerUserId) {
     return ownerUserId == null ? expedienteRepository.countByArchivedAtIsNotNull() : expedienteRepository.countByAssignedAdvisorIdAndArchivedAtIsNotNull(ownerUserId);
+  }
+
+  /** CC#32: activos con el cierre completado que puede ver el usuario (ownerUserId null = todos). */
+  @Transactional(readOnly = true)
+  public long countClosed(UUID ownerUserId) {
+    return ownerUserId == null
+        ? expedienteRepository.countByClosingCompletedOnIsNotNullAndArchivedAtIsNull()
+        : expedienteRepository.countByAssignedAdvisorIdAndClosingCompletedOnIsNotNullAndArchivedAtIsNull(ownerUserId);
   }
 
   /** Total de expedientes activos por estatus (los que puede ver el usuario, con los filtros de cartera). */
@@ -414,7 +436,25 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
       // null = conserva la operación actual.
       OperationType operationType,
       PropertyLegalStatus declaredLegalStatus,
-      String propertyAddress) {}
+      String propertyAddress,
+      // CC#39: null = conserva la referencia actual.
+      String propertyReference) {
+
+    public ConfigurationCorrection(
+        PersonType personType,
+        boolean signedByAttorney,
+        AccreditationType accreditationType,
+        boolean condominiumRegime,
+        UUID propertySubtypeId,
+        String propertyTypeDetail,
+        OperationType operationType,
+        PropertyLegalStatus declaredLegalStatus,
+        String propertyAddress) {
+      this(
+          personType, signedByAttorney, accreditationType, condominiumRegime, propertySubtypeId, propertyTypeDetail, operationType,
+          declaredLegalStatus, propertyAddress, null);
+    }
+  }
 
   public Expediente correctConfiguration(UUID expedienteId, ConfigurationCorrection correction, Actor actor, String reason) {
     Expediente expediente = get(expedienteId);
@@ -438,6 +478,19 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
             correction.declaredLegalStatus(),
             blankToNull(correction.propertyAddress())));
     recordChanges(expediente, "Datos del expediente", before, configurationSnapshot(expediente), actor, reason);
+    // CC#39: la referencia solo ayuda al cliente a reconocer su liga; no forma parte del contrato.
+    if (correction.propertyReference() != null) {
+      String previous = expediente.getPropertyReference();
+      expediente.correctPropertyReference(blankToNull(correction.propertyReference()));
+      recordChanges(
+          expediente,
+          "Datos del expediente",
+          Map.of("Referencia del inmueble que ve el cliente", Objects.toString(previous, "")),
+          Map.of("Referencia del inmueble que ve el cliente", Objects.toString(expediente.getPropertyReference(), "")),
+          actor,
+          reason,
+          false);
+    }
     publishRequirements(expediente);
     return expediente;
   }
@@ -628,7 +681,7 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
         Map<String, String> before = data.snapshot();
         data.update(
             new ManualClientData.ManualClientDataUpdate(
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, land, built));
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, land, built, null, false));
         recordChanges(expediente, "Datos del cliente e inmueble", before, data.snapshot(), Actor.system(), reason);
         filled += (land != null ? 1 : 0) + (built != null ? 1 : 0);
       }
@@ -792,11 +845,23 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
     ManualClientData data = manualDataOf(expedienteId);
     Map<String, String> before = data.snapshot();
     data.update(update);
-    if (!before.equals(data.snapshot())) {
+    Map<String, String> after = data.snapshot();
+    // CC#34: el precio sugerido por el cliente es informativo; no cuenta como corrección del contrato.
+    Map<String, String> contractBefore = withoutSuggestedPrice(before);
+    Map<String, String> contractAfter = withoutSuggestedPrice(after);
+    if (!contractBefore.equals(contractAfter)) {
       // Si no se permite corregir, la excepción revierte la transacción completa.
       expediente.ensureCorrectable();
     }
-    recordChanges(expediente, "Datos del cliente e inmueble", before, data.snapshot(), actor, reason);
+    recordChanges(expediente, "Datos del cliente e inmueble", contractBefore, contractAfter, actor, reason);
+    recordChanges(
+        expediente,
+        "Datos del cliente e inmueble",
+        Map.of(ManualClientData.SUGGESTED_PRICE_FIELD, Objects.toString(before.get(ManualClientData.SUGGESTED_PRICE_FIELD), "")),
+        Map.of(ManualClientData.SUGGESTED_PRICE_FIELD, Objects.toString(after.get(ManualClientData.SUGGESTED_PRICE_FIELD), "")),
+        actor,
+        reason,
+        false);
 
     // El estado civil del propietario principal alimenta la política (acta de matrimonio).
     if (update.civilStatus() != null) {
@@ -1005,6 +1070,20 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
   @ApplicationModuleListener
   void on(PublicLinkGenerated event) {
     get(event.expedienteId()).transitionToIfAllowed(ExpedienteStatus.WAITING_PRIVACY);
+  }
+
+  /** CC#32: closing avisa que el seguimiento de cierre se completó; el expediente se identifica como "Cerrada". */
+  @ApplicationModuleListener
+  void on(ClosingCompleted event) {
+    expedienteRepository
+        .findById(event.expedienteId())
+        .ifPresent(e -> e.markClosingCompleted(event.closedOn() != null ? event.closedOn() : LocalDate.now(clock.withZone(MEXICO_CITY))));
+  }
+
+  /** CC#32: el cierre se reabrió; deja de mostrarse como "Cerrada" (el historial de closing se conserva). */
+  @ApplicationModuleListener
+  void on(ClosingReopened event) {
+    expedienteRepository.findById(event.expedienteId()).ifPresent(e -> e.markClosingCompleted(null));
   }
 
   /** privacy publica este evento; expedientes decide su propia transición (ver AGENTS §7). */
@@ -1345,8 +1424,26 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
   // Historial de cambios
   // ---------------------------------------------------------------------
 
+  private static Map<String, String> withoutSuggestedPrice(Map<String, String> snapshot) {
+    Map<String, String> copy = new LinkedHashMap<>(snapshot);
+    copy.remove(ManualClientData.SUGGESTED_PRICE_FIELD);
+    return copy;
+  }
+
   private void recordChanges(
       Expediente expediente, String section, Map<String, String> before, Map<String, String> after, Actor actor, String reason) {
+    recordChanges(expediente, section, before, after, actor, reason, true);
+  }
+
+  /** contractRelevant = false: queda en el historial pero no invalida el contrato (p. ej. CC#34). */
+  private void recordChanges(
+      Expediente expediente,
+      String section,
+      Map<String, String> before,
+      Map<String, String> after,
+      Actor actor,
+      String reason,
+      boolean contractRelevant) {
     Instant now = clock.instant();
     List<String> changed = new ArrayList<>();
     java.util.Set<String> keys = new java.util.LinkedHashSet<>(before.keySet());
@@ -1362,7 +1459,7 @@ public class ExpedienteService implements ExpedienteLifecycleApi {
     }
     if (!changed.isEmpty()) {
       events.publishEvent(
-          new ExpedienteDataCorrected(expediente.getId(), actor, section, List.copyOf(changed), emptyToNull(reason), true));
+          new ExpedienteDataCorrected(expediente.getId(), actor, section, List.copyOf(changed), emptyToNull(reason), contractRelevant));
     }
   }
 

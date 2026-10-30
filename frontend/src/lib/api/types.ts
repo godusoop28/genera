@@ -109,6 +109,8 @@ export interface ExpedienteResponse {
   /** Archivado: null = activo. */
   archivedAt: string | null;
   archiveReason: string | null;
+  /** CC#32: fecha (AAAA-MM-DD) en que se completó el seguimiento de cierre; null = no está cerrada. */
+  closingCompletedOn: string | null;
 }
 
 export interface RequirementResponse {
@@ -267,6 +269,8 @@ export interface ClosingCaseResponse {
   contractDelivered: boolean;
   contractDeliveredAt: string | null;
   signedContractId: string | null;
+  /** CC#32: fecha de cierre (AAAA-MM-DD) cuando el seguimiento se completó. */
+  closedOn: string | null;
 }
 
 export interface ClosingTaskResponse {
@@ -636,6 +640,8 @@ export interface PublicExpedienteResponse {
   personType: BackendPersonType;
   maskedOwnerName: string;
   maskedPropertyAddress: string;
+  /** CC#34: venta o renta (el precio sugerido solo se pide en una venta). */
+  operationType?: BackendOperationType;
 }
 
 export interface PublicParticipantResponse {
@@ -651,7 +657,15 @@ export interface PublicClientDataResponse {
   phone: string | null;
   notificationAddress: string | null;
   civilStatus: BackendCivilStatus | null;
+  /** CC#34: precio de venta sugerido por el cliente (MXN, informativo). */
+  suggestedPrice: string | number | null;
 }
+
+/** CC#34: clearSuggestedPrice = true borra el precio sugerido cuando el cliente deja el campo vacío. */
+export type PublicClientDataUpdate = Partial<Omit<PublicClientDataResponse, "suggestedPrice">> & {
+  suggestedPrice?: string | null;
+  clearSuggestedPrice?: boolean;
+};
 
 export interface PrivacyNoticeResponse {
   templateId: string;
@@ -687,6 +701,8 @@ export interface ManualClientDataResponse {
   contractSignatureDate: string | null;
   landAreaM2: string | number | null;
   builtAreaM2: string | number | null;
+  /** CC#34: precio de venta sugerido por el cliente desde su liga (MXN, informativo). */
+  suggestedPrice: string | number | null;
 }
 
 export interface SubmitDocumentsResponse {

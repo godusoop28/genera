@@ -35,6 +35,8 @@ export interface ExpedienteConfiguration {
   operationType: BackendOperationType;
   declaredLegalStatus: BackendPropertyLegalStatus;
   propertyAddress: string;
+  /** CC#39: referencia que ve el cliente; undefined = la conserva, "" = la quita. */
+  propertyReference?: string;
 }
 
 /** Al crear, el domicilio y la situación jurídica se omiten: el backend los toma de los documentos del inmueble. */
@@ -191,6 +193,8 @@ export interface ExpedienteOverview {
   counts: GroupCounts;
   /** Cuántos archivados puede ver el usuario (no entran en counts). */
   archived: number;
+  /** CC#32: cuántos activos tienen el cierre completado. */
+  closed?: number;
 }
 
 /**
@@ -217,12 +221,14 @@ function setPortfolioParams(search: URLSearchParams, filters: PortfolioFilters) 
 }
 
 export function getExpedienteOverview(
-  params: { q?: string; group?: ExpedienteStatusGroup | null; archived?: boolean; page?: number; size?: number } & PortfolioFilters,
+  params: { q?: string; group?: ExpedienteStatusGroup | null; archived?: boolean; closed?: boolean; page?: number; size?: number } & PortfolioFilters,
 ) {
   const search = new URLSearchParams({ page: String(params.page ?? 0), size: String(params.size ?? 18), sort: "updatedAt,desc" });
   if (params.q?.trim()) search.set("q", params.q.trim());
   if (params.group) search.set("group", params.group);
   if (params.archived) search.set("archived", "true");
+  // CC#32: solo los que tienen el cierre completado.
+  if (params.closed) search.set("closed", "true");
   setPortfolioParams(search, params);
   return apiClient.get<ExpedienteOverview>(`/internal/expedientes/overview?${search.toString()}`);
 }

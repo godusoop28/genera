@@ -9,6 +9,7 @@ import type {
   PrivacyConsentResponse,
   PrivacyNoticeResponse,
   PublicClientDataResponse,
+  PublicClientDataUpdate,
   PublicDocumentResponse,
   PublicExpedienteResponse,
   PublicParticipantResponse,
@@ -46,7 +47,7 @@ export function getClientData(token: string) {
   return apiClient.get<PublicClientDataResponse>(`/public/expedientes/${token}/client-data`);
 }
 
-export function updateClientData(token: string, data: Partial<PublicClientDataResponse>) {
+export function updateClientData(token: string, data: PublicClientDataUpdate) {
   return apiClient.put<PublicClientDataResponse>(`/public/expedientes/${token}/client-data`, data);
 }
 

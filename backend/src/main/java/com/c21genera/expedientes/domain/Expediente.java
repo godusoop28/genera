@@ -15,6 +15,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Entity
@@ -131,6 +132,12 @@ public class Expediente extends AuditableEntity {
 
   @Column(length = 500)
   private String archiveReason;
+
+  /**
+   * CC#32: fecha en que se completó el seguimiento de cierre (lo publica closing). Solo sirve para
+   * identificar la operación como "Cerrada"; no cambia el estatus ni la máquina de estados.
+   */
+  private LocalDate closingCompletedOn;
 
   protected Expediente() {}
 
@@ -462,6 +469,21 @@ public class Expediente extends AuditableEntity {
 
   public Instant getArchivedAt() {
     return archivedAt;
+  }
+
+  /** CC#39: referencia corta para que el cliente reconozca su liga (no es el domicilio legal). */
+  public void correctPropertyReference(String propertyReference) {
+    ensureCorrectable();
+    this.propertyReference = propertyReference;
+  }
+
+  /** CC#32: null = sin cierre completado (o reabierto). */
+  public void markClosingCompleted(LocalDate closedOn) {
+    this.closingCompletedOn = closedOn;
+  }
+
+  public LocalDate getClosingCompletedOn() {
+    return closingCompletedOn;
   }
 
   public UUID getArchivedByUserId() {

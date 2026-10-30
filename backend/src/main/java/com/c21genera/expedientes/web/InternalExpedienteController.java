@@ -222,7 +222,8 @@ public class InternalExpedienteController {
                 request.propertyTypeDetail(),
                 request.operationType(),
                 request.declaredLegalStatus(),
-                request.propertyAddress()),
+                request.propertyAddress(),
+                request.propertyReference()),
             user.toActor(),
             request.reason()));
   }

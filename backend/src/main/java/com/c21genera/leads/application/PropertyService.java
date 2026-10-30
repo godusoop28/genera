@@ -34,7 +34,12 @@ import java.util.stream.Collectors;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.Predicate;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.access.AccessDeniedException;
@@ -129,7 +134,9 @@ public class PropertyService {
       List<String> photos,
       // Notas internas y etiquetas: solo en Genera, nunca se mandan a 21Online.
       String privateNotes,
-      List<String> tags) {}
+      List<String> tags,
+      // CC#36: fecha de alta (fechaAlta de 21Online o, si no hay, la de captura en Genera).
+      Instant listedAt) {}
 
   /** Resultado de importar el inventario de la oficina. */
   public record ImportResult(boolean configured, int imported, int updated, int total) {}
@@ -139,6 +146,35 @@ public class PropertyService {
   public record InventoryPage(boolean configured, String error, List<InventoryItem> items, int page, Integer totalItems, boolean hasNext) {}
 
   public record Overview(boolean configured, List<PropertyView> captured) {}
+
+  /** CC#36: criterio principal de orden del listado (solo uno a la vez). */
+  public enum CapturedSort {
+    NEWEST,
+    OLDEST,
+    PRICE_ASC,
+    PRICE_DESC
+  }
+
+  /**
+   * CC#36: filtros del listado "En Genera" (todo el inventario de la oficina). Los precios se comparan
+   * en la moneda indicada (MXN si no se indica) y contra el precio de la operación (venta o renta).
+   */
+  public record CapturedFilter(
+      String query,
+      String tag,
+      String status,
+      String operation,
+      UUID advisorId,
+      BigDecimal minPrice,
+      BigDecimal maxPrice,
+      String currency,
+      CapturedSort sort,
+      int page,
+      int size) {}
+
+  /** page empieza en 1; tags: todas las etiquetas existentes (para el filtro). */
+  public record CapturedPage(
+      boolean configured, List<PropertyView> captured, int page, int size, long totalItems, int totalPages, List<String> tags) {}
 
   // ---------------------------------------------------------------------------
   // Consulta
@@ -188,6 +224,121 @@ public class PropertyService {
 
   public PropertyView get(UUID id, CurrentUser user) {
     return view(load(id), user, staff.names());
+  }
+
+  /**
+   * CC#36: listado paginado con filtros y orden aplicados en la base de datos, sobre todas las
+   * propiedades (no solo la página visible).
+   */
+  public CapturedPage search(CapturedFilter f, CurrentUser user) {
+    if (f.minPrice() != null && f.minPrice().signum() < 0 || f.maxPrice() != null && f.maxPrice().signum() < 0) {
+      throw new UnprocessableException("INVALID_PRICE_RANGE", "Los precios no pueden ser negativos.");
+    }
+    if (f.minPrice() != null && f.maxPrice() != null && f.minPrice().compareTo(f.maxPrice()) > 0) {
+      throw new UnprocessableException("INVALID_PRICE_RANGE", "El precio mínimo no puede ser mayor que el máximo.");
+    }
+    Map<UUID, String> names = staff.names();
+    int size = Math.min(Math.max(f.size(), 1), 100);
+    int page = Math.max(f.page(), 1);
+    Page<CrmProperty> result = properties.findAll(specification(f, names), PageRequest.of(page - 1, size));
+    List<PropertyView> items = result.getContent().stream().map(p -> view(p, user, names)).toList();
+    return new CapturedPage(listings.available(), items, page, size, result.getTotalElements(), result.getTotalPages(), allTags());
+  }
+
+  private List<String> allTags() {
+    java.util.TreeSet<String> out = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+    for (String json : properties.allTagsJson()) {
+      try {
+        out.addAll(java.util.Arrays.asList(objectMapper.readValue(json, String[].class)));
+      } catch (Exception e) {
+        // Etiquetas ilegibles: se omiten del filtro.
+      }
+    }
+    return List.copyOf(out);
+  }
+
+  static Specification<CrmProperty> specification(CapturedFilter f, Map<UUID, String> names) {
+    return (root, query, cb) -> {
+      List<Predicate> where = new java.util.ArrayList<>();
+      Expression<BigDecimal> price =
+          cb.<BigDecimal>selectCase()
+              .when(cb.equal(root.get("operation"), "renta"), root.<BigDecimal>get("rentPrice"))
+              .otherwise(root.<BigDecimal>get("salePrice"));
+      String q = f.query() == null ? "" : f.query().trim().toLowerCase(Locale.ROOT);
+      if (!q.isEmpty()) {
+        String like = "%" + escapeLike(q) + "%";
+        List<UUID> advisors =
+            names.entrySet().stream()
+                .filter(e -> e.getValue() != null && e.getValue().toLowerCase(Locale.ROOT).contains(q))
+                .map(Map.Entry::getKey)
+                .toList();
+        List<Predicate> any = new java.util.ArrayList<>();
+        any.add(cb.like(cb.lower(root.get("headline")), like, '!'));
+        any.add(cb.like(cb.lower(root.get("neighborhood")), like, '!'));
+        any.add(cb.like(cb.lower(root.get("municipality")), like, '!'));
+        any.add(cb.like(cb.lower(cb.coalesce(root.<String>get("tagsJson"), "")), like, '!'));
+        if (q.matches("\\d{1,12}")) {
+          any.add(cb.equal(root.get("online21Id"), Long.parseLong(q)));
+        }
+        if (!advisors.isEmpty()) {
+          any.add(root.get("advisorUserId").in(advisors));
+        }
+        where.add(cb.or(any.toArray(Predicate[]::new)));
+      }
+      if (f.tag() != null && !f.tag().isBlank()) {
+        // Coincidencia exacta del elemento dentro del arreglo JSON.
+        String element = "\"" + f.tag().strip().replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+        where.add(cb.like(root.<String>get("tagsJson"), "%" + escapeLike(element) + "%", '!'));
+      }
+      if (f.status() != null && !f.status().isBlank()) {
+        where.add(cb.equal(root.get("status"), f.status()));
+      }
+      if (f.operation() != null && !f.operation().isBlank()) {
+        where.add(cb.equal(root.get("operation"), f.operation()));
+      }
+      if (f.advisorId() != null) {
+        where.add(cb.equal(root.get("advisorUserId"), f.advisorId()));
+      }
+      boolean priceFilter = f.minPrice() != null || f.maxPrice() != null;
+      String currency =
+          f.currency() != null && !f.currency().isBlank() ? f.currency().trim().toUpperCase(Locale.ROOT) : priceFilter ? "MXN" : null;
+      if (currency != null) {
+        where.add(cb.equal(cb.upper(root.get("currency")), currency));
+      }
+      // Límites inclusivos.
+      if (f.minPrice() != null) {
+        where.add(cb.greaterThanOrEqualTo(price, f.minPrice()));
+      }
+      if (f.maxPrice() != null) {
+        where.add(cb.lessThanOrEqualTo(price, f.maxPrice()));
+      }
+      // La consulta de conteo no lleva orden.
+      if (query.getResultType() != Long.class && query.getResultType() != long.class) {
+        Expression<Instant> listed = cb.coalesce(root.<Instant>get("listedAt"), root.<Instant>get("createdAt"));
+        CapturedSort sort = f.sort() == null ? CapturedSort.NEWEST : f.sort();
+        List<jakarta.persistence.criteria.Order> order = new java.util.ArrayList<>();
+        switch (sort) {
+          case OLDEST -> order.add(cb.asc(listed));
+          case PRICE_ASC, PRICE_DESC -> {
+            // Sin precio al final; sin filtro de moneda, agrupadas por moneda.
+            order.add(cb.asc(cb.<Integer>selectCase().when(cb.isNull(price), 1).otherwise(0)));
+            if (currency == null) {
+              order.add(cb.asc(root.get("currency")));
+            }
+            order.add(sort == CapturedSort.PRICE_ASC ? cb.asc(price) : cb.desc(price));
+            order.add(cb.desc(listed));
+          }
+          default -> order.add(cb.desc(listed));
+        }
+        order.add(cb.asc(root.get("id")));
+        query.orderBy(order);
+      }
+      return cb.and(where.toArray(Predicate[]::new));
+    };
+  }
+
+  private static String escapeLike(String s) {
+    return s.replace("!", "!!").replace("%", "!%").replace("_", "!_");
   }
 
   // ---------------------------------------------------------------------------
@@ -346,6 +497,7 @@ public class PropertyService {
           tx.execute(
               s -> {
                 CrmProperty p = CrmProperty.linked(user.id(), online21Id, fromRemote(remote.draft(), null), remote.photos(), remote.updatedAt(), clock.instant());
+                p.recordListedAt(remote.listedAt());
                 p.featuresTemplate(templateOf(remote));
                 p.baseline(json(draft(p)));
                 return properties.save(p).getId();
@@ -455,7 +607,24 @@ public class PropertyService {
     if (imported > 0 || updated > 0) {
       log.info("Inventario de 21Online: {} propiedad(es) nuevas y {} actualizadas", imported, updated);
     }
+    recordListingDates(remote, local);
     return new InventorySync(seen, imported, updated);
+  }
+
+  /** CC#36: fechaAlta de 21Online para ordenar por antigüedad (también en las que no cambiaron allá). */
+  private void recordListingDates(List<RemoteListing> remote, Map<Long, CrmProperty> local) {
+    List<RemoteListing> pending =
+        remote.stream()
+            .filter(r -> r.listedAt() != null && local.containsKey(r.id()) && !r.listedAt().equals(local.get(r.id()).getListedAt()))
+            .toList();
+    if (pending.isEmpty()) {
+      return;
+    }
+    try {
+      tx.executeWithoutResult(s -> pending.forEach(r -> properties.updateListedAt(local.get(r.id()).getId(), r.listedAt())));
+    } catch (RuntimeException e) {
+      log.warn("No se pudieron guardar las fechas de alta de 21Online ({})", e.getClass().getSimpleName());
+    }
   }
 
   /** Trae de 21Online la plantilla de amenidades de una propiedad vinculada antes de guardarlas; si falla, sigue sin ella. */
@@ -504,6 +673,7 @@ public class PropertyService {
           s -> {
             Data data = fromRemote(r.draft(), null);
             CrmProperty p = CrmProperty.linked(data.advisorUserId(), r.id(), data, r.photos(), r.updatedAt(), clock.instant());
+            p.recordListedAt(r.listedAt());
             p.featuresTemplate(templateOf(r));
             p.baseline(json(draft(p)));
             properties.save(p);
@@ -870,7 +1040,8 @@ public class PropertyService {
         p.getRemoteModifiedAt(),
         p.getPhotoUrls(),
         p.getPrivateNotes(),
-        p.getTags());
+        p.getTags(),
+        p.getListedAt() != null ? p.getListedAt() : p.getCreatedAt());
   }
 
   /** Asesor de Genera vinculado al usuario de 21Online (Asesores → usuario de 21Online). */

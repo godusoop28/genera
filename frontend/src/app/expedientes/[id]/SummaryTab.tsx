@@ -20,13 +20,15 @@ import {
   listAssignableAdvisors,
   rejectProperty,
   signReception,
+  updateClientData,
   type AdvisorOption,
   type ExpedienteConfiguration,
 } from "@/lib/api/expedientes";
 import { generatePublicLink, getPublicLinkStatus, revokePublicLink } from "@/lib/api/public-link";
-import type { PublicLinkStatusResponse } from "@/lib/api/types";
+import type { ManualClientDataResponse, PublicLinkStatusResponse } from "@/lib/api/types";
 import { errorText } from "@/lib/errors";
-import { frontendLink } from "@/lib/share-links";
+import { formatMoneyWithCurrency } from "@/lib/money";
+import { frontendLink, uploadLinkIdentifier, uploadLinkMessage, whatsappShareUrl } from "@/lib/share-links";
 import {
   accreditationLabels,
   formatDate,
@@ -39,7 +41,7 @@ import {
   signerCharacterLabels,
 } from "@/lib/labels";
 import { useCan } from "@/lib/permissions";
-import { Copy, FileSignature, Home, Link2, Pencil, ShieldOff, ThumbsDown, ThumbsUp, UserCog } from "lucide-react";
+import { Copy, FileSignature, Home, Link2, MessageCircle, Pencil, ShieldOff, ThumbsDown, ThumbsUp, UserCog } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { DocumentTimingCard } from "./DocumentTimingCard";
 import { PrivacyCard } from "./PrivacyCard";
@@ -57,15 +59,17 @@ export function SummaryTab({ expediente, participants, reload, freshPublicLink: 
   const [busy, setBusy] = useState(false);
   // Controles de cambios #14 y #22: cuántos documentos están pendientes de entrega y qué servicios tiene.
   const [pendingDocs, setPendingDocs] = useState<number | null>(null);
-  const [services, setServices] = useState<string | null>(null);
+  // Servicios (CC#22), precio sugerido por el cliente (CC#34) y datos de contacto (CC#39).
+  const [clientData, setClientData] = useState<ManualClientDataResponse | null>(null);
+  const services = clientData?.availableServices ?? null;
 
   useEffect(() => {
     listDocuments(expediente.id)
       .then((docs) => setPendingDocs(docs.filter((d) => d.markedPending).length))
       .catch(() => setPendingDocs(null));
     getClientData(expediente.id)
-      .then((d) => setServices(d.availableServices ?? null))
-      .catch(() => setServices(null));
+      .then(setClientData)
+      .catch(() => setClientData(null));
   }, [expediente.id, expediente.updatedAt]);
 
   const loadLink = useCallback(() => {
@@ -139,6 +143,16 @@ export function SummaryTab({ expediente, participants, reload, freshPublicLink: 
           <Field label="Domicilio del inmueble" value={expediente.propertyAddress || "Se tomará de la escritura o el predial"} />
           {expediente.propertyReference ? <Field label="Referencia que ve el cliente" value={expediente.propertyReference} /> : null}
           <Field label="Servicios con los que cuenta" value={services?.trim() ? services : "Sin capturar (pestaña Datos del contrato)"} />
+          {expediente.operationType !== "RENT" ? (
+            <Field
+              label="Precio de venta sugerido por el cliente"
+              value={
+                clientData?.suggestedPrice != null && clientData.suggestedPrice !== ""
+                  ? `${formatMoneyWithCurrency(clientData.suggestedPrice)} (informativo)`
+                  : "El cliente no lo indicó"
+              }
+            />
+          ) : null}
           <Field
             label="Documentos pendientes de entrega"
             value={pendingDocs === null ? "—" : pendingDocs === 0 ? "Ninguno" : `${pendingDocs} (no bloquean el avance)`}
@@ -183,20 +197,23 @@ export function SummaryTab({ expediente, participants, reload, freshPublicLink: 
           {linkStatus?.lastUsedAt ? <span className="text-muted">· Último acceso: {formatDateTime(linkStatus.lastUsedAt)}</span> : null}
         </div>
         {newLink ? (
-          <div className="mb-3 flex items-center gap-2 rounded-lg border border-border bg-app-bg px-3 py-2 text-sm">
-            <code className="min-w-0 flex-1 truncate">{newLink}</code>
-            <button
-              type="button"
-              onClick={() => {
-                navigator.clipboard.writeText(newLink);
-                showToast("Liga copiada.");
-              }}
-              aria-label="Copiar liga"
-              className="text-muted hover:text-obsessed"
-            >
-              <Copy className="h-4 w-4" aria-hidden />
-            </button>
-          </div>
+          <>
+            <div className="mb-3 flex items-center gap-2 rounded-lg border border-border bg-app-bg px-3 py-2 text-sm">
+              <code className="min-w-0 flex-1 truncate">{newLink}</code>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(newLink);
+                  showToast("Liga copiada.");
+                }}
+                aria-label="Copiar liga"
+                className="text-muted hover:text-obsessed"
+              >
+                <Copy className="h-4 w-4" aria-hidden />
+              </button>
+            </div>
+            <ShareMessage message={uploadLinkMessage(uploadLinkIdentifier(expediente), newLink)} phone={clientData?.phone} />
+          </>
         ) : null}
         {can("PUBLIC_LINK_GENERATE") ? (
           <div className="flex flex-wrap gap-2">
@@ -276,11 +293,22 @@ export function SummaryTab({ expediente, participants, reload, freshPublicLink: 
             operationType: expediente.operationType,
             declaredLegalStatus: expediente.declaredLegalStatus,
             propertyAddress: expediente.propertyAddress ?? "",
+            propertyReference: expediente.propertyReference ?? "",
+          }}
+          initialContact={{
+            email: clientData?.email ?? "",
+            phone: clientData?.phone ?? "",
+            notificationAddress: clientData?.notificationAddress ?? "",
           }}
           currentSubtype={expediente.propertySubtypeId ? { id: expediente.propertySubtypeId, label: expediente.propertyTypeLabel ?? "" } : null}
           onClose={() => setEditing(false)}
-          onSave={async (config, reason) => {
-            await run(() => correctExpediente(expediente.id, config, reason), "Datos corregidos y registrados en la bitácora.");
+          onSave={async (config, contact, reason) => {
+            await run(async () => {
+              await correctExpediente(expediente.id, config, reason);
+              // Solo los datos de contacto que cambiaron; el correo del cliente no toca ninguna cuenta del personal.
+              if (contact) await updateClientData(expediente.id, { ...contact, reason });
+              setClientData(await getClientData(expediente.id));
+            }, "Datos corregidos y registrados en la bitácora.");
             setEditing(false);
           }}
         />
@@ -465,22 +493,44 @@ function ClassifyPropertyModal({
   );
 }
 
+/** CC#39: datos de contacto del cliente que también se corrigen desde este menú. */
+interface ContactCorrection {
+  email: string;
+  phone: string;
+  notificationAddress: string;
+}
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
 function CorrectionModal({
   initial,
+  initialContact,
   currentSubtype,
   onClose,
   onSave,
 }: {
   initial: ExpedienteConfiguration;
+  initialContact: ContactCorrection;
   currentSubtype: { id: string; label: string } | null;
   onClose: () => void;
-  onSave: (config: ExpedienteConfiguration, reason: string) => Promise<void>;
+  /** contact: solo los campos que cambiaron (null = ninguno). */
+  onSave: (config: ExpedienteConfiguration, contact: Partial<ContactCorrection> | null, reason: string) => Promise<void>;
 }) {
   const { catalog } = usePropertyCatalog();
   const [config, setConfig] = useState(initial);
+  const [contact, setContact] = useState(initialContact);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const set = <K extends keyof ExpedienteConfiguration>(k: K, v: ExpedienteConfiguration[K]) => setConfig((c) => ({ ...c, [k]: v }));
+  const setContactField = (k: keyof ContactCorrection, v: string) => setContact((c) => ({ ...c, [k]: v }));
+  const email = contact.email.trim();
+  const emailError =
+    email && !EMAIL_PATTERN.test(email)
+      ? "Escribe un correo válido, por ejemplo nombre@correo.com."
+      : !email && initialContact.email.trim()
+        ? "El correo no se puede dejar vacío; escribe el correcto."
+        : undefined;
+  const changedContact = (Object.keys(contact) as (keyof ContactCorrection)[]).filter((k) => contact[k].trim() !== initialContact[k].trim());
 
   return (
     <Modal
@@ -494,11 +544,17 @@ function CorrectionModal({
             Cancelar
           </Button>
           <Button
-            disabled={busy || reason.trim().length < 5 || Boolean(config.propertySubtypeId && propertyTypeError(catalog, config.propertySubtypeId, config.propertyTypeDetail ?? "", currentSubtype?.id))}
+            disabled={
+              busy ||
+              reason.trim().length < 5 ||
+              Boolean(emailError) ||
+              Boolean(config.propertySubtypeId && propertyTypeError(catalog, config.propertySubtypeId, config.propertyTypeDetail ?? "", currentSubtype?.id))
+            }
             onClick={async () => {
               setBusy(true);
               try {
-                await onSave(config, reason.trim());
+                const contactPatch = changedContact.length ? Object.fromEntries(changedContact.map((k) => [k, contact[k].trim()])) : null;
+                await onSave({ ...config, propertyReference: config.propertyReference?.trim() ?? "" }, contactPatch, reason.trim());
               } finally {
                 setBusy(false);
               }
@@ -550,10 +606,37 @@ function CorrectionModal({
           onChange={(e) => set("propertyAddress", e.target.value)}
           containerClassName="sm:col-span-2"
         />
+        <Input
+          label="Nombre o referencia del inmueble (lo ve el cliente)"
+          value={config.propertyReference ?? ""}
+          maxLength={120}
+          placeholder="Ej. Casa Las Flores"
+          hint="Ayuda al cliente a reconocer su liga y la identifica al compartirla por WhatsApp. No cambia el contrato."
+          onChange={(e) => set("propertyReference", e.target.value)}
+          containerClassName="sm:col-span-2"
+        />
         <Toggle id="corr-condo" checked={config.condominiumRegime} onChange={(v) => set("condominiumRegime", v)} label="Régimen de condominio" />
         {config.personType === "FISICA" ? (
           <Toggle id="corr-att" checked={config.signedByAttorney} onChange={(v) => set("signedByAttorney", v)} label="Firma un apoderado" />
         ) : null}
+      </div>
+      <p className="mb-3 mt-5 border-t border-border pt-4 text-sm font-medium text-obsessed">Datos de contacto del cliente</p>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Input
+          label="Correo electrónico"
+          type="email"
+          value={contact.email}
+          error={emailError}
+          hint="Es el correo de contacto del cliente; no cambia el acceso de ningún usuario del sistema."
+          onChange={(e) => setContactField("email", e.target.value)}
+        />
+        <Input label="Teléfono" type="tel" value={contact.phone} onChange={(e) => setContactField("phone", e.target.value)} />
+        <Input
+          label="Domicilio para notificaciones"
+          value={contact.notificationAddress}
+          onChange={(e) => setContactField("notificationAddress", e.target.value)}
+          containerClassName="sm:col-span-2"
+        />
       </div>
       <label className="mb-1 mt-4 block text-sm font-medium text-obsessed">Motivo de la corrección</label>
       <textarea
@@ -564,6 +647,37 @@ function CorrectionModal({
         className="w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm outline-none focus:border-gold"
       />
     </Modal>
+  );
+}
+
+/** CC#35: vista previa del mensaje con el que se comparte la liga (identificador + texto + liga). */
+function ShareMessage({ message, phone }: { message: string; phone?: string | null }) {
+  const { showToast } = useToast();
+  return (
+    <div className="mb-3 rounded-lg border border-border p-3">
+      <p className="mb-2 text-xs font-medium tracking-wide text-muted uppercase">Mensaje para WhatsApp (vista previa)</p>
+      <p className="whitespace-pre-wrap break-words rounded-md bg-app-bg px-3 py-2 text-sm text-obsessed">{message}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => {
+            navigator.clipboard.writeText(message);
+            showToast("Mensaje copiado con la liga.");
+          }}
+        >
+          <Copy className="h-4 w-4" aria-hidden /> Copiar mensaje
+        </Button>
+        <a
+          href={whatsappShareUrl(message, phone)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-border bg-card px-3 text-sm font-medium text-obsessed hover:border-gold/60"
+        >
+          <MessageCircle className="h-4 w-4" aria-hidden /> Abrir en WhatsApp
+        </a>
+      </div>
+    </div>
   );
 }
 

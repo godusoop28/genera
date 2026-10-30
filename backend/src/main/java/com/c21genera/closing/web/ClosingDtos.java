@@ -15,11 +15,18 @@ public final class ClosingDtos {
   private ClosingDtos() {}
 
   public record ClosingCaseResponse(
-      UUID id, UUID expedienteId, String status, boolean contractDelivered, Instant contractDeliveredAt, UUID signedContractId) {
+      UUID id,
+      UUID expedienteId,
+      String status,
+      boolean contractDelivered,
+      Instant contractDeliveredAt,
+      UUID signedContractId,
+      // CC#32: fecha de cierre (null mientras no se completa).
+      LocalDate closedOn) {
 
     static ClosingCaseResponse from(ClosingCase c) {
       return new ClosingCaseResponse(
-          c.getId(), c.getExpedienteId(), c.getStatus().name(), c.isContractDelivered(), c.getContractDeliveredAt(), c.getSignedContractId());
+          c.getId(), c.getExpedienteId(), c.getStatus().name(), c.isContractDelivered(), c.getContractDeliveredAt(), c.getSignedContractId(), c.getClosedOn());
     }
   }
 
@@ -38,7 +45,8 @@ public final class ClosingDtos {
     }
   }
 
-  public record ChangeStatusRequest(@NotNull ClosingStatus status) {}
+  /** closedOn (CC#32, opcional): fecha de cierre al completarlo; si no llega, hoy. */
+  public record ChangeStatusRequest(@NotNull ClosingStatus status, LocalDate closedOn) {}
 
   public record AddNoteRequest(@NotBlank String note) {}
 

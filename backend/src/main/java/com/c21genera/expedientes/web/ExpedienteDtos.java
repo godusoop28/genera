@@ -114,6 +114,8 @@ public final class ExpedienteDtos {
       OperationType operationType,
       @NotNull PropertyLegalStatus declaredLegalStatus,
       String propertyAddress,
+      // CC#39: referencia que ve el cliente en su liga. null = la conserva; "" = la quita.
+      @Size(max = 120) String propertyReference,
       String reason) {}
 
   public record ClassifyPropertyRequest(@NotNull UUID propertySubtypeId, @Size(max = 160) String propertyTypeDetail, @Size(max = 500) String reason) {}
@@ -203,7 +205,9 @@ public final class ExpedienteDtos {
       Instant updatedAt,
       // Archivado: null = activo.
       Instant archivedAt,
-      String archiveReason) {
+      String archiveReason,
+      // CC#32: fecha en que se completó el seguimiento de cierre (null = no está cerrada).
+      LocalDate closingCompletedOn) {
 
     public static ExpedienteResponse from(Expediente e) {
       return new ExpedienteResponse(
@@ -238,7 +242,8 @@ public final class ExpedienteDtos {
           e.getCreatedAt(),
           e.getUpdatedAt(),
           e.getArchivedAt(),
-          e.getArchiveReason());
+          e.getArchiveReason(),
+          e.getClosingCompletedOn());
     }
   }
 
