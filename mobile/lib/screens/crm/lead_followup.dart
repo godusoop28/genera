@@ -5,6 +5,7 @@ import '../../api/client.dart';
 import '../../api/models.dart';
 import '../../labels.dart';
 import '../../ui/widgets.dart';
+import '../../ui/dictation_field.dart';
 
 /// Control de Cambios #30: horas en intervalos de 15 min para programar actividades (hora de CDMX).
 final _times = [
@@ -158,12 +159,12 @@ Future<void> showNewTaskSheet(BuildContext context, LeadItem lead, VoidCallback 
         AppSelect<String>(label: 'Recordatorio', value: reminder, options: [for (final e in reminderLabels.entries) (value: e.key, label: e.value)], onChanged: (v) => setState(() => reminder = v)),
       ],
       const SizedBox(height: 12),
-      AppTextField(label: 'Notas previas', maxLines: 2, onChanged: (v) => notes = v),
+      DictationTextField(label: 'Notas previas', maxLines: 2, onChanged: (v) => notes = v, dictateLabel: 'Dictar notas'),
       if (done) ...[
         const SizedBox(height: 12),
         AppSelect<String>(label: 'Resultado', value: result, options: [(value: '', label: 'Elige el resultado'), for (final e in taskResultLabels.entries) (value: e.key, label: e.value)], onChanged: (v) => setState(() => result = v)),
         const SizedBox(height: 12),
-        AppTextField(label: 'Resumen / notas', maxLines: 3, onChanged: (v) => outcome = v),
+        DictationTextField(label: 'Resumen / notas', maxLines: 3, onChanged: (v) => outcome = v),
         const SizedBox(height: 12),
         AppTextField(label: 'Siguiente acción', onChanged: (v) => nextAction = v),
         const SizedBox(height: 12),
@@ -234,7 +235,7 @@ Future<void> showCompleteTaskSheet(BuildContext context, LeadTaskItem task, Void
       const SizedBox(height: 12),
       AppTextField(label: 'Duración real (min)', value: minutes, keyboardType: TextInputType.number, onChanged: (v) => minutes = v),
       const SizedBox(height: 12),
-      AppTextField(label: 'Resumen / notas', maxLines: 3, onChanged: (v) => outcome = v),
+      DictationTextField(label: 'Resumen / notas', maxLines: 3, onChanged: (v) => outcome = v),
       const SizedBox(height: 12),
       AppTextField(label: 'Siguiente acción', onChanged: (v) => nextAction = v),
       const SizedBox(height: 12),

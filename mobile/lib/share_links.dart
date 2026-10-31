@@ -2,7 +2,8 @@
 
 import 'api/models.dart';
 
-/// Cómo se identifica el expediente al compartir su liga: "Casa Las Flores — María Pérez".
+/// Cómo se identifica el expediente al compartir su liga: "Casa Las Flores — María Pérez" para
+/// vendedores (venta); para otro tipo de cliente (arrendador en renta), solo "María Pérez".
 /// El nombre del inmueble es la referencia que capturó el asesor; si no hay, el tipo de inmueble con
 /// su clave (o el folio). Todo sale del mismo expediente de la liga.
 String uploadLinkIdentifier(ExpedienteResponse e) {
@@ -11,6 +12,7 @@ String uploadLinkIdentifier(ExpedienteResponse e) {
       ? reference
       : [e.propertyTypeLabel?.trim(), e.propertyKey ?? e.folio].where((s) => s != null && s.isNotEmpty).join(' ');
   final owner = e.ownerDisplayName.trim();
+  if (e.operationType != 'SALE' && owner.isNotEmpty) return owner;
   return owner.isNotEmpty ? '$property — $owner' : property;
 }
 

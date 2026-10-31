@@ -8,6 +8,7 @@ import '../../../labels.dart';
 import '../../../state/auth.dart';
 import '../../../ui/closed_badge.dart';
 import '../../../ui/widgets.dart';
+import '../../operations/expediente_operation_card.dart';
 import '../expediente_detail_screen.dart';
 
 class FollowUpTab extends StatefulWidget {
@@ -67,6 +68,8 @@ class _FollowUpTabState extends State<FollowUpTab> {
     return TabBody(
       onRefresh: load,
       children: [
+        // CC#32: cierre de la operación y su revisión documental.
+        ExpedienteOperationCard(expedienteId: widget.ctx.expediente.id, operationType: widget.ctx.expediente.operationType == 'RENT' ? 'RENT' : 'SALE'),
         AppCard(
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             const CardHeader(title: 'Seguimiento posterior a la firma', description: 'Se abre automáticamente cuando el contrato queda firmado por todas las partes.'),

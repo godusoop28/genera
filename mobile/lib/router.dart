@@ -19,6 +19,8 @@ import 'screens/settings_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/users_screen.dart';
 import 'state/auth.dart';
+import 'screens/operations/operation_detail_screen.dart';
+import 'screens/operations/operations_screen.dart';
 
 /// Mismas rutas que la web (src/app/**). Sin sesión todo lleva a /login.
 GoRouter buildRouter(AuthState auth) => GoRouter(
@@ -47,6 +49,9 @@ GoRouter buildRouter(AuthState auth) => GoRouter(
         GoRoute(path: '/expedientes/nuevo', builder: (_, _) => const NewExpedienteScreen()),
         GoRoute(path: '/expedientes/:id', builder: (_, s) => ExpedienteDetailScreen(id: s.pathParameters['id']!)),
         GoRoute(path: '/reportes', builder: (_, _) => const ReportsScreen()),
+        // CC#32: operaciones de cierre.
+        GoRoute(path: '/operaciones', builder: (_, _) => const OperationsScreen()),
+        GoRoute(path: '/operaciones/:id', builder: (_, s) => OperationDetailScreen(id: s.pathParameters['id']!)),
         GoRoute(path: '/claves', builder: (_, _) => const PropertyKeysScreen()),
         GoRoute(path: '/usuarios', builder: (_, _) => const UsersScreen()),
         GoRoute(path: '/configuracion', builder: (_, _) => const SettingsScreen()),

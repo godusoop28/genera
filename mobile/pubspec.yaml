@@ -24,6 +24,7 @@ dependencies:
   intl: ^0.20.2
   http_parser: ^4.1.2
   share_plus: ^13.3.1
+  speech_to_text: ^7.5.0
 
 dev_dependencies:
   flutter_test:

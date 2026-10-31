@@ -9,9 +9,13 @@
 	<key>CFBundleDisplayName</key>
 	<string>C21 Genera</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Para tomar fotos de los documentos del expediente.</string>
+	<string>Para tomar fotos de los documentos y del inmueble.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Para dictar los reportes de seguimiento de leads; no se guarda audio.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Para convertir en texto los reportes que dictas.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Para cargar fotos de documentos y contratos firmados.</string>
+	<string>Para cargar fotos de documentos, contratos firmados y del inmueble.</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>https</string>

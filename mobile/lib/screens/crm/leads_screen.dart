@@ -12,6 +12,7 @@ import '../../state/auth.dart';
 import '../../ui/shell.dart';
 import '../../ui/widgets.dart';
 import 'crm_ui.dart';
+import '../../ui/dictation_field.dart';
 
 const groupLabels = {
   'ALL': 'Todos',
@@ -334,7 +335,7 @@ Future<void> showNewLeadSheet(BuildContext context, List<AdvisorRouting> advisor
         const SizedBox(height: 12),
         AppTextField(label: 'Propiedad de 21Online (opcional)', hint: 'Número (634294) o clave (GN 14)', onChanged: (v) => propertyReference = v),
         const SizedBox(height: 12),
-        AppTextField(label: 'Lo que nos dijo', maxLines: 3, onChanged: (v) => summary = v),
+        DictationTextField(label: 'Lo que nos dijo', maxLines: 3, onChanged: (v) => summary = v, dictateLabel: 'Dictar resumen'),
         const SizedBox(height: 12),
         if (canAssign)
           AppSelect<String>(

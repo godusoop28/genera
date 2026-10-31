@@ -11,6 +11,7 @@ import '../../ui/shell.dart';
 import '../../ui/widgets.dart';
 import 'crm_ui.dart';
 import 'lead_followup.dart';
+import '../../ui/dictation_field.dart';
 
 class LeadDetailScreen extends StatefulWidget {
   const LeadDetailScreen({super.key, required this.id});
@@ -508,7 +509,7 @@ class _NoteCardState extends State<_NoteCard> {
   Widget build(BuildContext context) => AppCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const CardHeader(title: 'Agregar nota'),
-          AppTextField(controller: ctrl, maxLines: 3, hint: 'Ej. Le llamé, quedó de confirmar la visita el jueves.', onChanged: (_) => setState(() {})),
+          DictationTextField(controller: ctrl, maxLines: 3, hint: 'Ej. Le llamé, quedó de confirmar la visita el jueves.', onChanged: (_) => setState(() {}), dictateLabel: 'Dictar nota'),
           const SizedBox(height: 10),
           Btn('Guardar nota', icon: Icons.sticky_note_2_outlined, variant: BtnVariant.secondary, loading: saving, onPressed: ctrl.text.trim().isEmpty
               ? null

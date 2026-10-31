@@ -19,6 +19,7 @@ class AppDrawer extends StatelessWidget {
       (href: '/expedientes', label: 'Expedientes', icon: Icons.folder_copy_outlined, visible: true),
       (href: '/expedientes/nuevo', label: 'Nuevo expediente', icon: Icons.note_add_outlined, visible: auth.can('EXPEDIENT_CREATE')),
       // Control de Cambios #24: cartera por tipo de propiedad, operación y asesor.
+      (href: '/operaciones', label: 'Operaciones y cierres', icon: Icons.handshake_outlined, visible: auth.can('OPERATION_VIEW_ALL') || auth.can('OPERATION_MANAGE') || auth.can('OPERATION_REVIEW')),
       (href: '/reportes', label: 'Reportes', icon: Icons.bar_chart_outlined, visible: auth.can('EXPEDIENT_VIEW_ALL') || auth.can('EXPEDIENT_VIEW_OWN')),
       // Control de Cambios #27 (adenda): claves en uso y migración de las propiedades existentes.
       (href: '/claves', label: 'Claves de inmuebles', icon: Icons.key_outlined, visible: auth.can('EXPEDIENT_KEY_ASSIGN')),
