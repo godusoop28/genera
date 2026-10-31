@@ -1,5 +1,6 @@
 "use client";
 
+import { MoneyInput } from "@/components/ui/MoneyInput";
 import { errorText } from "@/components/crm/CrmUi";
 import { PropertyAttributesFields, usePropertyAttributes, type Extras } from "@/components/crm/PropertyAttributes";
 import { PropertyTypeSelect, propertyTypeError, usePropertyCatalog } from "@/components/property/PropertyTypeSelect";
@@ -273,13 +274,14 @@ export function PropertyForm({
             </label>
             <textarea id="property-description" rows={5} maxLength={8000} value={form.description} onChange={(e) => set("description")(e.target.value)} className={textareaClass} />
           </div>
-          <Input
+          {/* CC#38: importes con "$", separadores de miles y la moneda elegida. */}
+          <MoneyInput
             label={form.operation === "renta" ? "Renta mensual" : "Precio de venta"}
             required
-            inputMode="decimal"
-            placeholder={form.operation === "renta" ? "15000" : "4500000"}
+            placeholder={form.operation === "renta" ? "15,000" : "4,500,000"}
             value={form.price}
-            onChange={(e) => set("price")(e.target.value)}
+            onChange={set("price")}
+            currency={form.currency}
           />
           <Select
             label="Moneda"
@@ -290,9 +292,9 @@ export function PropertyForm({
               { value: "USD", label: "Dólares (USD)" },
             ]}
           />
-          <Input label="Comisión (%)" inputMode="decimal" placeholder="5" value={form.commission} onChange={(e) => set("commission")(e.target.value)} />
+          <Input label="Comisión" inputMode="decimal" placeholder="5" suffix="%" value={form.commission} onChange={(e) => set("commission")(e.target.value.replace(/[^\d.]/g, ""))} />
           {!isLand ? (
-            <Input label="Cuota de mantenimiento" inputMode="decimal" value={form.maintenanceFee} onChange={(e) => set("maintenanceFee")(e.target.value)} />
+            <MoneyInput label="Cuota de mantenimiento" value={form.maintenanceFee} onChange={set("maintenanceFee")} currency={form.currency} />
           ) : null}
         </div>
         <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-2 sm:grid-cols-2">
@@ -320,10 +322,10 @@ export function PropertyForm({
       <Card>
         <CardHeader title="Características" />
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-          <Input label="Terreno (m²)" inputMode="decimal" value={form.landM2} onChange={(e) => set("landM2")(e.target.value)} />
+          <Input label="Terreno" suffix="m²" inputMode="decimal" value={form.landM2} onChange={(e) => set("landM2")(e.target.value.replace(/[^\d.]/g, ""))} />
           {!isLand ? (
             <>
-              <Input label="Construcción (m²)" inputMode="decimal" value={form.builtM2} onChange={(e) => set("builtM2")(e.target.value)} />
+              <Input label="Construcción" suffix="m²" inputMode="decimal" value={form.builtM2} onChange={(e) => set("builtM2")(e.target.value.replace(/[^\d.]/g, ""))} />
               <Input label="Recámaras" inputMode="numeric" value={form.bedrooms} onChange={(e) => set("bedrooms")(e.target.value)} />
               <Input label="Baños completos" inputMode="decimal" value={form.bathrooms} onChange={(e) => set("bathrooms")(e.target.value)} />
               <Input label="Medios baños" inputMode="numeric" value={form.halfBathrooms} onChange={(e) => set("halfBathrooms")(e.target.value)} />

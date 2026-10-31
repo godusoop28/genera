@@ -1,5 +1,6 @@
 "use client";
 
+import { DictationButton } from "@/components/ui/DictationButton";
 import { AdvisorChip, LoadError, PropertyMini, SourceLabel, StageBadge, errorText, useApi } from "@/components/crm/CrmUi";
 import { ExpedienteLinkCard, SharedPropertiesCard, StageHistoryCard, SuggestedStageBanner, TasksCard } from "@/components/crm/LeadFollowUp";
 import { EditLeadModal } from "@/components/crm/LeadForms";
@@ -507,6 +508,8 @@ function NoteCard({ leadId, onChange }: { leadId: string; onChange: (d: LeadDeta
       <label htmlFor="lead-note" className="sr-only">
         Nota de seguimiento
       </label>
+      {/* CC#40: dictar la nota; se revisa y se guarda con "Agregar nota". */}
+      <DictationButton value={text} onChange={setText} label="Dictar nota" className="mb-2" />
       <textarea
         id="lead-note"
         value={text}

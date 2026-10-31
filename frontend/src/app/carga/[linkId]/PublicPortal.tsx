@@ -22,6 +22,7 @@ import {
   getPublicExpediente,
   getPublicPrivacyStatus,
   listPublicDocuments,
+  listPublicPhotos,
   reportNotRecognized,
   listPublicParticipants,
   recordPrivacyConsent,
@@ -30,6 +31,8 @@ import {
   submitDocuments,
   updateClientData,
   uploadPublicDocumentVersion,
+  uploadPublicPhotos,
+  type PhotosResponse,
 } from "@/lib/api/public";
 import type {
   BackendCivilStatus,
@@ -38,6 +41,7 @@ import type {
   PublicExpedienteResponse,
   PublicParticipantResponse,
 } from "@/lib/api/types";
+import { PhotoPicker } from "@/components/photos/PhotoPicker";
 import { documentTypeLabel } from "@/lib/document-type-labels";
 import { moneyToRaw } from "@/lib/money";
 import { readDraft, writeDraft } from "@/lib/drafts";
@@ -931,6 +935,9 @@ function DocumentsStep({
         </Card>
       ) : null}
 
+      {/* CC#33: fotos del inmueble en el mismo flujo; son opcionales y no bloquean el envío. */}
+      <PropertyPhotosCard token={token} />
+
       <Card>
         <div className="flex items-start gap-3">
           <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-dark-gold" aria-hidden />
@@ -964,7 +971,8 @@ function DocumentsStep({
               </p>
               <p className="mt-1 text-muted">
                 Subir los archivos no significa que ya los hayas enviado. Para completar la entrega, presiona &apos;Enviar documentos&apos; cuando el botón
-                esté habilitado y espera la confirmación del sistema.
+                esté habilitado y espera la confirmación del sistema. Si guardas tu avance para continuar después, tus archivos se conservan, pero eso no
+                equivale a confirmar el envío.
               </p>
             </div>
           </div>
@@ -1037,6 +1045,45 @@ function DocumentsStep({
 }
 
 /** Pantalla previa a la carga (Control de Cambios #3): qué formato y qué calidad se necesitan. */
+/** CC#33: el cliente agrega fotos de su inmueble; quedan en el expediente, separadas de sus documentos. */
+function PropertyPhotosCard({ token }: { token: string }) {
+  const [data, setData] = useState<PhotosResponse | null>(null);
+  useEffect(() => {
+    listPublicPhotos(token)
+      .then(setData)
+      .catch(() => undefined);
+  }, [token]);
+  if (!data) return null;
+  return (
+    <Card>
+      <CardHeader
+        title="Fotografías de la propiedad (opcional)"
+        description="Si quieres, agrega fotos de tu inmueble para que tu asesor las revise. No sustituyen a tus documentos, no son obligatorias y no se publican por subirlas: tu asesor decide cuáles usar."
+      />
+      <PhotoPicker
+        limits={data.limits}
+        buttonLabel="Agregar fotos de mi propiedad"
+        onUpload={async (files, onProgress) => setData(await uploadPublicPhotos(token, files, onProgress))}
+      />
+      {data.photos.length > 0 ? (
+        <div className="mt-4">
+          <p className="mb-2 text-sm font-medium text-obsessed">
+            {data.photos.length === 1 ? "1 foto guardada" : `${data.photos.length} fotos guardadas`} · se conservan si sales y vuelves con esta liga
+          </p>
+          <ul className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+            {data.photos.map((photo) => (
+              <li key={photo.id}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={photo.url ?? ""} alt={photo.originalFilename ?? "Foto"} loading="lazy" className="aspect-square w-full rounded-lg object-cover" />
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
 function PrepareDocuments({ onContinue }: { onContinue: () => void }) {
   const [read, setRead] = useState(false);
   const tips = [

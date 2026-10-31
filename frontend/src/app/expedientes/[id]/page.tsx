@@ -29,12 +29,15 @@ import { LeadsTab } from "./LeadsTab";
 import { ReceiptsTab } from "./ReceiptsTab";
 import { SurveysTab } from "./SurveysTab";
 import { ParticipantsTab } from "./ParticipantsTab";
+import { PhotosTab } from "./PhotosTab";
 import { SummaryTab } from "./SummaryTab";
 
 const tabs = [
   { id: "resumen", label: "Resumen" },
   { id: "participantes", label: "Participantes" },
   { id: "documentos", label: "Documentos" },
+  // Control de Cambios #33: fotos del inmueble para el portal (cliente y asesor).
+  { id: "fotos", label: "Fotografías" },
   { id: "consistencia", label: "Consistencia" },
   { id: "factibilidad", label: "Factibilidad IA" },
   { id: "datos-contrato", label: "Datos del contrato" },
@@ -332,6 +335,7 @@ export default function ExpedienteDetailPage({ params }: PageProps<"/expedientes
         {tab === "resumen" ? <SummaryTab {...context} /> : null}
         {tab === "participantes" ? <ParticipantsTab {...context} /> : null}
         {tab === "documentos" ? <DocumentsPanel {...context} /> : null}
+        {tab === "fotos" ? <PhotosTab {...context} /> : null}
         {tab === "consistencia" ? <ConsistencyTab {...context} /> : null}
         {tab === "factibilidad" ? <FeasibilityTab {...context} /> : null}
         {tab === "datos-contrato" ? <ContractDataTab {...context} /> : null}

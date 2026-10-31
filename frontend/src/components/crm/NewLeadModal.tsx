@@ -1,5 +1,6 @@
 "use client";
 
+import { DictationButton } from "@/components/ui/DictationButton";
 import { errorText } from "@/components/crm/CrmUi";
 import { ProfileFields, SourcePicker, emptyProfile, profileError, profileInput, sourceIncomplete, useLeadSources, type ProfileForm } from "@/components/crm/LeadForms";
 import { Button } from "@/components/ui/Button";
@@ -109,9 +110,12 @@ export function NewLeadModal({ open, onClose, advisors }: { open: boolean; onClo
           onChange={(e) => set("propertyReference")(e.target.value)}
         />
         <div className="flex flex-col gap-1.5 sm:col-span-2">
-          <label htmlFor="new-lead-summary" className="text-sm font-medium text-obsessed">
-            Lo que nos dijo
-          </label>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <label htmlFor="new-lead-summary" className="text-sm font-medium text-obsessed">
+              Lo que nos dijo
+            </label>
+            <DictationButton value={form.summary} onChange={set("summary")} label="Dictar resumen" />
+          </div>
           <textarea
             id="new-lead-summary"
             rows={3}

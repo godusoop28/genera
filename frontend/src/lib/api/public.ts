@@ -122,3 +122,39 @@ export function signContract(
 ) {
   return apiClient.post<{ signed: boolean; signedAt: string; documentSha256: string }>(`/public/signatures/${token}`, request);
 }
+
+// --- CC#33: fotografías de la propiedad ---------------------------------------
+
+export interface PhotoLimits {
+  formats: string[];
+  maxBytesPerPhoto: number;
+  maxPhotos: number;
+  maxPerUpload: number;
+  remaining: number;
+}
+
+export interface PropertyPhoto {
+  id: string;
+  uploadedBy: "CLIENT" | "STAFF";
+  uploadedByName: string | null;
+  uploadedAt: string;
+  originalFilename: string | null;
+  sizeBytes: number;
+  selectedForPortal: boolean;
+  mainPhoto: boolean;
+  portalOrder: number | null;
+  url: string | null;
+}
+
+export interface PhotosResponse {
+  limits: PhotoLimits;
+  photos: PropertyPhoto[];
+}
+
+export function listPublicPhotos(token: string) {
+  return apiClient.get<PhotosResponse>(`/public/expedientes/${token}/photos`);
+}
+
+export function uploadPublicPhotos(token: string, files: File[], onProgress?: (progress: UploadProgress) => void) {
+  return uploadFiles<PhotosResponse>(`/public/expedientes/${token}/photos`, "files", files, onProgress);
+}

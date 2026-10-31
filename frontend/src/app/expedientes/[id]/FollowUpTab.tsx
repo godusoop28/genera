@@ -1,6 +1,7 @@
 "use client";
 
 import { ClosedBadge, formatClosingDate } from "@/components/expediente/ClosedBadge";
+import { ExpedienteOperationCard } from "@/components/operations/ExpedienteOperationCard";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -44,6 +45,9 @@ export function FollowUpTab({ expediente }: ExpedienteContext) {
 
   return (
     <div className="flex flex-col gap-6">
+      {/* CC#32: cierre de la operación y su revisión documental (operación, PLD y PROFECO). */}
+      <ExpedienteOperationCard expedienteId={expediente.id} operationType={expediente.operationType === "RENT" ? "RENT" : "SALE"} />
+
       <Card>
         <CardHeader title="Seguimiento posterior a la firma" description="Se abre automáticamente cuando el contrato queda firmado por todas las partes." />
         {closing === null ? <p className="text-sm text-muted">Cargando…</p> : null}

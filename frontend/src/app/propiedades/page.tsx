@@ -282,12 +282,18 @@ function ImportBar({ onDone }: { onDone: () => void }) {
   );
 }
 
-const sortOptions: Array<{ value: CapturedSort; label: string }> = [
+// CC#36: dos menús; el último que se usa define el orden y el otro queda sin selección.
+const priceSortOptions: Array<{ value: CapturedSort | ""; label: string }> = [
+  { value: "", label: "Sin selección" },
+  { value: "PRICE_ASC", label: "Ascendente — De menor a mayor" },
+  { value: "PRICE_DESC", label: "Descendente — De mayor a menor" },
+];
+const ageSortOptions: Array<{ value: CapturedSort | ""; label: string }> = [
+  { value: "", label: "Sin selección" },
   { value: "NEWEST", label: "Más recientes primero" },
   { value: "OLDEST", label: "Más antiguas primero" },
-  { value: "PRICE_ASC", label: "Precio: de menor a mayor" },
-  { value: "PRICE_DESC", label: "Precio: de mayor a menor" },
 ];
+const sortOptions = [...priceSortOptions, ...ageSortOptions].filter((o) => o.value);
 
 const CAPTURED_PAGE_SIZE = 20;
 
@@ -435,7 +441,7 @@ function CapturedView({ onChanged, canImport }: { onChanged: () => void; canImpo
           />
         ) : null}
       </div>
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_8rem_minmax(0,1.2fr)] lg:items-start">
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_8rem_minmax(0,1fr)_minmax(0,1fr)] lg:items-start">
         <MoneyInput
           label="Precio mínimo"
           placeholder="Sin mínimo"
@@ -461,10 +467,16 @@ function CapturedView({ onChanged, canImport }: { onChanged: () => void; canImpo
           ]}
         />
         <Select
-          label="Ordenar por"
-          value={filters.sort}
-          onChange={(e) => change({ sort: e.target.value as CapturedSort }, true)}
-          options={sortOptions}
+          label="Ordenar por precio"
+          value={filters.sort === "PRICE_ASC" || filters.sort === "PRICE_DESC" ? filters.sort : ""}
+          onChange={(e) => change({ sort: (e.target.value || "NEWEST") as CapturedSort }, true)}
+          options={priceSortOptions}
+        />
+        <Select
+          label="Ordenar por antigüedad"
+          value={filters.sort === "NEWEST" || filters.sort === "OLDEST" ? filters.sort : ""}
+          onChange={(e) => change({ sort: (e.target.value || "NEWEST") as CapturedSort }, true)}
+          options={ageSortOptions}
         />
       </div>
       {usesPrice ? (

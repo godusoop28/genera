@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
+import { MoneyInput } from "@/components/ui/MoneyInput";
 import { ReasonModal } from "@/components/ui/ReasonModal";
 import { Select } from "@/components/ui/Select";
 import { Toggle } from "@/components/ui/Toggle";
@@ -21,13 +22,14 @@ import {
   rejectProperty,
   signReception,
   updateClientData,
+  type ClientDataUpdate,
   type AdvisorOption,
   type ExpedienteConfiguration,
 } from "@/lib/api/expedientes";
 import { generatePublicLink, getPublicLinkStatus, revokePublicLink } from "@/lib/api/public-link";
 import type { ManualClientDataResponse, PublicLinkStatusResponse } from "@/lib/api/types";
 import { errorText } from "@/lib/errors";
-import { formatMoneyWithCurrency } from "@/lib/money";
+import { formatMoneyWithCurrency, moneyToRaw } from "@/lib/money";
 import { frontendLink, uploadLinkIdentifier, uploadLinkMessage, whatsappShareUrl } from "@/lib/share-links";
 import {
   accreditationLabels,
@@ -42,7 +44,7 @@ import {
 } from "@/lib/labels";
 import { useCan } from "@/lib/permissions";
 import { Copy, FileSignature, Home, Link2, MessageCircle, Pencil, ShieldOff, ThumbsDown, ThumbsUp, UserCog } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ComponentProps } from "react";
 import { DocumentTimingCard } from "./DocumentTimingCard";
 import { PrivacyCard } from "./PrivacyCard";
 import type { ExpedienteContext } from "./page";
@@ -166,6 +168,18 @@ export function SummaryTab({ expediente, participants, reload, freshPublicLink: 
             <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
               <Pencil className="h-4 w-4" aria-hidden /> Corregir datos
             </Button>
+          ) : null}
+          {/* CC#39: si ya no admite correcciones, se dice por qué y qué procede, en lugar de ocultar el menú. */}
+          {can("EXPEDIENT_EDIT") && !expediente.correctable ? (
+            <div className="flex w-full flex-col gap-1">
+              <Button variant="secondary" size="sm" disabled className="w-fit">
+                <Pencil className="h-4 w-4" aria-hidden /> Corregir datos
+              </Button>
+              <p className="text-xs text-muted">
+                No disponible: el contrato ya se firmó o el inmueble ya fue decidido, y esos documentos no se modifican. Para corregir un dato, el administrador debe
+                autorizarlo y, si afecta al contrato, generar una adenda o un contrato nuevo.
+              </p>
+            </div>
           ) : null}
           {/* Control de Cambios #26: un registro anterior al catálogo queda pendiente hasta que se clasifica. */}
           {can("EXPEDIENT_EDIT") ? (
@@ -295,11 +309,7 @@ export function SummaryTab({ expediente, participants, reload, freshPublicLink: 
             propertyAddress: expediente.propertyAddress ?? "",
             propertyReference: expediente.propertyReference ?? "",
           }}
-          initialContact={{
-            email: clientData?.email ?? "",
-            phone: clientData?.phone ?? "",
-            notificationAddress: clientData?.notificationAddress ?? "",
-          }}
+          initialContact={contactCorrectionOf(clientData)}
           currentSubtype={expediente.propertySubtypeId ? { id: expediente.propertySubtypeId, label: expediente.propertyTypeLabel ?? "" } : null}
           onClose={() => setEditing(false)}
           onSave={async (config, contact, reason) => {
@@ -493,11 +503,91 @@ function ClassifyPropertyModal({
   );
 }
 
-/** CC#39: datos de contacto del cliente que también se corrigen desde este menú. */
+/**
+ * CC#39: datos del cliente y del inmueble que también se corrigen desde este menú (todos los de
+ * "Datos del cliente e inmueble", incluidos los opcionales vacíos). Valores como texto del campo.
+ */
 interface ContactCorrection {
   email: string;
   phone: string;
   notificationAddress: string;
+  visitInstructions: string;
+  authorizedPrice: string;
+  landAreaM2: string;
+  builtAreaM2: string;
+  bedrooms: string;
+  bathrooms: string;
+  parkingSpots: string;
+  conservationStatus: string;
+  availableServices: string;
+  relevantFeatures: string;
+}
+
+const NUMERIC_CORRECTIONS: (keyof ContactCorrection)[] = ["authorizedPrice", "landAreaM2", "builtAreaM2", "bedrooms", "bathrooms", "parkingSpots"];
+const INTEGER_CORRECTIONS: (keyof ContactCorrection)[] = ["bedrooms", "parkingSpots"];
+
+const correctionLabels: Record<keyof ContactCorrection, string> = {
+  email: "Correo electrónico",
+  phone: "Teléfono",
+  notificationAddress: "Domicilio para notificaciones",
+  visitInstructions: "Indicaciones para visitas",
+  authorizedPrice: "Precio autorizado",
+  landAreaM2: "Superficie de terreno",
+  builtAreaM2: "Superficie de construcción",
+  bedrooms: "Recámaras",
+  bathrooms: "Baños",
+  parkingSpots: "Estacionamientos",
+  conservationStatus: "Estado de conservación",
+  availableServices: "Servicios disponibles",
+  relevantFeatures: "Características relevantes",
+};
+
+const asText = (v: string | number | null | undefined) => (v === null || v === undefined ? "" : String(v));
+
+function contactCorrectionOf(d: ManualClientDataResponse | null): ContactCorrection {
+  return {
+    email: asText(d?.email),
+    phone: asText(d?.phone),
+    notificationAddress: asText(d?.notificationAddress),
+    visitInstructions: asText(d?.visitInstructions),
+    authorizedPrice: moneyToRaw(d?.authorizedPrice),
+    landAreaM2: asText(d?.landAreaM2),
+    builtAreaM2: asText(d?.builtAreaM2),
+    bedrooms: asText(d?.bedrooms),
+    bathrooms: asText(d?.bathrooms),
+    parkingSpots: asText(d?.parkingSpots),
+    conservationStatus: asText(d?.conservationStatus),
+    availableServices: asText(d?.availableServices),
+    relevantFeatures: asText(d?.relevantFeatures),
+  };
+}
+
+/** Errores por campo: no se vacía un dato ya capturado (se corrige) y los números se validan. */
+function correctionErrors(contact: ContactCorrection, initial: ContactCorrection): Partial<Record<keyof ContactCorrection, string>> {
+  const errors: Partial<Record<keyof ContactCorrection, string>> = {};
+  for (const key of Object.keys(contact) as (keyof ContactCorrection)[]) {
+    const value = contact[key].trim();
+    if (!value && initial[key].trim()) {
+      errors[key] = "No se puede dejar vacío; escribe el valor correcto.";
+      continue;
+    }
+    if (value && NUMERIC_CORRECTIONS.includes(key)) {
+      const n = Number(value.replace(/,/g, ""));
+      if (!Number.isFinite(n) || n < 0) errors[key] = "Escribe un número válido.";
+      else if (INTEGER_CORRECTIONS.includes(key) && !Number.isInteger(n)) errors[key] = "Escribe un número entero.";
+      else if (key === "authorizedPrice" && n === 0) errors[key] = "El precio debe ser mayor a cero.";
+    }
+  }
+  const email = contact.email.trim();
+  if (email && !EMAIL_PATTERN.test(email)) errors.email = "Escribe un correo válido, por ejemplo nombre@correo.com.";
+  return errors;
+}
+
+/** Solo lo que cambió, ya convertido al tipo que guarda el backend. */
+function correctionPatch(contact: ContactCorrection, initial: ContactCorrection): ClientDataUpdate | null {
+  const changed = (Object.keys(contact) as (keyof ContactCorrection)[]).filter((k) => contact[k].trim() !== initial[k].trim());
+  if (!changed.length) return null;
+  return Object.fromEntries(changed.map((k) => [k, NUMERIC_CORRECTIONS.includes(k) ? Number(contact[k].trim().replace(/,/g, "")) : contact[k].trim()])) as ClientDataUpdate;
 }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -514,7 +604,7 @@ function CorrectionModal({
   currentSubtype: { id: string; label: string } | null;
   onClose: () => void;
   /** contact: solo los campos que cambiaron (null = ninguno). */
-  onSave: (config: ExpedienteConfiguration, contact: Partial<ContactCorrection> | null, reason: string) => Promise<void>;
+  onSave: (config: ExpedienteConfiguration, contact: ClientDataUpdate | null, reason: string) => Promise<void>;
 }) {
   const { catalog } = usePropertyCatalog();
   const [config, setConfig] = useState(initial);
@@ -523,14 +613,12 @@ function CorrectionModal({
   const [busy, setBusy] = useState(false);
   const set = <K extends keyof ExpedienteConfiguration>(k: K, v: ExpedienteConfiguration[K]) => setConfig((c) => ({ ...c, [k]: v }));
   const setContactField = (k: keyof ContactCorrection, v: string) => setContact((c) => ({ ...c, [k]: v }));
-  const email = contact.email.trim();
-  const emailError =
-    email && !EMAIL_PATTERN.test(email)
-      ? "Escribe un correo válido, por ejemplo nombre@correo.com."
-      : !email && initialContact.email.trim()
-        ? "El correo no se puede dejar vacío; escribe el correcto."
-        : undefined;
-  const changedContact = (Object.keys(contact) as (keyof ContactCorrection)[]).filter((k) => contact[k].trim() !== initialContact[k].trim());
+  const errors = correctionErrors(contact, initialContact);
+  const emailError = errors.email;
+  const hasErrors = Object.keys(errors).length > 0;
+  const field = (key: keyof ContactCorrection, extra?: Partial<ComponentProps<typeof Input>>) => (
+    <Input label={correctionLabels[key]} value={contact[key]} error={errors[key]} onChange={(e) => setContactField(key, e.target.value)} {...extra} />
+  );
 
   return (
     <Modal
@@ -547,13 +635,13 @@ function CorrectionModal({
             disabled={
               busy ||
               reason.trim().length < 5 ||
-              Boolean(emailError) ||
+              hasErrors ||
               Boolean(config.propertySubtypeId && propertyTypeError(catalog, config.propertySubtypeId, config.propertyTypeDetail ?? "", currentSubtype?.id))
             }
             onClick={async () => {
               setBusy(true);
               try {
-                const contactPatch = changedContact.length ? Object.fromEntries(changedContact.map((k) => [k, contact[k].trim()])) : null;
+                const contactPatch = correctionPatch(contact, initialContact);
                 await onSave({ ...config, propertyReference: config.propertyReference?.trim() ?? "" }, contactPatch, reason.trim());
               } finally {
                 setBusy(false);
@@ -630,13 +718,52 @@ function CorrectionModal({
           hint="Es el correo de contacto del cliente; no cambia el acceso de ningún usuario del sistema."
           onChange={(e) => setContactField("email", e.target.value)}
         />
-        <Input label="Teléfono" type="tel" value={contact.phone} onChange={(e) => setContactField("phone", e.target.value)} />
-        <Input
-          label="Domicilio para notificaciones"
-          value={contact.notificationAddress}
-          onChange={(e) => setContactField("notificationAddress", e.target.value)}
-          containerClassName="sm:col-span-2"
+        {field("phone", { type: "tel", inputMode: "tel", placeholder: "777 123 4567" })}
+        {field("notificationAddress", { containerClassName: "sm:col-span-2" })}
+        {field("visitInstructions", { containerClassName: "sm:col-span-2" })}
+      </div>
+      <p className="mb-3 mt-5 border-t border-border pt-4 text-sm font-medium text-obsessed">Datos del inmueble y precio</p>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <MoneyInput
+          label={correctionLabels.authorizedPrice}
+          value={contact.authorizedPrice}
+          error={errors.authorizedPrice}
+          onChange={(v) => setContactField("authorizedPrice", v)}
+          hint="Es el precio del contrato; corregirlo deja sin efecto un contrato aún sin firmar."
         />
+        {field("landAreaM2", { inputMode: "decimal", suffix: "m²" })}
+        {field("builtAreaM2", { inputMode: "decimal", suffix: "m²" })}
+        {field("bedrooms", { inputMode: "numeric" })}
+        {field("bathrooms", { inputMode: "decimal" })}
+        {field("parkingSpots", { inputMode: "numeric" })}
+        {field("conservationStatus")}
+        {field("availableServices", { containerClassName: "sm:col-span-2" })}
+        {field("relevantFeatures", { containerClassName: "sm:col-span-2" })}
+      </div>
+      {/* CC#39: lo que no se corrige aquí se explica, en lugar de no aparecer. */}
+      <div className="mt-5 border-t border-border pt-4">
+        <p className="mb-2 text-sm font-medium text-obsessed">Datos que se corrigen con otro procedimiento</p>
+        <ul className="flex flex-col gap-1.5 text-xs text-muted">
+          <li>
+            <strong className="text-obsessed">Titulares, apoderados y sus datos de identificación</strong> (nombre, RFC, CURP, identificación, domicilio, estado civil): pestaña
+            Participantes; los leídos de documentos se confirman ahí.
+          </li>
+          <li>
+            <strong className="text-obsessed">Datos legales del inmueble</strong> (escritura, registro, medidas): pestaña Datos del contrato.
+          </li>
+          <li>
+            <strong className="text-obsessed">Asesor asignado</strong>: botón &quot;Cambiar asesor&quot; (solo administrador o directivo).
+          </li>
+          <li>
+            <strong className="text-obsessed">Clave del inmueble</strong>: es un identificador; solo la asigna el administrador desde &quot;Claves de inmuebles&quot;.
+          </li>
+          <li>
+            <strong className="text-obsessed">Folio del expediente</strong>: identificador inmutable; no se corrige.
+          </li>
+          <li>
+            <strong className="text-obsessed">Contratos firmados, acuses emitidos y evidencias</strong>: no se modifican; la corrección queda en la bitácora.
+          </li>
+        </ul>
       </div>
       <label className="mb-1 mt-4 block text-sm font-medium text-obsessed">Motivo de la corrección</label>
       <textarea

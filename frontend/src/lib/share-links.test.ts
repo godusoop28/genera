@@ -13,6 +13,11 @@ describe("liga del cliente para WhatsApp (CC#35)", () => {
     expect(uploadLinkIdentifier(base)).toBe("EXP-2026-000123 — María Pérez");
   });
 
+  it("si no es vendedor (renta) solo muestra el nombre del propietario", () => {
+    expect(uploadLinkIdentifier({ ...base, operationType: "RENT", propertyReference: "Casa Las Flores" })).toBe("María Pérez");
+    expect(uploadLinkIdentifier({ ...base, operationType: "SALE", propertyReference: "Casa Las Flores" })).toBe("Casa Las Flores — María Pérez");
+  });
+
   it("una persona moral se identifica con su razón social", () => {
     expect(uploadLinkIdentifier({ ...base, propertyReference: "Bodega Norte", ownerDisplayName: "Inmobiliaria del Valle SA de CV" })).toBe(
       "Bodega Norte — Inmobiliaria del Valle SA de CV",

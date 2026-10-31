@@ -6,15 +6,17 @@ import { useCanSeeCrm } from "@/components/crm/CrmUi";
 import { useAuth } from "@/context/AuthProvider";
 import { useCan } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-import { BarChart3, CalendarCheck, CalendarDays, FilePlus2, Files, House, KeyRound, LayoutDashboard, LogOut, MessagesSquare, Smile, Users, UserRoundSearch, UsersRound } from "lucide-react";
+import { BarChart3, CalendarCheck, CalendarDays, FilePlus2, Files, Handshake, House, KeyRound, LayoutDashboard, LogOut, MessagesSquare, Smile, Users, UserRoundSearch, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 // Módulo 1 (expedientes): cada entrada se muestra solo a quien tiene el
 // permiso (el backend vuelve a validarlo).
-const navItems = [
+const navItems: { href: string; label: string; icon: typeof Files; permission?: string; anyOf?: string[] }[] = [
   { href: "/expedientes", label: "Expedientes", icon: Files },
   { href: "/expedientes/nuevo", label: "Nuevo expediente", icon: FilePlus2, permission: "EXPEDIENT_CREATE" },
+  // Control de Cambios #32: cierres de operaciones propias y externas (PLD/PROFECO).
+  { href: "/operaciones", label: "Operaciones y cierres", icon: Handshake, anyOf: ["OPERATION_VIEW_ALL", "OPERATION_MANAGE", "OPERATION_REVIEW"] },
   // Control de Cambios #24: cartera por tipo de propiedad, operación y asesor.
   { href: "/reportes", label: "Reportes", icon: BarChart3 },
   // Control de Cambios #28: satisfacción del cliente (NPS) por punto de contacto.
@@ -70,7 +72,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <nav aria-label="Principal" className="flex-1 space-y-1 overflow-y-auto px-3">
         {canSeeCrm ? <p className="px-3.5 pb-1 text-[0.68rem] font-semibold uppercase tracking-wider text-white/40">Expedientes</p> : null}
         {navItems
-          .filter((item) => !item.permission || can(item.permission))
+          .filter((item) => (!item.permission || can(item.permission)) && (!item.anyOf || item.anyOf.some((p) => can(p))))
           .map((item) => (
             <NavLink key={item.href} item={item} active={isActive(item.href, pathname)} onNavigate={onNavigate} />
           ))}

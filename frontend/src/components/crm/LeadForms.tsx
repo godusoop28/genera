@@ -1,5 +1,8 @@
 "use client";
 
+import { DictationButton } from "@/components/ui/DictationButton";
+import { MoneyInput } from "@/components/ui/MoneyInput";
+import { moneyToRaw } from "@/lib/money";
 import { errorText } from "@/components/crm/CrmUi";
 import { usePropertyCatalog } from "@/components/property/PropertyTypeSelect";
 import { Button } from "@/components/ui/Button";
@@ -153,8 +156,8 @@ export function profileOf(lead: LeadItem): ProfileForm {
     firstContactOn: lead.firstContactOn ?? "",
     propertySubtypeId: lead.propertySubtypeId ?? "",
     zone: lead.zone ?? "",
-    budgetMin: lead.budgetMin != null ? String(lead.budgetMin) : "",
-    budgetMax: lead.budget != null ? String(lead.budget) : "",
+    budgetMin: moneyToRaw(lead.budgetMin),
+    budgetMax: moneyToRaw(lead.budget),
     desiredFeatures: lead.desiredFeatures ?? "",
     temperature: lead.temperature ?? "",
     closeProbability: lead.closeProbability != null ? String(lead.closeProbability) : "",
@@ -202,8 +205,9 @@ export function ProfileFields({ value, onChange, keepSubtypeId }: { value: Profi
         <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Lo que busca</legend>
         <Select label="Tipo de inmueble" value={value.propertySubtypeId} onChange={(e) => set("propertySubtypeId")(e.target.value)} options={[{ value: "", label: "Sin especificar" }]} groups={typeGroups} />
         <Input label="Zona o colonia de interés" value={value.zone} onChange={(e) => set("zone")(e.target.value)} placeholder="Ej. Cuernavaca centro, Jiutepec" />
-        <Input label="Presupuesto mínimo" inputMode="numeric" value={value.budgetMin} onChange={(e) => set("budgetMin")(e.target.value)} suffix="MXN" />
-        <Input label="Presupuesto máximo" inputMode="numeric" value={value.budgetMax} onChange={(e) => set("budgetMax")(e.target.value)} suffix="MXN" />
+        {/* CC#38: presupuestos con formato de pesos mientras se escriben. */}
+        <MoneyInput label="Presupuesto mínimo" value={value.budgetMin} onChange={set("budgetMin")} currency="MXN" />
+        <MoneyInput label="Presupuesto máximo" value={value.budgetMax} onChange={set("budgetMax")} currency="MXN" />
         <div className="flex flex-col gap-1.5 sm:col-span-2">
           <label htmlFor="lead-features" className="text-sm font-medium text-obsessed">
             Características deseadas
@@ -226,7 +230,7 @@ export function ProfileFields({ value, onChange, keepSubtypeId }: { value: Profi
           onChange={(e) => set("temperature")(e.target.value)}
           options={[{ value: "", label: "Sin definir" }, ...(Object.keys(temperatureLabels) as LeadTemperature[]).map((t) => ({ value: t, label: temperatureLabels[t] }))]}
         />
-        <Input label="Probabilidad de cierre" inputMode="numeric" value={value.closeProbability} onChange={(e) => set("closeProbability")(e.target.value)} suffix="%" />
+        <Input label="Probabilidad de cierre" inputMode="decimal" placeholder="0 a 100" value={value.closeProbability} onChange={(e) => set("closeProbability")(e.target.value)} suffix="%" />
         <Input label="Fecha estimada de cierre" type="date" value={value.expectedCloseOn} onChange={(e) => set("expectedCloseOn")(e.target.value)} />
         <Input label="Fecha de primer contacto" type="date" value={value.firstContactOn} onChange={(e) => set("firstContactOn")(e.target.value)} hint="Si se deja vacía, es la fecha de registro." />
       </fieldset>
@@ -319,9 +323,12 @@ function EditLeadModalBody({ open, onClose, lead, onSaved }: EditLeadProps) {
         />
         <ProfileFields value={form.profile} onChange={(profile) => setForm((f) => ({ ...f, profile }))} keepSubtypeId={lead.propertySubtypeId} />
         <div className="flex flex-col gap-1.5 sm:col-span-2">
-          <label htmlFor="edit-lead-summary" className="text-sm font-medium text-obsessed">
-            Lo que nos dijo
-          </label>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <label htmlFor="edit-lead-summary" className="text-sm font-medium text-obsessed">
+              Lo que nos dijo
+            </label>
+            <DictationButton value={form.summary} onChange={set("summary")} label="Dictar resumen" />
+          </div>
           <textarea
             id="edit-lead-summary"
             rows={3}
@@ -363,9 +370,13 @@ const typeOptions = (Object.keys(taskTypeLabels) as TaskType[]).map((t) => ({ va
 function textArea(id: string, label: string, value: string, onChange: (v: string) => void, placeholder?: string) {
   return (
     <div className="flex flex-col gap-1.5 sm:col-span-2">
-      <label htmlFor={id} className="text-sm font-medium text-obsessed">
-        {label}
-      </label>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <label htmlFor={id} className="text-sm font-medium text-obsessed">
+          {label}
+        </label>
+        {/* CC#40: dictar en lugar de escribir. */}
+        <DictationButton value={value} onChange={onChange} />
+      </div>
       <textarea
         id={id}
         rows={2}

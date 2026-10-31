@@ -3,7 +3,10 @@ package com.c21genera.shared.events;
 import java.time.LocalDate;
 import java.util.UUID;
 
-/** Eventos de integración publicados por closing. */
+/**
+ * Eventos de integración publicados por closing (seguimiento posterior a la firma) y por operations
+ * (CC#32: al registrar o reabrir el cierre de una operación ligada a un expediente).
+ */
 public final class ClosingEvents {
 
   private ClosingEvents() {}

@@ -50,5 +50,10 @@ public enum PermissionCode {
   NPS_MANAGE,
   RECEIPT_GENERATE,
   RECEIPT_SIGN,
-  RECEIPT_MANAGE
+  RECEIPT_MANAGE,
+  // Control de Cambios #32: operaciones de cierre y su revisión documental (PLD/PROFECO).
+  OPERATION_VIEW_ALL,
+  OPERATION_MANAGE,
+  OPERATION_REVIEW,
+  OPERATION_MATRIX_MANAGE
 }
