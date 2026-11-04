@@ -56,7 +56,7 @@ class DocumentVersionProcessorTest {
     when(storage.store(anyString(), any(), anyLong(), anyString()))
         .thenAnswer(
             inv -> {
-              files.put(inv.getArgument(0), ((ByteArrayInputStream) inv.getArgument(1)).readAllBytes());
+              files.put(inv.getArgument(0), ((java.io.InputStream) inv.getArgument(1)).readAllBytes());
               return new FileStorage.StoredObjectMetadata(inv.getArgument(0), 0, "x");
             });
     processor =

@@ -18,4 +18,18 @@ public interface DocumentVersionRepository extends JpaRepository<DocumentVersion
   List<DocumentVersion> findByDocumentIdInAndRemovedAtIsNull(Collection<UUID> documentIds);
 
   Optional<DocumentVersion> findByDocumentIdAndVersionNumber(UUID documentId, int versionNumber);
+
+  /**
+   * Versiones cargadas entre {@code since} y {@code before} que siguen esperando: sin terminar de
+   * procesar, o procesadas pero sin resultado de la revisión con IA (ver StuckDocumentWatchdog).
+   */
+  @org.springframework.data.jpa.repository.Query(
+      "select v from DocumentVersion v where v.removedAt is null and v.uploadedAt > :since and v.uploadedAt < :before "
+          + "and (v.processingStatus in :pending "
+          + "or (v.processingStatus = :processed and v.aiAssessedAt is null and v.aiCheckFailed = false))")
+  List<DocumentVersion> findWaiting(
+      @org.springframework.data.repository.query.Param("since") java.time.Instant since,
+      @org.springframework.data.repository.query.Param("before") java.time.Instant before,
+      @org.springframework.data.repository.query.Param("pending") Collection<com.c21genera.documents.ProcessingStatus> pending,
+      @org.springframework.data.repository.query.Param("processed") com.c21genera.documents.ProcessingStatus processed);
 }

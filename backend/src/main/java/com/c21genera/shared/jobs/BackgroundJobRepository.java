@@ -27,4 +27,10 @@ public interface BackgroundJobRepository extends JpaRepository<BackgroundJob, UU
       nativeQuery = true)
   List<BackgroundJob> claimBatch(
       @Param("type") String type, @Param("now") Instant now, @Param("staleBefore") Instant staleBefore, @Param("limit") int limit);
+
+  /** ¿Hay un trabajo de ese tipo en cola o en curso cuyo payload contiene {@code text}? */
+  boolean existsByTypeAndStatusInAndPayloadContaining(String type, java.util.Collection<JobStatus> statuses, String text);
+
+  /** Cuántos trabajos de ese tipo (en cualquier estado) mencionan {@code text} en su payload. */
+  long countByTypeAndPayloadContaining(String type, String text);
 }

@@ -27,6 +27,30 @@ class PdfAssemblerTest {
     }
   }
 
+  @Test
+  void mergesPdfsReadFromDiskIntoAStream() throws Exception {
+    byte[] onePage = assembler.assemble(List.of(new PageContent(solidColorJpeg(400, 300), "image/jpeg")));
+    java.nio.file.Path a = java.nio.file.Files.createTempFile("a", ".pdf");
+    java.nio.file.Path b = java.nio.file.Files.createTempFile("b", ".pdf");
+    try {
+      java.nio.file.Files.write(a, onePage);
+      java.nio.file.Files.write(b, onePage);
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      assembler.assemble(
+          List.of(
+              new PageContent(null, "application/pdf", "k1", a),
+              new PageContent(solidColorJpeg(300, 400), "image/jpeg"),
+              new PageContent(null, "application/pdf", "k2", b)),
+          out);
+      try (PDDocument document = Loader.loadPDF(out.toByteArray())) {
+        assertThat(document.getNumberOfPages()).isEqualTo(3);
+      }
+    } finally {
+      java.nio.file.Files.deleteIfExists(a);
+      java.nio.file.Files.deleteIfExists(b);
+    }
+  }
+
   private static byte[] solidColorJpeg(int width, int height) throws Exception {
     BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
     var graphics = image.createGraphics();

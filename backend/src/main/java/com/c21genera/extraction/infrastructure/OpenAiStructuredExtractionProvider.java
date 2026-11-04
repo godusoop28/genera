@@ -155,16 +155,22 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
 
   @Override
   public ExtractionResult extract(DocumentTypeCode type, byte[] pdfBytes, List<String> fieldNames) {
-    return extract(type, () -> PdfFiles.open(pdfBytes), fieldNames);
+    return extract(type, () -> PdfFiles.open(pdfBytes), fieldNames, false);
   }
 
   /** Desde archivo: un PDF de 40 MB ya no ocupa 40 MB de heap mientras se analiza. */
   @Override
   public ExtractionResult extract(DocumentTypeCode type, java.nio.file.Path pdf, List<String> fieldNames) {
-    return extract(type, () -> PdfFiles.open(pdf), fieldNames);
+    return extract(type, () -> PdfFiles.open(pdf), fieldNames, false);
   }
 
-  private ExtractionResult extract(DocumentTypeCode type, java.util.function.Supplier<PDDocument> opener, List<String> fieldNames) {
+  @Override
+  public ExtractionResult extract(DocumentTypeCode type, java.nio.file.Path pdf, List<String> fieldNames, boolean lite) {
+    return extract(type, () -> PdfFiles.open(pdf), fieldNames, lite);
+  }
+
+  private ExtractionResult extract(
+      DocumentTypeCode type, java.util.function.Supplier<PDDocument> opener, List<String> fieldNames, boolean lite) {
     try (PDDocument document = openForAi(opener)) {
       int pagesTotal = document.getNumberOfPages();
       boolean longDocument = DocumentFieldSchemas.isLongDocument(type);
@@ -173,7 +179,7 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
           PagePlanner.plan(pagesTotal, pageTexts, fieldNames, longDocument, properties.pagesPerBatch(), properties.maxPages());
       return plan.textMode()
           ? extractFromText(type, document, pageTexts, fieldNames, plan)
-          : extractFromImages(type, document, fieldNames, plan, longDocument);
+          : extractFromImages(type, document, fieldNames, plan, longDocument, lite);
     } catch (AiUnavailableException e) {
       throw e;
     } catch (Exception e) {
@@ -184,9 +190,11 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
   // ---------------------------------------------------------------------
 
   private ExtractionResult extractFromImages(
-      DocumentTypeCode type, PDDocument document, List<String> fieldNames, PagePlanner.Plan plan, boolean longDocument) throws Exception {
+      DocumentTypeCode type, PDDocument document, List<String> fieldNames, PagePlanner.Plan plan, boolean longDocument, boolean lite)
+      throws Exception {
     PDFRenderer renderer = PdfFiles.renderer(document);
-    int dpi = longDocument ? LONG_DOCUMENT_DPI : SHORT_DOCUMENT_DPI;
+    // Modo ligero (reintento de un documento que ya falló): todo a la resolución de los documentos largos.
+    int dpi = longDocument || lite ? LONG_DOCUMENT_DPI : SHORT_DOCUMENT_DPI;
     ExtractionConsolidator consolidator = new ExtractionConsolidator();
     Set<Integer> analyzed = new LinkedHashSet<>();
     List<Map<String, Object>> firstBatchImages = List.of();
@@ -205,12 +213,13 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
         // Con varias páginas por lote se renderiza directo al tamaño que usa el modelo: renderizar a 220 DPI y
         // luego reducir duplicaba la memoria de cada página (E2E 02/10). Con 1-2 páginas (una credencial) se
         // conserva la resolución alta: el recorte al contenido la necesita para los caracteres chicos.
-        int pageDpi = pages.size() > 2 ? Math.min(dpi, dpiForModel(document, page)) : dpi;
-        boolean checkTilt = i == 0 && !longDocument && pages.size() <= MAX_ENHANCED_PAGES;
+        int pageDpi = pages.size() > 2 || lite ? Math.min(dpi, dpiForModel(document, page)) : dpi;
+        boolean checkTilt = i == 0 && !longDocument && !lite && pages.size() <= MAX_ENHANCED_PAGES;
         boolean firstBatch = i == 0;
         // Solo la preparación de la imagen es exclusiva: la espera a la IA (lo que más tarda) va fuera y otras
         // lecturas avanzan mientras tanto.
-        awkwardLayout |= HeavyImageWork.exclusively(() -> preparePage(renderer, document, page, pageDpi, checkTilt, firstBatch, pageImages));
+        awkwardLayout |=
+            HeavyImageWork.exclusively(() -> preparePage(renderer, document, page, pageDpi, checkTilt, firstBatch, lite, pageImages));
       }
       content.addAll(pageImages);
       if (i == 0) {
@@ -226,7 +235,9 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
         consolidator.addWarning("No se pudieron revisar las páginas " + describePages(pages) + " (la IA no respondió); reprocésalo con IA si faltan datos");
       }
     }
-    if (!longDocument && !firstBatchImages.isEmpty()) {
+    if (lite) {
+      consolidator.addWarning("Se leyó en modo ligero (el archivo es muy pesado): revisa los datos y, si falta alguno, reprocésalo con IA");
+    } else if (!longDocument && !firstBatchImages.isEmpty()) {
       improveDifficultReading(type, document, fieldNames, plan.pagesTotal(), consolidator, firstBatchImages, awkwardLayout);
     }
     addCoverageWarning(consolidator, fieldNames, analyzed.size(), plan.pagesTotal());
@@ -239,7 +250,14 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
    * @return si la página es difícil de leer (inclinada o de lado)
    */
   private boolean preparePage(
-      PDFRenderer renderer, PDDocument document, int page, int pageDpi, boolean checkTilt, boolean firstBatch, List<Map<String, Object>> pageImages)
+      PDFRenderer renderer,
+      PDDocument document,
+      int page,
+      int pageDpi,
+      boolean checkTilt,
+      boolean firstBatch,
+      boolean lite,
+      List<Map<String, Object>> pageImages)
       throws Exception {
     boolean awkward = false;
     BufferedImage raw = renderImage(renderer, document, page, pageDpi);
@@ -249,7 +267,7 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
     }
     BufferedImage cropped = enlargeSmall(cropToContent(raw));
     raw = null;
-    if (isTall(cropped)) {
+    if (isTall(cropped) && !lite) {
       // Captura de pantalla larga (29/10): reducida entera a 2048 px quedaba de ~600 px de ancho y la letra
       // no se distinguía; en tramos cada uno conserva la resolución.
       List<BufferedImage> tiles = tallTiles(cropped);

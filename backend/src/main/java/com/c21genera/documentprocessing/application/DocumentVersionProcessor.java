@@ -144,14 +144,10 @@ public class DocumentVersionProcessor {
       // Un solo PDF: ya es el documento final; no se duplica (puede pesar decenas de MB).
       pdfKey = singlePdfKey;
     } else {
-      // Varios archivos: se arma un PDF. Los PDF subidos se leen ahora (solo en este caso).
-      List<PageContent> withContent = new ArrayList<>();
-      for (PageContent p : pdfPages) {
-        withContent.add(p.content() != null ? p : new PageContent(readAll(p.storageKey()), p.mimeType(), p.storageKey()));
-      }
-      byte[] pdfBytes = pdfAssembler.assemble(withContent);
+      // Varios archivos: se arma un PDF. Los PDF subidos se bajan a disco y el resultado también va a
+      // disco: nada del tamaño del documento queda en memoria (04/11).
       pdfKey = ProcessedStorageKeys.pdfKey(payload.documentVersionId());
-      storeBytes(pdfKey, pdfBytes, "application/pdf");
+      assembleAndStore(pdfPages, pdfKey);
     }
 
     String manifestJson = writeManifest(normalizedPages);
@@ -185,6 +181,40 @@ public class DocumentVersionProcessor {
       if (file != null) {
         try {
           java.nio.file.Files.deleteIfExists(file);
+        } catch (java.io.IOException ignored) {
+          // Archivo temporal.
+        }
+      }
+    }
+  }
+
+  private void assembleAndStore(List<PageContent> pdfPages, String pdfKey) {
+    List<java.nio.file.Path> temps = new ArrayList<>();
+    try {
+      List<PageContent> withContent = new ArrayList<>();
+      for (PageContent p : pdfPages) {
+        if (p.content() != null) {
+          withContent.add(p);
+          continue;
+        }
+        java.nio.file.Path file = PdfFiles.toTempFile(fileStorage.get(p.storageKey()), ".pdf");
+        temps.add(file);
+        withContent.add(new PageContent(null, p.mimeType(), p.storageKey(), file));
+      }
+      java.nio.file.Path out = java.nio.file.Files.createTempFile("c21-assembled-", ".pdf");
+      temps.add(out);
+      try (java.io.OutputStream os = new java.io.BufferedOutputStream(java.nio.file.Files.newOutputStream(out))) {
+        pdfAssembler.assemble(withContent, os);
+      }
+      try (InputStream in = java.nio.file.Files.newInputStream(out)) {
+        fileStorage.store(pdfKey, in, java.nio.file.Files.size(out), "application/pdf");
+      }
+    } catch (java.io.IOException e) {
+      throw new IllegalStateException("No se pudo armar el PDF del documento", e);
+    } finally {
+      for (java.nio.file.Path t : temps) {
+        try {
+          java.nio.file.Files.deleteIfExists(t);
         } catch (java.io.IOException ignored) {
           // Archivo temporal.
         }

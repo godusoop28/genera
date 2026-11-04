@@ -35,6 +35,14 @@ public interface StructuredExtractionProvider {
     }
   }
 
+  /**
+   * Lectura "ligera" para los reintentos de un documento que ya falló o tumbó el servidor: menos
+   * resolución y sin pasadas extra. Más vale una lectura algo menos fina que ninguna (04/11).
+   */
+  default ExtractionResult extract(DocumentTypeCode type, java.nio.file.Path pdf, List<String> fieldNames, boolean lite) {
+    return extract(type, pdf, fieldNames);
+  }
+
   /** El proveedor de IA no respondió o respondió algo inutilizable. */
   class AiUnavailableException extends RuntimeException {
     public AiUnavailableException(String message, Throwable cause) {

@@ -27,4 +27,10 @@ describe("prepareUploads (límites sincronizados con el backend)", () => {
     await expect(prepareUploads([fileOfSize("foto.webp", "image/webp", 1000)])).resolves.toHaveLength(1);
     await expect(prepareUploads([fileOfSize("nota.txt", "text/plain", 10)])).rejects.toThrow(/no es un formato aceptado/);
   });
+
+  it("nunca rechaza una imagen: si el navegador no la puede convertir, la recibe el servidor", async () => {
+    const [gif] = await prepareUploads([fileOfSize("escaneo.gif", "image/gif", 1000)]);
+    expect(gif.name).toBe("escaneo.gif");
+    await expect(prepareUploads([fileOfSize("foto.avif", "image/avif", 1000)])).resolves.toHaveLength(1);
+  });
 });

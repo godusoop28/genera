@@ -21,31 +21,56 @@ import org.springframework.stereotype.Component;
 @Component
 public class PdfAssembler {
 
-  /** storageKey: de dónde se puede volver a leer el contenido (null si solo está en memoria). */
-  public record PageContent(byte[] content, String mimeType, String storageKey) {
+  /**
+   * storageKey: de dónde se puede volver a leer el contenido (null si solo está en memoria).
+   * file: el PDF ya descargado a disco; si está, se usa en vez de {@code content}.
+   */
+  public record PageContent(byte[] content, String mimeType, String storageKey, java.nio.file.Path file) {
+
+    public PageContent(byte[] content, String mimeType, String storageKey) {
+      this(content, mimeType, storageKey, null);
+    }
 
     public PageContent(byte[] content, String mimeType) {
-      this(content, mimeType, null);
+      this(content, mimeType, null, null);
     }
   }
 
   public byte[] assemble(List<PageContent> pages) {
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    assemble(pages, out);
+    return out.toByteArray();
+  }
+
+  /**
+   * Escribe el PDF en {@code out}. Los PDF se abren desde disco cuando vienen con {@code file}: unir
+   * dos PDF escaneados de 30 MB en memoria no cabía en el servidor (04/11). Los PDF de origen
+   * quedan abiertos hasta guardar: PDFBox copia sus objetos al guardar, no al unir.
+   */
+  public void assemble(List<PageContent> pages, java.io.OutputStream out) {
+    List<PDDocument> sources = new java.util.ArrayList<>();
     try (PDDocument document = PdfFiles.create()) {
       PDFMergerUtility merger = new PDFMergerUtility();
       for (PageContent page : pages) {
         if ("application/pdf".equals(page.mimeType())) {
-          try (PDDocument source = PdfFiles.open(page.content())) {
-            merger.appendDocument(document, source);
-          }
+          PDDocument source = page.file() != null ? PdfFiles.open(page.file()) : PdfFiles.open(page.content());
+          sources.add(source);
+          merger.appendDocument(document, source);
         } else {
           appendImagePage(document, page.content());
         }
       }
-      ByteArrayOutputStream out = new ByteArrayOutputStream();
       document.save(out);
-      return out.toByteArray();
     } catch (IOException e) {
       throw new IllegalStateException("No se pudo ensamblar el PDF del documento", e);
+    } finally {
+      for (PDDocument source : sources) {
+        try {
+          source.close();
+        } catch (IOException ignored) {
+          // Solo se leía.
+        }
+      }
     }
   }
 

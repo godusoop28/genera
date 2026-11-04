@@ -1,6 +1,6 @@
 import { apiClient } from "@/lib/api/client";
 import type { UploadLimitsResponse } from "@/lib/api/types";
-import { shrinkImages } from "@/lib/image-shrink";
+import { convertToJpeg, needsJpegConversion, shrinkImages } from "@/lib/image-shrink";
 
 // Límites de carga sincronizados con el backend (GET /public/upload-limits):
 // se avisa ANTES de subir un archivo que el servidor rechazaría. Si el
@@ -9,11 +9,14 @@ import { shrinkImages } from "@/lib/image-shrink";
 export const DEFAULT_UPLOAD_LIMITS: UploadLimitsResponse = {
   maxFileSizeBytes: 100 * 1024 * 1024,
   maxFilesPerRequest: 30,
-  allowedMimeTypes: ["image/jpeg", "image/png", "image/webp", "application/pdf"],
+  allowedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/tiff", "image/bmp", "image/gif", "application/pdf"],
 };
 
-/** Lo que aceptan los <input type="file">: HEIC/HEIF se convierte a JPEG antes de subirse. */
-export const ACCEPTED_FILE_TYPES = "image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,application/pdf";
+/**
+ * Lo que aceptan los <input type="file">: cualquier imagen (lo que no sea JPG/PNG/WEBP se convierte
+ * a JPEG antes de subirse: HEIC, GIF, BMP, TIFF, AVIF...) y PDF.
+ */
+export const ACCEPTED_FILE_TYPES = "image/*,.heic,.heif,.tif,.tiff,.bmp,.gif,.avif,application/pdf";
 
 let limitsPromise: Promise<UploadLimitsResponse> | null = null;
 
@@ -53,8 +56,18 @@ async function convertHeic(file: File): Promise<File> {
     const blob = Array.isArray(result) ? result[0] : result;
     return new File([blob], `${file.name.replace(/\.[^.]+$/, "")}.jpg`, { type: "image/jpeg", lastModified: file.lastModified });
   } catch {
+    // Safari abre HEIC por sí mismo: segundo intento con el decodificador del navegador.
+    const fallback = await convertToJpeg(file);
+    if (fallback) return fallback;
     throw new UploadValidationError(`No se pudo convertir la foto "${file.name}" (HEIC). Vuelve a intentarlo o envíala como JPG.`);
   }
+}
+
+/** Cualquier otra imagen (GIF, BMP, TIFF, AVIF...) se convierte a JPEG; si el navegador no puede, la recibe el servidor. */
+async function adapt(file: File): Promise<File> {
+  if (isHeic(file)) return convertHeic(file);
+  if (needsJpegConversion(file)) return (await convertToJpeg(file)) ?? file;
+  return file;
 }
 
 /**
@@ -67,7 +80,7 @@ export async function prepareUploads(files: File[]): Promise<File[]> {
   if (files.length > limits.maxFilesPerRequest) {
     throw new UploadValidationError(`Puedes subir hasta ${limits.maxFilesPerRequest} archivos a la vez.`);
   }
-  const converted = await Promise.all(files.map((f) => (isHeic(f) ? convertHeic(f) : Promise.resolve(f))));
+  const converted = await Promise.all(files.map(adapt));
   const prepared = await shrinkImages(converted);
   for (const file of prepared) {
     if (file.size > limits.maxFileSizeBytes) {
@@ -76,8 +89,8 @@ export async function prepareUploads(files: File[]): Promise<File[]> {
           "Si no puedes subirlo, llévalo a la oficina o pídele ayuda a tu asesor.",
       );
     }
-    if (file.type && !limits.allowedMimeTypes.includes(file.type)) {
-      throw new UploadValidationError(`"${file.name}" no es un formato aceptado. Sube fotos (JPG, PNG, WEBP o HEIC) o PDF.`);
+    if (file.type && !file.type.startsWith("image/") && !limits.allowedMimeTypes.includes(file.type)) {
+      throw new UploadValidationError(`"${file.name}" no es un formato aceptado. Sube fotos (cualquier formato de imagen) o PDF.`);
     }
   }
   return prepared;

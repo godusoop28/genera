@@ -98,6 +98,11 @@ public class DocumentFieldExtractionService implements ExtractionApi {
    * @throws StructuredExtractionProvider.AiUnavailableException para que el job se reintente
    */
   public void extract(ExtractDocumentFieldsPayload payload) {
+    extract(payload, false);
+  }
+
+  /** @param lite lectura ligera (reintento de un documento que ya falló o tumbó el servidor). */
+  public void extract(ExtractDocumentFieldsPayload payload, boolean lite) {
     List<String> fieldNames = DocumentFieldSchemas.fieldsFor(payload.type());
 
     // El PDF se baja a un archivo temporal y se analiza desde el disco: cargarlo en memoria ocupaba su tamaño
@@ -108,7 +113,7 @@ public class DocumentFieldExtractionService implements ExtractionApi {
       // Siempre se llama al proveedor, aunque el tipo no tenga campos que
       // extraer: la verificación de que el archivo corresponde al documento
       // solicitado aplica a todos los tipos.
-      result = provider.extract(payload.type(), pdf, fieldNames);
+      result = lite ? provider.extract(payload.type(), pdf, fieldNames, true) : provider.extract(payload.type(), pdf, fieldNames);
     } finally {
       deleteQuietly(pdf);
     }

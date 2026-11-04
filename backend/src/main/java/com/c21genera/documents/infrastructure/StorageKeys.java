@@ -53,6 +53,9 @@ public final class StorageKeys {
       case "image/jpeg" -> "jpg";
       case "image/png" -> "png";
       case "image/webp" -> "webp";
+      case "image/tiff" -> "tif";
+      case "image/bmp", "image/x-ms-bmp" -> "bmp";
+      case "image/gif" -> "gif";
       case "application/pdf" -> "pdf";
       default -> "bin";
     };

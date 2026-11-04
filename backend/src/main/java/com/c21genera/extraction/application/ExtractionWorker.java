@@ -34,6 +34,9 @@ public class ExtractionWorker {
    */
   static final int PARALLEL_JOBS = 3;
 
+  /** Desde este intento la lectura es ligera (menos resolución, sin pasadas extra). */
+  static final int LITE_FROM_ATTEMPT = 3;
+
   private final BackgroundJobQueue queue;
   private final DocumentFieldExtractionService service;
   private final ExecutorService executor = Executors.newFixedThreadPool(PARALLEL_JOBS, CoreConfig.backgroundThreads("ai-extraction-"));
@@ -75,7 +78,9 @@ public class ExtractionWorker {
       if (job.exceededAttempts()) {
         throw new IllegalStateException("El servidor se reinició varias veces analizando este archivo");
       }
-      service.extract(payload);
+      // Los dos primeros intentos leen con todo detalle; si fallaron (o el archivo tumbó el servidor), los
+      // siguientes leen en modo ligero: un documento pesado termina leído en vez de atorado (04/11).
+      service.extract(payload, job.getAttempts() >= LITE_FROM_ATTEMPT);
       queue.markDone(job);
     } catch (Exception | OutOfMemoryError e) {
       // OutOfMemoryError: un documento que no cabe en memoria falla solo él (con reintentos), en vez de

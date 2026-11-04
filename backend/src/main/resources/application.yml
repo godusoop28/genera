@@ -148,9 +148,10 @@ app:
     # grandes se guardan en partes de forma transparente (CloudinaryFileStorage).
     max-file-size-bytes: ${UPLOAD_MAX_FILE_SIZE_BYTES:104857600}
     max-files-per-request: 30
-    # HEIC/HEIF (iPhone) se convierte a JPEG en el navegador antes de subirse.
-    allowed-public-mime-types: image/jpeg,image/png,image/webp,application/pdf
-    allowed-internal-mime-types: image/jpeg,image/png,image/webp,application/pdf
+    # HEIC/HEIF, AVIF, etc. se convierten a JPEG en el navegador; TIFF/BMP/GIF también se reciben
+    # tal cual (respaldo si el navegador no los abre) y el servidor los normaliza a JPEG.
+    allowed-public-mime-types: image/jpeg,image/png,image/webp,image/tiff,image/bmp,image/x-ms-bmp,image/gif,application/pdf
+    allowed-internal-mime-types: image/jpeg,image/png,image/webp,image/tiff,image/bmp,image/x-ms-bmp,image/gif,application/pdf
   mail:
     from: ${MAIL_FROM:no-reply@c21genera.com}
   ai:

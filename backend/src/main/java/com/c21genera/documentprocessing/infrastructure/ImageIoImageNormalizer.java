@@ -31,8 +31,10 @@ public class ImageIoImageNormalizer implements ImageNormalizer {
   public NormalizedImage normalize(byte[] original, String sourceMimeType) {
     BufferedImage image;
     try {
-      image = ImageIO.read(new ByteArrayInputStream(original));
-    } catch (Exception e) {
+      image = decodeReduced(original);
+    } catch (UnreadableImageException e) {
+      throw e;
+    } catch (Exception | OutOfMemoryError e) {
       throw new UnreadableImageException("No se pudo leer la imagen (" + sourceMimeType + ")", e);
     }
     if (image == null) {
@@ -45,6 +47,87 @@ public class ImageIoImageNormalizer implements ImageNormalizer {
 
     byte[] jpeg = encodeJpeg(flattened);
     return new NormalizedImage(jpeg, "image/jpeg", flattened.getWidth(), flattened.getHeight());
+  }
+
+  /**
+   * Decodifica la imagen ya reducida (submuestreo del lector): una foto de 50 MP decodificada completa
+   * ocupaba ~200 MB, más que todo el heap del servidor, y el documento nunca terminaba de procesarse
+   * (04/11). Así se decodifica a un tamaño cercano a {@link #MAX_LONG_SIDE_PX} y luego se ajusta.
+   * Los JPEG en CMYK (escáneres, Photoshop), que ImageIO no convierte solo, se leen como raster.
+   */
+  static BufferedImage decodeReduced(byte[] original) throws java.io.IOException {
+    try (javax.imageio.stream.ImageInputStream in = ImageIO.createImageInputStream(new ByteArrayInputStream(original))) {
+      if (in == null) {
+        return null;
+      }
+      java.util.Iterator<javax.imageio.ImageReader> readers = ImageIO.getImageReaders(in);
+      if (!readers.hasNext()) {
+        return null;
+      }
+      javax.imageio.ImageReader reader = readers.next();
+      try {
+        reader.setInput(in, true, true);
+        int longSide = Math.max(reader.getWidth(0), reader.getHeight(0));
+        int factor = Math.max(1, longSide / MAX_LONG_SIDE_PX);
+        javax.imageio.ImageReadParam param = reader.getDefaultReadParam();
+        param.setSourceSubsampling(factor, factor, 0, 0);
+        try {
+          return reader.read(0, param);
+        } catch (javax.imageio.IIOException e) {
+          if (!reader.canReadRaster()) {
+            throw e;
+          }
+          return fromRaster(reader.readRaster(0, param));
+        }
+      } finally {
+        reader.dispose();
+      }
+    }
+  }
+
+  /** Raster de 4 canales (CMYK) o de 1-3 canales sin modelo de color: se convierte a RGB legible. */
+  static BufferedImage fromRaster(java.awt.image.Raster raster) {
+    int w = raster.getWidth();
+    int h = raster.getHeight();
+    int bands = raster.getNumBands();
+    BufferedImage rgb = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+    int[] px = new int[bands];
+    long sum = 0;
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        raster.getPixel(x + raster.getMinX(), y + raster.getMinY(), px);
+        int r;
+        int g;
+        int b;
+        if (bands >= 4) {
+          int k = px[3];
+          r = (255 - px[0]) * (255 - k) / 255;
+          g = (255 - px[1]) * (255 - k) / 255;
+          b = (255 - px[2]) * (255 - k) / 255;
+        } else if (bands == 3) {
+          r = px[0];
+          g = px[1];
+          b = px[2];
+        } else {
+          r = g = b = px[0];
+        }
+        sum += (r + g + b) / 3;
+        rgb.setRGB(x, y, (clamp(r) << 16) | (clamp(g) << 8) | clamp(b));
+      }
+    }
+    // Los CMYK de Adobe vienen invertidos: si todo quedó casi negro, es eso.
+    if (bands >= 4 && w > 0 && h > 0 && sum / ((long) w * h) < 60) {
+      for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+          rgb.setRGB(x, y, ~rgb.getRGB(x, y) & 0xFFFFFF);
+        }
+      }
+    }
+    return rgb;
+  }
+
+  private static int clamp(int v) {
+    return Math.max(0, Math.min(255, v));
   }
 
   private int readExifOrientation(byte[] original) {
