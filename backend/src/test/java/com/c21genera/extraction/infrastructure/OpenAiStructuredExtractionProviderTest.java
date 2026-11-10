@@ -137,4 +137,14 @@ class OpenAiStructuredExtractionProviderTest {
         .isInstanceOf(AiUnavailableException.class);
     assertThat(calls.get()).isEqualTo(1);
   }
+
+  @org.junit.jupiter.api.Test
+  void placeholdersFromTheAiAreNotData() {
+    for (String v : new String[] {"NO LEGIBLE", "ilegible", "No legible.", "N/A", "n.a.", "...", "-", "???", "No visible", "Sin datos"}) {
+      assertThat(OpenAiStructuredExtractionProvider.isPlaceholder(v)).as(v).isTrue();
+    }
+    for (String v : new String[] {"Mexicana", "NINGUNO", "No aplica", "MORA920406HMSRYL01", "C. NUEVA INGLATERRA 112", "NA12345"}) {
+      assertThat(OpenAiStructuredExtractionProvider.isPlaceholder(v)).as(v).isFalse();
+    }
+  }
 }

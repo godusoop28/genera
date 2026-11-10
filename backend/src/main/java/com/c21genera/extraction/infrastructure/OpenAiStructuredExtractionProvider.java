@@ -1111,7 +1111,19 @@ public class OpenAiStructuredExtractionProvider implements StructuredExtractionP
       return null;
     }
     String value = node.isValueNode() ? node.asText() : node.toString();
-    return value == null || value.isBlank() ? null : value.strip();
+    return value == null || value.isBlank() || isPlaceholder(value) ? null : value.strip();
+  }
+
+  /**
+   * Texto que la IA pone en lugar de un dato que no pudo leer ("NO LEGIBLE", "N/A", "..."). No es un dato:
+   * guardado así llegaba al expediente y al contrato (EXP-2026-000044: CURP "NO LEGIBLE") en vez de quedar
+   * pendiente de captura.
+   */
+  static boolean isPlaceholder(String value) {
+    String v = java.text.Normalizer.normalize(value.strip(), java.text.Normalizer.Form.NFD)
+        .replaceAll("\\p{M}", "").toUpperCase(java.util.Locale.ROOT).replaceAll("[\\s.\\-_/]+", " ").strip();
+    return v.isEmpty()
+        || v.matches("(NO (ES )?|I)LEGIBLE|NO VISIBLE|NO SE (VE|LEE|DISTINGUE)|N A|NULL|NONE|NO DISPONIBLE|DESCONOCIDO|SIN DATOS?|NO INDICA|NO ESPECIFICADO|\\?+");
   }
 
   private static Integer page(JsonNode node) {
