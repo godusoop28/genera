@@ -31,14 +31,8 @@ class ContainerMemoryInfoContributor implements InfoContributor {
     cgroupStat("anon").ifPresent(b -> memory.put("cgroupAnonMb", b / 1048576));
     cgroupStat("file").ifPresent(b -> memory.put("cgroupFileMb", b / 1048576));
     memory.put("lastRelief", com.c21genera.shared.jobs.MemoryRelief.lastRun());
-    // Metaspace (clases cargadas): el 10/11 se llenó el tope y la app quedó viva pero respondiendo 500.
-    for (java.lang.management.MemoryPoolMXBean pool : java.lang.management.ManagementFactory.getMemoryPoolMXBeans()) {
-      if ("Metaspace".equals(pool.getName())) {
-        memory.put("metaspaceUsedMb", pool.getUsage().getUsed() / 1048576);
-        memory.put("metaspaceMaxMb", pool.getUsage().getMax() / 1048576);
-      }
-    }
-    memory.put("loadedClasses", java.lang.management.ManagementFactory.getClassLoadingMXBean().getLoadedClassCount());
+    // Metaspace, code cache y clases: el 10/11 se llenó el metaspace y la app quedó viva pero respondiendo error.
+    memory.putAll(JvmDiagnostics.summary());
     if (!memory.isEmpty()) {
       builder.withDetail("container", memory);
     }
