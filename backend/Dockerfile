@@ -36,7 +36,11 @@ EXPOSE 8080
 # heap se encoge y le regresa al sistema lo que no usa (si no, se quedaba comprometido en 199 MB para siempre).
 # ThreadPriorityPolicy=1 + JavaPriority1_To_OSPriority=10: los hilos de trabajos de fondo (prioridad mínima, ver
 # CoreConfig) corren con nice 10 y Linux le da la CPU primero a las peticiones de las pantallas.
+# MaxMetaspaceSize=256m: con 160m el metaspace se llenó tras 4 días (10/11/2026, OutOfMemoryError: Metaspace) y la
+# JVM siguió viva pero fallando cada petición. El tope solo limita: no reserva memoria si no se usa.
+# No usamos ExitOnOutOfMemoryError: los OOM de heap de un PDF grande se atrapan a propósito (falla solo ese
+# documento). Para el metaspace, MetaspaceGuard termina el proceso al 95% y Render lo reinicia solo.
 # glibc crea un arena de malloc por hilo y infla la memoria nativa del JVM en contenedores chicos.
 ENV MALLOC_ARENA_MAX=2
-ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=40 -XX:+UseSerialGC -Xss512k -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=48m -XX:TieredStopAtLevel=1 -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=30 -XX:ThreadPriorityPolicy=1 -XX:JavaPriority1_To_OSPriority=10"
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=40 -XX:+UseSerialGC -Xss512k -XX:MaxMetaspaceSize=256m -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=48m -XX:TieredStopAtLevel=1 -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=30 -XX:ThreadPriorityPolicy=1 -XX:JavaPriority1_To_OSPriority=10"
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
