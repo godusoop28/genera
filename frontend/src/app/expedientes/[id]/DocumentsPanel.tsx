@@ -4,11 +4,13 @@ import { DocumentViewerModal } from "@/components/documents/DocumentViewerModal"
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { ReasonModal } from "@/components/ui/ReasonModal";
 import { useToast } from "@/components/ui/Toast";
 import {
   acceptDocument,
+  addAdditionalDeed,
   addCustomDocument,
   approveException,
   cancelDocumentUpdate,
@@ -147,6 +149,8 @@ export function DocumentsPanel({
   const [filter, setFilter] = useState<StatusFilter>("ALL");
   const [reprocessingAll, setReprocessingAll] = useState(false);
   const [addingDocument, setAddingDocument] = useState(false);
+  // Control de Cambios #48: varias escrituras por propiedad (otro terreno o la construcción).
+  const [addingDeed, setAddingDeed] = useState<string | null>(null);
   const names = Object.fromEntries(participants.map((p) => [p.id, p.fullName]));
   const canReprocess =
     can("DOCUMENT_ACCEPT") ||
@@ -407,6 +411,20 @@ export function DocumentsPanel({
             >
               <Plus className="h-4 w-4" aria-hidden /> Agregar otro documento
             </Button>
+            {expediente.accreditationType === "ESCRITURA_PUBLICA" ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                className="ml-2"
+                onClick={() =>
+                  setAddingDeed(
+                    `Escritura ${(documents ?? []).filter((d) => d.type === "DEED").length + 1}`,
+                  )
+                }
+              >
+                <Plus className="h-4 w-4" aria-hidden /> Agregar otra escritura
+              </Button>
+            ) : null}
           </div>
         ) : null}
         <button
@@ -427,6 +445,54 @@ export function DocumentsPanel({
           .map((d) => `${d.id}:${d.currentVersionNumber}:${d.status}`)
           .join("|")}
       />
+
+      <Modal
+        open={addingDeed !== null}
+        onClose={() => setAddingDeed(null)}
+        title="Agregar otra escritura"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setAddingDeed(null)}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={(addingDeed?.trim().length ?? 0) < 3}
+              onClick={async () => {
+                const name = addingDeed?.trim() ?? "";
+                try {
+                  await addAdditionalDeed(expediente.id, name);
+                  showToast(
+                    `Se agregó "${name}" como escritura independiente. Sus datos se capturan en «Datos del contrato».`,
+                  );
+                  setAddingDeed(null);
+                  await onChanged();
+                } catch (err) {
+                  showToast(errorText(err));
+                }
+              }}
+            >
+              Agregar
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3 text-sm">
+          <p className="text-muted">
+            Para una propiedad con varios terrenos o con la construcción en otra
+            escritura. Se agrega como documento independiente: no reemplaza a
+            las escrituras ya cargadas, se lee por separado y aparece como otra
+            entrada en el contrato.
+          </p>
+          <Input
+            label="Nombre"
+            value={addingDeed ?? ""}
+            autoFocus
+            maxLength={120}
+            onChange={(e) => setAddingDeed(e.target.value)}
+            placeholder="Ej. Escritura — Terreno 2 (lote 5)"
+          />
+        </div>
+      </Modal>
 
       {addingDocument ? (
         <AddDocumentModal

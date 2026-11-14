@@ -474,7 +474,9 @@ public class DocumentFieldExtractionService implements ExtractionApi {
     byDocument.forEach(
         (documentId, observations) -> {
           RequirementStatusView doc = documents.get(documentId);
-          if (doc == null) {
+          // Control de Cambios #48: una escritura adicional describe otro terreno o la construcción;
+          // compararla con el predial o la escritura principal daría inconsistencias falsas.
+          if (doc == null || doc.isAdditionalDeed()) {
             return;
           }
           Map<String, String> fields = new HashMap<>();

@@ -214,7 +214,11 @@ class _DocumentsTabState extends State<DocumentsTab> {
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: Btn('Agregar otro documento', icon: Icons.add, small: true, variant: BtnVariant.secondary, onPressed: () => _addDocument(context)),
+                  child: Wrap(spacing: 8, runSpacing: 8, children: [
+                    Btn('Agregar otro documento', icon: Icons.add, small: true, variant: BtnVariant.secondary, onPressed: () => _addDocument(context)),
+                    if (ctx.expediente.accreditationType == 'ESCRITURA_PUBLICA')
+                      Btn('Agregar otra escritura', icon: Icons.add, small: true, variant: BtnVariant.secondary, onPressed: () => _addDeed(context, docs)),
+                  ]),
                 ),
               ),
             LinkText(showOptional ? 'Ocultar documentos que no aplican' : 'Mostrar también documentos que no aplican a este expediente',
@@ -225,6 +229,28 @@ class _DocumentsTabState extends State<DocumentsTab> {
         NotaryStages(key: ValueKey((docs ?? []).map((d) => '${d.id}:${d.currentVersionNumber}:${d.status}').join('|')), expedienteId: ctx.expediente.id, names: names),
       ],
     );
+  }
+
+  /// Control de Cambios #48: otra escritura de la misma operación, como documento independiente.
+  Future<void> _addDeed(BuildContext context, List<DocumentResponse>? docs) async {
+    final name = await askReason(
+      context,
+      title: 'Agregar otra escritura',
+      description:
+          'Para una propiedad con varios terrenos o con la construcción en otra escritura. Se agrega como documento independiente: no reemplaza a las ya cargadas y aparece como otra entrada en el contrato.',
+      label: 'Nombre',
+      placeholder: 'Ej. Escritura — Terreno 2 (lote 5)',
+      minLength: 3,
+      confirmLabel: 'Agregar',
+    );
+    if (name == null) return;
+    try {
+      await api.addAdditionalDeed(ctx.expediente.id, name);
+      if (context.mounted) showToast(context, 'Se agregó "$name" como escritura independiente. Sus datos se capturan en «Datos del contrato».');
+      await onChanged();
+    } catch (err) {
+      if (context.mounted) showToast(context, errorText(err));
+    }
   }
 
   /// Control de Cambios #1: documento que no está en el listado, con el nombre que se le dé.

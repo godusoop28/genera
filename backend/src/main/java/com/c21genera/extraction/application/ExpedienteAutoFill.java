@@ -213,8 +213,12 @@ public class ExpedienteAutoFill {
             .orElse(null);
     Set<String> conflicted =
         conflicts.findByExpedienteIdAndResolvedFalse(expedienteId).stream().map(c -> c.getFieldName()).collect(Collectors.toSet());
+    // Control de Cambios #48: las escrituras adicionales tienen sus propios datos; no llenan la principal.
     List<DocumentObservation> validated =
-        extraction.observationsOfExpediente(expedienteId).stream().filter(o -> isValidated(o, conflicted)).toList();
+        extraction.observationsOfExpediente(expedienteId).stream()
+            .filter(o -> !o.document().isAdditionalDeed())
+            .filter(o -> isValidated(o, conflicted))
+            .toList();
     DocumentFill fill = build(validated, ownerId);
     if (fill.legal().isEmpty() && fill.landAreaM2() == null && fill.builtAreaM2() == null && fill.participants().isEmpty()) {
       return 0;

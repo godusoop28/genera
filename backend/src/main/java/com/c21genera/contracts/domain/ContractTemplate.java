@@ -398,6 +398,40 @@ public final class ContractTemplate {
     blocks.add(Paragraph.of(spans));
   }
 
+  /** Una escritura como entrada de la lista de la declaración II.d (Control de Cambios #48). */
+  private void renderDeed(LegalDetails.DeedData d, String label, Boolean includesConstruction, String which) {
+    List<Span> spans = new ArrayList<>();
+    spans.add(t("• Escritura pública número "));
+    spans.add(value(d == null ? null : d.number(), "número " + which));
+    spans.add(t(", otorgada el "));
+    spans.add(value(d == null ? null : date(d.date()), "fecha " + which));
+    spans.add(t(", ante la fe de la Notaría Pública número "));
+    spans.add(value(d == null ? null : d.notaryNumber(), "número de notaría " + which));
+    spans.add(t(" de "));
+    spans.add(value(d == null ? null : d.notaryPlace(), "lugar de la notaría " + which));
+    spans.add(t(", a cargo de Lic. "));
+    spans.add(value(d == null ? null : withoutTitle(d.notaryName()), "nombre del notario " + which));
+    if (notBlank(label) || Boolean.TRUE.equals(includesConstruction)) {
+      spans.add(t(", que ampara "));
+      spans.add(b(notBlank(label) ? label.strip() : "el inmueble"));
+      if (Boolean.TRUE.equals(includesConstruction)) {
+        spans.add(t(" con la construcción existente"));
+      }
+    }
+    if (d != null && notBlank(d.registryData())) {
+      spans.add(t(", debidamente inscrita en el Registro Público de la Propiedad bajo los datos registrales "));
+      spans.add(b(d.registryData()));
+      if (d.registryDate() != null) {
+        spans.add(t(", con fecha de inscripción "));
+        spans.add(b(date(d.registryDate())));
+      }
+      spans.add(t("."));
+    } else {
+      spans.add(t(", debidamente inscrita en el Registro Público de la Propiedad bajo los datos registrales que se desprenden de la escritura correspondiente / pendientes de confirmar con certificado actualizado."));
+    }
+    blocks.add(new Paragraph(spans, Align.JUSTIFY, 1));
+  }
+
   private void renderOwnership() {
     ExpedienteSummary e = in.expediente();
     LegalDetails legal = legal();
@@ -409,30 +443,19 @@ public final class ContractTemplate {
             t(", como se acredita en términos de:")));
 
     if (e.accreditationType() == AccreditationType.ESCRITURA_PUBLICA) {
-      LegalDetails.DeedData d = legal.deed();
-      List<Span> spans = new ArrayList<>();
-      spans.add(t("• Escritura pública número "));
-      spans.add(value(d == null ? null : d.number(), "número de la escritura"));
-      spans.add(t(", otorgada el "));
-      spans.add(value(d == null ? null : date(d.date()), "fecha de la escritura"));
-      spans.add(t(", ante la fe de la Notaría Pública número "));
-      spans.add(value(d == null ? null : d.notaryNumber(), "número de notaría de la escritura"));
-      spans.add(t(" de "));
-      spans.add(value(d == null ? null : d.notaryPlace(), "lugar de la notaría de la escritura"));
-      spans.add(t(", a cargo de Lic. "));
-      spans.add(value(d == null ? null : withoutTitle(d.notaryName()), "nombre del notario de la escritura"));
-      if (d != null && notBlank(d.registryData())) {
-        spans.add(t(", debidamente inscrita en el Registro Público de la Propiedad bajo los datos registrales "));
-        spans.add(b(d.registryData()));
-        if (d.registryDate() != null) {
-          spans.add(t(", con fecha de inscripción "));
-          spans.add(b(date(d.registryDate())));
-        }
-        spans.add(t("."));
-      } else {
-        spans.add(t(", debidamente inscrita en el Registro Público de la Propiedad bajo los datos registrales que se desprenden de la escritura correspondiente / pendientes de confirmar con certificado actualizado."));
+      // Control de Cambios #48: la propiedad puede acreditarse con varias escrituras (varios terrenos
+      // y/o la construcción). Cada escritura seleccionada es una entrada distinta con sus propios
+      // datos; lo que falte se marca para revisión, nunca se toma de otra escritura.
+      List<LegalDetails.AdditionalDeed> extra =
+          legal.additionalDeeds() == null
+              ? List.of()
+              : legal.additionalDeeds().stream().filter(a -> a != null && !Boolean.FALSE.equals(a.includeInContract())).toList();
+      boolean several = !extra.isEmpty();
+      renderDeed(legal.deed(), legal.deedLabel(), legal.deedIncludesConstruction(), several ? "de la escritura 1" : "de la escritura");
+      for (int i = 0; i < extra.size(); i++) {
+        LegalDetails.AdditionalDeed a = extra.get(i);
+        renderDeed(a.asDeedData(), a.label(), a.includesConstruction(), "de la escritura " + (i + 2) + (notBlank(a.label()) ? " (" + a.label() + ")" : ""));
       }
-      blocks.add(new Paragraph(spans, Align.JUSTIFY, 1));
     } else {
       LegalDetails.PrivateContractData p = legal.privateContract();
       blocks.add(

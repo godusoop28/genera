@@ -207,6 +207,9 @@ Future<DocumentResponse> requestAgain(String documentId) async => DocumentRespon
 Future<String> getDownloadUrl(String versionId) async => '${_j(await _c.get('/internal/document-versions/$versionId/download'))['url']}';
 Future<List<DocumentVersionItem>> listVersions(String documentId) async => _l(await _c.get('/internal/documents/$documentId/versions'), DocumentVersionItem.fromJson);
 /// Documento que no está en el listado, con el nombre capturado (Control de Cambios #1).
+/// Control de Cambios #48: «Agregar otra escritura» (otro terreno o la construcción de la misma operación).
+Future<DocumentResponse> addAdditionalDeed(String expedienteId, String name) async =>
+    DocumentResponse.fromJson(_j(await _c.post('/internal/expedientes/$expedienteId/documents/additional-deeds', {'name': name})));
 Future<DocumentResponse> addCustomDocument(String expedienteId, String name, String? participantId) async =>
     DocumentResponse.fromJson(_j(await _c.post('/internal/expedientes/$expedienteId/documents', {'name': name, 'participantId': participantId})));
 /// Falta, pero se aprueba seguir sin él por ahora (Control de Cambios #5).

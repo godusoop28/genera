@@ -1,4 +1,8 @@
-import type { ExpedienteObservationResponse, LegalDetails, ParticipantDetails } from "@/lib/api/types";
+import type {
+  ExpedienteObservationResponse,
+  LegalDetails,
+  ParticipantDetails,
+} from "@/lib/api/types";
 import { documentTypeLabel } from "@/lib/document-type-labels";
 
 /** Un valor que la revisión automática leyó en un documento del expediente. */
@@ -10,23 +14,41 @@ export interface Detected {
   confirmed: boolean;
 }
 
-type LegalSection = "deed" | "privateContract" | "condominium" | "company" | "representation";
+type LegalSection =
+  "deed" | "privateContract" | "condominium" | "company" | "representation";
 export type LegalKey = `${LegalSection}.${string}`;
 
 export interface DetectedData {
   legal: Partial<Record<LegalKey, Detected>>;
   landAreaM2?: Detected;
   builtAreaM2?: Detected;
-  participants: Record<string, Partial<Record<keyof ParticipantDetails, Detected>>>;
+  participants: Record<
+    string,
+    Partial<Record<keyof ParticipantDetails, Detected>>
+  >;
 }
 
-const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const MONTHS = [
+  "enero",
+  "febrero",
+  "marzo",
+  "abril",
+  "mayo",
+  "junio",
+  "julio",
+  "agosto",
+  "septiembre",
+  "octubre",
+  "noviembre",
+  "diciembre",
+];
 
 /** AAAA-MM-DD, DD/MM/AAAA o "15 de marzo de 2010" → AAAA-MM-DD; null si no se reconoce. */
 export function normalizeDate(raw: string): string | null {
   const text = raw.trim().toLowerCase();
   const pad = (n: number) => String(n).padStart(2, "0");
-  const valid = (y: number, m: number, d: number) => y > 1800 && y < 2200 && m >= 1 && m <= 12 && d >= 1 && d <= 31;
+  const valid = (y: number, m: number, d: number) =>
+    y > 1800 && y < 2200 && m >= 1 && m <= 12 && d >= 1 && d <= 31;
   let match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (match) {
     const [y, m, d] = [Number(match[1]), Number(match[2]), Number(match[3])];
@@ -39,7 +61,8 @@ export function normalizeDate(raw: string): string | null {
   }
   match = text.match(/(\d{1,2})\s+de\s+([a-záéíóú]+)\s+(?:de|del)\s+(\d{4})/);
   if (match) {
-    const m = MONTHS.indexOf(match[2].normalize("NFD").replace(/\p{M}/gu, "")) + 1;
+    const m =
+      MONTHS.indexOf(match[2].normalize("NFD").replace(/\p{M}/gu, "")) + 1;
     const [d, y] = [Number(match[1]), Number(match[3])];
     return valid(y, m, d) ? `${y}-${pad(m)}-${pad(d)}` : null;
   }
@@ -74,11 +97,19 @@ const MAPPING: Record<string, Record<string, Target | Target[]>> = {
     sellerFullName: { kind: "legal", key: "privateContract.sellerName" },
     buyerFullName: { kind: "legal", key: "privateContract.buyerName" },
     contractDate: { kind: "legal", key: "privateContract.date", date: true },
-    ratificationDate: { kind: "legal", key: "privateContract.ratificationDate", date: true },
+    ratificationDate: {
+      kind: "legal",
+      key: "privateContract.ratificationDate",
+      date: true,
+    },
     notaryName: { kind: "legal", key: "privateContract.notaryName" },
     notaryNumber: { kind: "legal", key: "privateContract.notaryNumber" },
     notaryPlace: { kind: "legal", key: "privateContract.notaryPlace" },
-    registryDate: { kind: "legal", key: "privateContract.registryDate", date: true },
+    registryDate: {
+      kind: "legal",
+      key: "privateContract.registryDate",
+      date: true,
+    },
     publicRegistryFolio: { kind: "legal", key: "privateContract.realFolio" },
     landArea: { kind: "area", key: "landAreaM2" },
   },
@@ -100,23 +131,38 @@ const MAPPING: Record<string, Record<string, Target | Target[]>> = {
     notaryName: { kind: "legal", key: "condominium.notaryName" },
     notaryNumber: { kind: "legal", key: "condominium.notaryNumber" },
     notaryPlace: { kind: "legal", key: "condominium.notaryPlace" },
-    registryDate: { kind: "legal", key: "condominium.registryDate", date: true },
+    registryDate: {
+      kind: "legal",
+      key: "condominium.registryDate",
+      date: true,
+    },
     regimeRegistrationFolio: { kind: "legal", key: "condominium.realFolio" },
   },
   INCORPORATION_DEED: {
     companyType: { kind: "legal", key: "company.companyType" },
     instrumentNumber: { kind: "legal", key: "company.instrumentNumber" },
-    instrumentDate: { kind: "legal", key: "company.instrumentDate", date: true },
+    instrumentDate: {
+      kind: "legal",
+      key: "company.instrumentDate",
+      date: true,
+    },
     notaryTitle: { kind: "legal", key: "company.notaryTitle" },
     notaryName: { kind: "legal", key: "company.notaryName" },
     notaryNumber: { kind: "legal", key: "company.notaryNumber" },
     notaryPlace: { kind: "legal", key: "company.notaryPlace" },
-    commerceRegistryPlace: { kind: "legal", key: "company.commerceRegistryPlace" },
+    commerceRegistryPlace: {
+      kind: "legal",
+      key: "company.commerceRegistryPlace",
+    },
     mercantileFolio: { kind: "legal", key: "company.mercantileFolio" },
   },
   POWER_OF_ATTORNEY: {
     instrumentNumber: { kind: "legal", key: "representation.instrumentNumber" },
-    instrumentDate: { kind: "legal", key: "representation.instrumentDate", date: true },
+    instrumentDate: {
+      kind: "legal",
+      key: "representation.instrumentDate",
+      date: true,
+    },
     notaryName: { kind: "legal", key: "representation.notaryName" },
     notaryNumber: { kind: "legal", key: "representation.notaryNumber" },
     notaryPlace: { kind: "legal", key: "representation.notaryPlace" },
@@ -177,27 +223,98 @@ const PRIORITY = [
 ];
 
 /** Tipo de identificación y emisor que implica el documento del que sale el número. */
-const ID_DOCUMENT: Record<string, { type: ParticipantDetails["idDocumentType"]; issuer: string }> = {
+const ID_DOCUMENT: Record<
+  string,
+  { type: ParticipantDetails["idDocumentType"]; issuer: string }
+> = {
   INE: { type: "INE", issuer: "Instituto Nacional Electoral" },
-  PASSPORT: { type: "PASAPORTE", issuer: "Secretaría de Relaciones Exteriores" },
+  PASSPORT: {
+    type: "PASAPORTE",
+    issuer: "Secretaría de Relaciones Exteriores",
+  },
 };
 
 /** Qué identificación se subió en el espacio de la INE, según lo que leyó la IA (Control de Cambios #9). */
-export function identificationKind(raw: string | null | undefined): ParticipantDetails["idDocumentType"] | "OTRA" | null {
-  const text = (raw ?? "").normalize("NFD").replace(/\p{M}/gu, "").toUpperCase();
+export function identificationKind(
+  raw: string | null | undefined,
+): ParticipantDetails["idDocumentType"] | "OTRA" | null {
+  const text = (raw ?? "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toUpperCase();
   if (!text.trim()) return null;
-  if (/(^|[^A-Z])(INE|IFE)([^A-Z]|$)|CREDENCIAL PARA VOTAR|ELECTORAL/.test(text)) return "INE";
-  if (text.includes("PASAPORTE") || text.includes("PASSPORT")) return "PASAPORTE";
-  if (text.includes("RESIDENTE") || text.includes("FM2") || text.includes("FM3")) return "FM2_RESIDENTE";
+  if (
+    /(^|[^A-Z])(INE|IFE)([^A-Z]|$)|CREDENCIAL PARA VOTAR|ELECTORAL/.test(text)
+  )
+    return "INE";
+  if (text.includes("PASAPORTE") || text.includes("PASSPORT"))
+    return "PASAPORTE";
+  if (
+    text.includes("RESIDENTE") ||
+    text.includes("FM2") ||
+    text.includes("FM3")
+  )
+    return "FM2_RESIDENTE";
   if (text.includes("CEDULA PROFESIONAL")) return "CEDULA_PROFESIONAL";
   return "OTRA";
 }
 
 function isMexico(country: string): boolean {
-  return /^(MEXICO|ESTADOS UNIDOS MEXICANOS|MEX)$/.test(country.normalize("NFD").replace(/\p{M}/gu, "").toUpperCase().trim());
+  return /^(MEXICO|ESTADOS UNIDOS MEXICANOS|MEX)$/.test(
+    country.normalize("NFD").replace(/\p{M}/gu, "").toUpperCase().trim(),
+  );
 }
 
-export function buildDetectedData(observations: ExpedienteObservationResponse[], ownerParticipantId: string | null): DetectedData {
+/**
+ * Control de Cambios #48: datos detectados en UNA escritura adicional (por su documento), para que
+ * nunca se mezclen con los de la escritura principal ni con los de otra escritura.
+ */
+export function detectedForDeedDocument(
+  observations: ExpedienteObservationResponse[],
+  documentId: string,
+  source: string,
+): Partial<
+  Record<
+    | "number"
+    | "date"
+    | "notaryName"
+    | "notaryNumber"
+    | "notaryPlace"
+    | "registryData"
+    | "registryDate",
+    Detected
+  >
+> {
+  const result: Partial<Record<string, Detected>> = {};
+  const sorted = observations
+    .filter((o) => o.documentId === documentId && o.value?.trim())
+    .sort((a, b) => Number(b.confirmed) - Number(a.confirmed));
+  for (const o of sorted) {
+    const mapped = MAPPING.DEED[o.fieldName];
+    const target = Array.isArray(mapped) ? mapped[0] : mapped;
+    if (!target || target.kind !== "legal") continue;
+    const key = target.key.replace(/^deed\./, "");
+    let value = o.value.trim();
+    if (target.date) {
+      const date = normalizeDate(value);
+      if (!date) continue;
+      value = date;
+    }
+    result[key] ??= { value, source, confirmed: o.confirmed };
+  }
+  return result;
+}
+
+export function buildDetectedData(
+  observations: ExpedienteObservationResponse[],
+  ownerParticipantId: string | null,
+  /** CC#48: documentos (escrituras adicionales) que no alimentan los datos generales. */
+  excludeDocumentIds?: ReadonlySet<string>,
+): DetectedData {
+  if (excludeDocumentIds?.size)
+    observations = observations.filter(
+      (o) => !excludeDocumentIds.has(o.documentId),
+    );
   const result: DetectedData = { legal: {}, participants: {} };
   const ineHolders = new Map<string, Detected>();
   // Tipo y país de la identificación que se subió en el espacio de la INE, por participante.
@@ -205,22 +322,33 @@ export function buildDetectedData(observations: ExpedienteObservationResponse[],
   const idCountries = new Map<string, Detected>();
   for (const o of observations) {
     const participantId = o.participantId ?? ownerParticipantId;
-    if (o.documentType !== "INE" || !participantId || !o.value?.trim()) continue;
-    if (o.fieldName === "identificationType") idKinds.set(participantId, identificationKind(o.value));
+    if (o.documentType !== "INE" || !participantId || !o.value?.trim())
+      continue;
+    if (o.fieldName === "identificationType")
+      idKinds.set(participantId, identificationKind(o.value));
     if (o.fieldName === "issuingCountry") {
-      idCountries.set(participantId, { value: o.value.trim(), source: documentTypeLabel(o.documentType), confirmed: o.confirmed });
+      idCountries.set(participantId, {
+        value: o.value.trim(),
+        source: documentTypeLabel(o.documentType),
+        confirmed: o.confirmed,
+      });
     }
   }
   const sorted = [...observations].sort((a, b) => {
-    const rank = (t: string) => (PRIORITY.indexOf(t) === -1 ? PRIORITY.length : PRIORITY.indexOf(t));
+    const rank = (t: string) =>
+      PRIORITY.indexOf(t) === -1 ? PRIORITY.length : PRIORITY.indexOf(t);
     // Lo confirmado por una persona va primero; después, el documento de mayor rango.
-    return Number(b.confirmed) - Number(a.confirmed) || rank(a.documentType) - rank(b.documentType);
+    return (
+      Number(b.confirmed) - Number(a.confirmed) ||
+      rank(a.documentType) - rank(b.documentType)
+    );
   });
 
   for (const o of sorted) {
     const mapped = MAPPING[o.documentType]?.[o.fieldName];
     if (!mapped || !o.value?.trim()) continue;
-    for (const target of Array.isArray(mapped) ? mapped : [mapped]) apply(o, target);
+    for (const target of Array.isArray(mapped) ? mapped : [mapped])
+      apply(o, target);
   }
 
   function apply(o: ExpedienteObservationResponse, target: Target) {
@@ -235,7 +363,11 @@ export function buildDetectedData(observations: ExpedienteObservationResponse[],
       if (!area) return;
       value = area;
     }
-    const detected: Detected = { value, source: documentTypeLabel(o.documentType), confirmed: o.confirmed };
+    const detected: Detected = {
+      value,
+      source: documentTypeLabel(o.documentType),
+      confirmed: o.confirmed,
+    };
 
     if (target.kind === "legal") {
       result.legal[target.key] ??= detected;
@@ -248,17 +380,34 @@ export function buildDetectedData(observations: ExpedienteObservationResponse[],
       const bucket = (result.participants[participantId] ??= {});
       if (bucket[target.key]) return;
       (bucket as Record<string, Detected>)[target.key] = detected;
-      const kind = o.documentType === "INE" ? (idKinds.get(participantId) ?? "INE") : null;
+      const kind =
+        o.documentType === "INE" ? (idKinds.get(participantId) ?? "INE") : null;
       const id = kind && kind !== "INE" ? null : ID_DOCUMENT[o.documentType];
       if (target.key === "idDocumentNumber" && id) {
-        bucket.idDocumentType ??= { value: id.type ?? "", source: detected.source, confirmed: detected.confirmed };
-        bucket.idDocumentIssuer ??= { value: id.issuer, source: detected.source, confirmed: detected.confirmed };
+        bucket.idDocumentType ??= {
+          value: id.type ?? "",
+          source: detected.source,
+          confirmed: detected.confirmed,
+        };
+        bucket.idDocumentIssuer ??= {
+          value: id.issuer,
+          source: detected.source,
+          confirmed: detected.confirmed,
+        };
         if (o.documentType === "INE") ineHolders.set(participantId, detected);
       } else if (target.key === "idDocumentNumber" && kind && kind !== "OTRA") {
         // Otra identificación oficial en el espacio de la INE: no implica nacionalidad mexicana.
-        bucket.idDocumentType ??= { value: kind, source: detected.source, confirmed: detected.confirmed };
+        bucket.idDocumentType ??= {
+          value: kind,
+          source: detected.source,
+          confirmed: detected.confirmed,
+        };
         const country = idCountries.get(participantId);
-        if (country) bucket.idDocumentIssuer ??= { ...country, value: `Gobierno de ${country.value}` };
+        if (country)
+          bucket.idDocumentIssuer ??= {
+            ...country,
+            value: `Gobierno de ${country.value}`,
+          };
       }
     }
   }
@@ -266,7 +415,11 @@ export function buildDetectedData(observations: ExpedienteObservationResponse[],
   // nacionalidad (un pasaporte sí la trae y tiene prioridad), se deduce de la INE; no se inventa.
   for (const [participantId, ine] of ineHolders) {
     const bucket = (result.participants[participantId] ??= {});
-    bucket.nationality ??= { value: "Mexicana", source: ine.source, confirmed: ine.confirmed };
+    bucket.nationality ??= {
+      value: "Mexicana",
+      source: ine.source,
+      confirmed: ine.confirmed,
+    };
   }
   // Una identificación de otro tipo emitida por México (p. ej. pasaporte mexicano) también la indica.
   for (const [participantId, country] of idCountries) {
@@ -279,6 +432,8 @@ export function buildDetectedData(observations: ExpedienteObservationResponse[],
 
 export function legalValue(legal: LegalDetails, key: LegalKey): string {
   const [section, field] = key.split(".") as [LegalSection, string];
-  const value = (legal[section] as Record<string, unknown> | null | undefined)?.[field];
+  const value = (
+    legal[section] as Record<string, unknown> | null | undefined
+  )?.[field];
   return value === null || value === undefined ? "" : String(value);
 }

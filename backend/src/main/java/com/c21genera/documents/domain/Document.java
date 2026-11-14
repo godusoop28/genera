@@ -132,6 +132,17 @@ public class Document extends AuditableEntity {
   }
 
   /** Documento agregado a mano con su propio nombre (Control de Cambios #1). */
+  /**
+   * Control de Cambios #48: otra escritura de la misma operación (otro terreno o la construcción).
+   * Es del tipo escritura (la IA la lee como tal) pero con su propio nombre y sus propios datos;
+   * nunca reemplaza a la escritura del listado ni a otra adicional.
+   */
+  public static Document additionalDeed(UUID expedienteId, String name) {
+    Document document = new Document(expedienteId, "escritura-adicional-" + UUID.randomUUID(), DocumentTypeCode.DEED, null, true);
+    document.customName = name;
+    return document;
+  }
+
   public static Document custom(UUID expedienteId, String name, UUID participantId) {
     Document document = new Document(expedienteId, "extra-" + UUID.randomUUID(), DocumentTypeCode.OTHER, participantId, true);
     document.customName = name;

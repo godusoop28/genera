@@ -704,13 +704,16 @@ class ExtractedField {
 
 class ExpedienteObservation {
   ExpedienteObservation.fromJson(Json j)
-      : documentType = _sr(j['documentType']),
+      : documentId = _s(j['documentId']),
+        documentType = _sr(j['documentType']),
         participantId = _s(j['participantId']),
         fieldName = _sr(j['fieldName']),
         value = _sr(j['value']),
         confirmed = _b(j['confirmed']);
   final String documentType, fieldName, value;
   final String? participantId;
+  /// Control de Cambios #48: para no mezclar lo leído en escrituras distintas.
+  final String? documentId;
   final bool confirmed;
 }
 

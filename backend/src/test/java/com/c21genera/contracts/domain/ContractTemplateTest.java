@@ -426,6 +426,53 @@ class ContractTemplateTest {
     Files.write(out.resolve("contrato-copropietarios-condominio.pdf"), new PdfContractRenderer().render(complete));
   }
 
+  /** Control de Cambios #48: cuatro escrituras (tres terrenos y una con construcción), cada una en su entrada. */
+  @Test
+  void severalDeedsAreListedSeparatelyAndMissingDataIsFlaggedPerDeed() {
+    LegalDetails base = deedDetails(housingChecklist());
+    LegalDetails legal =
+        new LegalDetails(
+            null, null, base.deed(), null, null, base.propertyChecklist(), base.advertisingMedia(), "Terreno 1 (lote 4)", false,
+            List.of(
+                new LegalDetails.AdditionalDeed(
+                    UUID.randomUUID(), "Terreno 2 (lote 5)", false, true, "11,111", LocalDate.of(2012, 1, 10), "Ana Ruiz", "3", "Cuautla, Morelos", null, null),
+                new LegalDetails.AdditionalDeed(
+                    UUID.randomUUID(), "Terreno 3 (lote 6)", false, true, "22,222", LocalDate.of(2013, 2, 11), "Ana Ruiz", "3", "Cuautla, Morelos", "Folio 998", null),
+                new LegalDetails.AdditionalDeed(UUID.randomUUID(), "Casa", true, true, null, LocalDate.of(2015, 5, 5), "Luis Mora", "7", "Cuernavaca, Morelos", null, null),
+                new LegalDetails.AdditionalDeed(UUID.randomUUID(), "No va", false, false, "99,999", null, null, null, null, null, null)));
+    ExpedienteSummary s =
+        summary(
+            PersonType.FISICA, SignerCharacter.PROPIETARIO, AccreditationType.ESCRITURA_PUBLICA, false, PropertyCaseType.HOUSING,
+            List.of(person("OWNER", "Juan Pérez López", 1, CivilStatus.CASADO)), legal);
+
+    ContractDocument doc = ContractTemplate.build(input(s, completeClientData()), false);
+    String text = text(doc);
+
+    assertThat(text)
+        .contains("Escritura pública número 45,678")
+        .contains("que ampara Terreno 1 (lote 4)")
+        .contains("Escritura pública número 11,111")
+        .contains("que ampara Terreno 2 (lote 5)")
+        .contains("Escritura pública número 22,222")
+        .contains("datos registrales Folio 998")
+        .contains("que ampara Casa con la construcción existente")
+        .doesNotContain("99,999");
+    assertThat(text.split("• Escritura pública número", -1)).hasSize(5);
+    // Solo falta el número de la escritura de la casa, y se señala para esa escritura.
+    assertThat(doc.missingItems()).containsExactly("Número de la escritura 4 (Casa)");
+  }
+
+  @Test
+  void aSingleDeedKeepsTheOriginalWording() {
+    ExpedienteSummary s =
+        summary(
+            PersonType.FISICA, SignerCharacter.PROPIETARIO, AccreditationType.ESCRITURA_PUBLICA, false, PropertyCaseType.HOUSING,
+            List.of(person("OWNER", "Juan Pérez López", 1, CivilStatus.CASADO)), deedDetails(housingChecklist()));
+    String text = text(ContractTemplate.build(input(s, completeClientData()), false));
+    assertThat(text.split("• Escritura pública número", -1)).hasSize(2);
+    assertThat(text).doesNotContain("que ampara");
+  }
+
   @Test
   void pendingSpansAreMarked() {
     assertThat(Span.pending("x").pending()).isTrue();

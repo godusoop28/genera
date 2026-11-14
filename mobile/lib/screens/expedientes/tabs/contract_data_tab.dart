@@ -52,6 +52,8 @@ class _ContractDataTabState extends State<ContractDataTab> {
   String reason = '';
   bool saving = false;
   DetectedData? detected;
+  /// Control de Cambios #48: escrituras adicionales (documentos de tipo escritura con nombre propio).
+  List<DocumentResponse> extraDeeds = const [];
   String? savedSnapshot;
   String? loadError;
   String draftStatus = 'idle';
@@ -88,7 +90,16 @@ class _ContractDataTabState extends State<ContractDataTab> {
 
   void loadSide() {
     final ownerId = widget.ctx.participants.where((p) => p.role == 'OWNER').firstOrNull?.id;
-    api.getExpedienteExtractedFields(e.id).then((obs) => mounted ? setState(() => detected = buildDetectedData(obs, ownerId)) : null).catchError((_) => null);
+    Future.wait([api.getExpedienteExtractedFields(e.id), api.listDocuments(e.id)]).then((r) {
+      final obs = r[0] as List<ExpedienteObservation>;
+      final extra = (r[1] as List<DocumentResponse>).where((d) => d.type == 'DEED' && d.customName != null).toList();
+      final ids = extra.map((d) => d.id).toSet();
+      // CC#48: lo leído en una escritura adicional no llena la escritura principal.
+      if (mounted) setState(() {
+        extraDeeds = extra;
+        detected = buildDetectedData(obs.where((o) => !ids.contains(o.documentId)).toList(), ownerId);
+      });
+    }).catchError((_) => null);
     api.getContractReadiness(e.id).then((r) => mounted ? setState(() => readiness = r) : null).catchError((_) => null);
   }
 
@@ -149,6 +160,26 @@ class _ContractDataTabState extends State<ContractDataTab> {
   }
 
   Json section(String key) => Json.from((legal![key] as Map?) ?? {});
+  /// Control de Cambios #48: datos de una escritura adicional (por su documento).
+  Json extraDeed(String documentId) {
+    final list = (legal?['additionalDeeds'] as List?) ?? const [];
+    for (final item in list) {
+      if (item is Map && item['documentId'] == documentId) return Json.from(item);
+    }
+    return {'documentId': documentId};
+  }
+
+  void setExtraDeed(String documentId, String key, Object? value) => changed(() {
+        final list = [for (final item in ((legal?['additionalDeeds'] as List?) ?? const [])) Json.from(item as Map)];
+        final index = list.indexWhere((d) => d['documentId'] == documentId);
+        if (index == -1) {
+          list.add({'documentId': documentId, key: value});
+        } else {
+          list[index] = {...list[index], key: value};
+        }
+        legal = {...legal!, 'additionalDeeds': list};
+      });
+
   void setSection(String key, String field, Object? value) => changed(() => legal = {...legal!, key: {...section(key), field: value}});
   void setData(String field, Object? value) => changed(() => data = {...data!, field: value});
   Object? numOrNull(String v) => v.trim().isEmpty ? null : (num.tryParse(v.trim()) ?? v.trim());
@@ -448,6 +479,45 @@ class _ContractDataTabState extends State<ContractDataTab> {
                 legalField('deed', 'notaryPlace', 'Lugar de la notaría', hint: 'Ej. Cuernavaca, Morelos'),
                 legalField('deed', 'registryData', 'Datos registrales / folio real (opcional)', hint: 'Folio real o datos de inscripción, si ya se confirmaron'),
                 legalField('deed', 'registryDate', 'Fecha de inscripción en el RPP (opcional)', date: true),
+                if (extraDeeds.isNotEmpty) ...[
+                  field('¿Qué terreno o parte ampara la escritura 1? (opcional)', legal!['deedLabel'], (v) => changed(() => legal = {...legal!, 'deedLabel': v})),
+                  CheckboxListTile(
+                    value: legal!['deedIncludesConstruction'] == true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('La escritura 1 incluye la construcción'),
+                    onChanged: editable ? (v) => changed(() => legal = {...legal!, 'deedIncludesConstruction': v == true}) : null,
+                  ),
+                ],
+                for (var i = 0; i < extraDeeds.length; i++) ...[
+                  const Divider(height: 28),
+                  Text('Escritura ${i + 2}: ${extraDeeds[i].customName}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  MutedText(extraDeeds[i].currentVersionNumber > 0 ? 'Documento cargado' : 'Documento pendiente de cargar', size: 12),
+                  CheckboxListTile(
+                    value: extraDeed(extraDeeds[i].id)['includeInContract'] != false,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Incluir en el contrato'),
+                    onChanged: editable ? (v) => setExtraDeed(extraDeeds[i].id, 'includeInContract', v == true) : null,
+                  ),
+                  field('¿Qué terreno o parte ampara?', extraDeed(extraDeeds[i].id)['label'], (v) => setExtraDeed(extraDeeds[i].id, 'label', v)),
+                  CheckboxListTile(
+                    value: extraDeed(extraDeeds[i].id)['includesConstruction'] == true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Incluye la construcción'),
+                    onChanged: editable ? (v) => setExtraDeed(extraDeeds[i].id, 'includesConstruction', v == true) : null,
+                  ),
+                  for (final f in const [
+                    ('number', 'Número de escritura', false),
+                    ('date', 'Fecha de la escritura', true),
+                    ('notaryName', 'Nombre del notario', false),
+                    ('notaryNumber', 'Número de notaría', false),
+                    ('notaryPlace', 'Lugar de la notaría', false),
+                    ('registryData', 'Datos registrales / folio real (opcional)', false),
+                    ('registryDate', 'Fecha de inscripción en el RPP (opcional)', true),
+                  ])
+                    field(f.$2, extraDeed(extraDeeds[i].id)[f.$1], (v) => setExtraDeed(extraDeeds[i].id, f.$1, f.$3 && v.isEmpty ? null : v), date: f.$3),
+                ],
+                if (extraDeeds.isNotEmpty)
+                  const MutedText('Cada escritura aparece en el contrato como una entrada separada con sus propios datos. Para agregar otra, usa «Agregar otra escritura» en Documentos.', size: 11),
               ]),
             )
           else

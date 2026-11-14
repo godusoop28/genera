@@ -671,6 +671,27 @@ public class DocumentService implements DocumentsApi {
   }
 
   /**
+   * Control de Cambios #48: «Agregar otra escritura». Cada escritura es un documento independiente
+   * (se lee, revisa y versiona por separado) y se le pide al cliente igual que la principal.
+   */
+  public Document addAdditionalDeed(UUID expedienteId, String name, Actor actor) {
+    String cleaned = validCustomName(name);
+    boolean duplicate =
+        documentRepository.findByExpedienteId(expedienteId).stream()
+            .anyMatch(d -> d.isCustom() && d.getCustomName().equalsIgnoreCase(cleaned));
+    if (duplicate) {
+      throw new ConflictException("DOCUMENT_NAME_DUPLICATE", "Ya existe un documento con ese nombre en este expediente.");
+    }
+    Completeness before = completenessOf(expedienteId);
+    Document document = documentRepository.save(Document.additionalDeed(expedienteId, cleaned));
+    events.publishEvent(
+        new DocumentFollowUpChanged(expedienteId, document.getId(), document.getType(), cleaned, DocumentFollowUp.CUSTOM_ADDED, null, actor));
+    documentRepository.flush();
+    publishCompletenessChanges(expedienteId, before);
+    return document;
+  }
+
+  /**
    * "Eliminar archivo": el documento vuelve a pendiente para subirlo de nuevo, aunque ya estuviera
    * aceptado. Sus versiones dejan de ser vigentes pero no se borran (auditoría). Si era obligatorio,
    * el expediente vuelve a pedirlo (RequiredDocumentsReopened).

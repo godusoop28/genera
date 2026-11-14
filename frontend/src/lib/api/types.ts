@@ -215,6 +215,27 @@ export interface LegalDetails {
   condominium?: CondominiumData | null;
   propertyChecklist?: Record<string, boolean> | null;
   advertisingMedia?: string | null;
+  /** Control de Cambios #48: a qué terreno o parte corresponde la escritura principal. */
+  deedLabel?: string | null;
+  deedIncludesConstruction?: boolean | null;
+  /** Control de Cambios #48: otras escrituras de la operación, cada una ligada a su documento. */
+  additionalDeeds?: AdditionalDeed[] | null;
+}
+
+/** Control de Cambios #48: una escritura más (otro terreno o la construcción) con sus propios datos. */
+export interface AdditionalDeed {
+  documentId: string;
+  label?: string | null;
+  includesConstruction?: boolean | null;
+  /** false = no se lista en el contrato. */
+  includeInContract?: boolean | null;
+  number?: string | null;
+  date?: string | null;
+  notaryName?: string | null;
+  notaryNumber?: string | null;
+  notaryPlace?: string | null;
+  registryData?: string | null;
+  registryDate?: string | null;
 }
 
 export interface PageResponse<T> {

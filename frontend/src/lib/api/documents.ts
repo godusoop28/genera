@@ -115,6 +115,11 @@ export function getDownloadUrl(versionId: string) {
 }
 
 /** Documento que no está en el listado, con el nombre que se le dé (Control de Cambios #1). */
+/** Control de Cambios #48: «Agregar otra escritura» (otro terreno o la construcción de la misma operación). */
+export function addAdditionalDeed(expedienteId: string, name: string) {
+  return apiClient.post<DocumentResponse>(`/internal/expedientes/${expedienteId}/documents/additional-deeds`, { name });
+}
+
 export function addCustomDocument(expedienteId: string, name: string, participantId: string | null) {
   return apiClient.post<DocumentResponse>(`/internal/expedientes/${expedienteId}/documents`, { name, participantId });
 }

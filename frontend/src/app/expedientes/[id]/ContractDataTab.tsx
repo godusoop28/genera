@@ -1,38 +1,90 @@
 "use client";
 
 import { Button } from "@/components/ui/Button";
+import {
+  additionalDeedDocuments,
+  DeedsSection,
+} from "@/components/contracts/DeedsSection";
+import { listDocuments } from "@/lib/api/documents";
+import type {
+  DocumentResponse,
+  ExpedienteObservationResponse,
+} from "@/lib/api/types";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import { SaveStatus } from "@/components/ui/SaveStatus";
 import { useToast } from "@/components/ui/Toast";
-import { getContractReadiness, getVisitInstructions } from "@/lib/api/contracts";
-import { getClientData, getLegalDetails, updateClientData, updateLegalDetails } from "@/lib/api/expedientes";
+import {
+  getContractReadiness,
+  getVisitInstructions,
+} from "@/lib/api/contracts";
+import {
+  getClientData,
+  getLegalDetails,
+  updateClientData,
+  updateLegalDetails,
+} from "@/lib/api/expedientes";
 import { formatMoneyWithCurrency, moneyToRaw } from "@/lib/money";
-import { autofillExpediente, getExpedienteExtractedFields } from "@/lib/api/extraction";
-import type { ContractReadinessResponse, LegalDetails, ManualClientDataResponse } from "@/lib/api/types";
+import {
+  autofillExpediente,
+  getExpedienteExtractedFields,
+} from "@/lib/api/extraction";
+import type {
+  ContractReadinessResponse,
+  LegalDetails,
+  ManualClientDataResponse,
+} from "@/lib/api/types";
 import { DraftSync, type DraftSaveState } from "@/lib/draft-sync";
-import { internalDraftTransport, sessionDraftStore } from "@/lib/use-server-draft";
+import {
+  internalDraftTransport,
+  sessionDraftStore,
+} from "@/lib/use-server-draft";
 import { errorText } from "@/lib/errors";
-import { buildDetectedData, legalValue, type Detected, type DetectedData, type LegalKey } from "@/lib/detected-data";
+import {
+  buildDetectedData,
+  legalValue,
+  type Detected,
+  type DetectedData,
+  type LegalKey,
+} from "@/lib/detected-data";
 import { useCan } from "@/lib/permissions";
-import { formatServices, parseServices, PROPERTY_SERVICE_GROUPS } from "@/lib/property-services";
+import {
+  formatServices,
+  parseServices,
+  PROPERTY_SERVICE_GROUPS,
+} from "@/lib/property-services";
 import { CheckCircle2, CircleAlert, Save, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ExpedienteContext } from "./page";
 
 const HOUSING_CHECKLIST: [string, string][] = [
-  ["LICENSES", "Autorizaciones, licencias y permisos de construcción, especificaciones técnicas, materiales, seguridad, uso de suelo y servicios"],
-  ["PLANS", "Planos estructurales, arquitectónicos y de instalaciones (o dictamen estructural)"],
+  [
+    "LICENSES",
+    "Autorizaciones, licencias y permisos de construcción, especificaciones técnicas, materiales, seguridad, uso de suelo y servicios",
+  ],
+  [
+    "PLANS",
+    "Planos estructurales, arquitectónicos y de instalaciones (o dictamen estructural)",
+  ],
   ["CIVIL_PROTECTION", "Programa Interno de Protección Civil"],
   ["LIENS", "Información sobre gravámenes que afecten la propiedad"],
   ["TAXES", "Condiciones de pago de contribuciones, derechos y servicios"],
 ];
 
 const LAND_CHECKLIST: [string, string][] = [
-  ["LAND_USE", "Uso de suelo conforme al plan de desarrollo urbano y licencia vigente"],
-  ["SERVICES_FEASIBILITY", "Estudio de factibilidad para la instalación de servicios básicos"],
-  ["CONSTRUCTION_RULES", "Reglamento de construcción del fraccionamiento o condominio (en su caso)"],
+  [
+    "LAND_USE",
+    "Uso de suelo conforme al plan de desarrollo urbano y licencia vigente",
+  ],
+  [
+    "SERVICES_FEASIBILITY",
+    "Estudio de factibilidad para la instalación de servicios básicos",
+  ],
+  [
+    "CONSTRUCTION_RULES",
+    "Reglamento de construcción del fraccionamiento o condominio (en su caso)",
+  ],
   ["CIVIL_PROTECTION", "Programa Interno de Protección Civil"],
   ["LIENS", "Información sobre gravámenes que afecten la propiedad"],
   ["TAXES", "Condiciones de pago de contribuciones, derechos y servicios"],
@@ -46,16 +98,27 @@ interface ContractDataDraft {
   reason: string;
 }
 
-export function ContractDataTab({ expediente, participants, reload }: ExpedienteContext) {
+export function ContractDataTab({
+  expediente,
+  participants,
+  reload,
+}: ExpedienteContext) {
   const { showToast } = useToast();
   const can = useCan();
   const editable = can("EXPEDIENT_EDIT") && expediente.correctable;
-  const [readiness, setReadiness] = useState<ContractReadinessResponse | null>(null);
+  const [readiness, setReadiness] = useState<ContractReadinessResponse | null>(
+    null,
+  );
   const [data, setData] = useState<ManualClientDataResponse | null>(null);
   const [legal, setLegal] = useState<LegalDetails | null>(null);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [detected, setDetected] = useState<DetectedData | null>(null);
+  // Control de Cambios #48: documentos (para las escrituras adicionales) y lo leído en cada uno.
+  const [documents, setDocuments] = useState<DocumentResponse[] | null>(null);
+  const [observations, setObservations] = useState<
+    ExpedienteObservationResponse[]
+  >([]);
   const ownerId = participants.find((p) => p.role === "OWNER")?.id ?? null;
   // Cambios sin guardar: se autoguardan como borrador en el servidor (y se
   // respaldan localmente), así sobreviven a recargar, a cambiar de pestaña o a
@@ -68,10 +131,26 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadSide = useCallback(() => {
-    getExpedienteExtractedFields(expediente.id)
-      .then((obs) => setDetected(buildDetectedData(obs, ownerId)))
+    Promise.all([
+      getExpedienteExtractedFields(expediente.id),
+      listDocuments(expediente.id).catch(() => [] as DocumentResponse[]),
+    ])
+      .then(([obs, docs]) => {
+        setDocuments(docs);
+        setObservations(obs);
+        // CC#48: lo leído en una escritura adicional no alimenta los datos de la escritura principal.
+        setDetected(
+          buildDetectedData(
+            obs,
+            ownerId,
+            new Set(additionalDeedDocuments(docs).map((d) => d.id)),
+          ),
+        );
+      })
       .catch(() => setDetected(null));
-    getContractReadiness(expediente.id).then(setReadiness).catch(() => undefined);
+    getContractReadiness(expediente.id)
+      .then(setReadiness)
+      .catch(() => undefined);
   }, [expediente.id, ownerId]);
 
   useEffect(() => {
@@ -87,27 +166,46 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
     syncRef.current = sync;
     // Control de Cambios #7: antes de mostrar el formulario, lo validado en los documentos se llena solo.
     const autofill =
-      can("EXPEDIENT_EDIT") || can("CONTRACT_PREPARE") || can("EXTRACTED_DATA_EDIT")
+      can("EXPEDIENT_EDIT") ||
+      can("CONTRACT_PREPARE") ||
+      can("EXTRACTED_DATA_EDIT")
         ? autofillExpediente(expediente.id).catch(() => ({ filled: 0 }))
         : Promise.resolve({ filled: 0 });
     autofill
       .then(({ filled }) => {
-        if (active && filled > 0) showToast(`Se llenaron ${filled} dato(s) con lo ya validado en los documentos. Solo captura lo que falte.`);
+        if (active && filled > 0)
+          showToast(
+            `Se llenaron ${filled} dato(s) con lo ya validado en los documentos. Solo captura lo que falte.`,
+          );
         loadSide();
-        return Promise.all([getClientData(expediente.id), getLegalDetails(expediente.id), sync.restore()]);
+        return Promise.all([
+          getClientData(expediente.id),
+          getLegalDetails(expediente.id),
+          sync.restore(),
+        ]);
       })
       .then(([rawServerData, serverLegal, payload]) => {
         if (!active) return;
         // CC#38: el precio se edita como importe crudo ("5000000"), sin ceros decimales de más.
-        const serverData = { ...rawServerData, authorizedPrice: moneyToRaw(rawServerData.authorizedPrice) || null };
-        savedSnapshot.current = JSON.stringify({ data: serverData, legal: serverLegal });
+        const serverData = {
+          ...rawServerData,
+          authorizedPrice: moneyToRaw(rawServerData.authorizedPrice) || null,
+        };
+        savedSnapshot.current = JSON.stringify({
+          data: serverData,
+          legal: serverLegal,
+        });
         let draft: ContractDataDraft | null = null;
         try {
           draft = payload ? (JSON.parse(payload) as ContractDataDraft) : null;
         } catch {
           draft = null;
         }
-        const differs = draft && (JSON.stringify({ data: draft.data, legal: draft.legal }) !== savedSnapshot.current || draft.reason.trim());
+        const differs =
+          draft &&
+          (JSON.stringify({ data: draft.data, legal: draft.legal }) !==
+            savedSnapshot.current ||
+            draft.reason.trim());
         const initialData = differs && draft ? draft.data : serverData;
         setData(initialData);
         setLegal(differs && draft ? draft.legal : serverLegal);
@@ -115,13 +213,20 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
         if (!initialData.visitInstructions?.trim() && can("EXPEDIENT_EDIT")) {
           getVisitInstructions()
             .then(({ text }) => {
-              if (active) setData((current) => (current && !current.visitInstructions?.trim() ? { ...current, visitInstructions: text } : current));
+              if (active)
+                setData((current) =>
+                  current && !current.visitInstructions?.trim()
+                    ? { ...current, visitInstructions: text }
+                    : current,
+                );
             })
             .catch(() => undefined);
         }
         if (differs && draft) {
           setReason(draft.reason);
-          showToast("Se recuperaron cambios que no habías guardado. Revísalos y guarda.");
+          showToast(
+            "Se recuperaron cambios que no habías guardado. Revísalos y guarda.",
+          );
         }
       })
       .catch((err) => active && setLoadError(errorText(err)));
@@ -136,10 +241,16 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
   useEffect(() => {
     const sync = syncRef.current;
     if (!sync || !data || !legal || savedSnapshot.current === null) return;
-    if (JSON.stringify({ data, legal }) === savedSnapshot.current && !reason.trim()) {
-      if (sync.hasUnsavedChanges || sync.saveState !== "idle") void sync.clear();
+    if (
+      JSON.stringify({ data, legal }) === savedSnapshot.current &&
+      !reason.trim()
+    ) {
+      if (sync.hasUnsavedChanges || sync.saveState !== "idle")
+        void sync.clear();
     } else {
-      sync.schedule(JSON.stringify({ data, legal, reason } satisfies ContractDataDraft));
+      sync.schedule(
+        JSON.stringify({ data, legal, reason } satisfies ContractDataDraft),
+      );
     }
   }, [data, legal, reason]);
 
@@ -147,7 +258,11 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
     return (
       <p className="text-sm text-danger-text">
         {loadError}{" "}
-        <button type="button" className="underline" onClick={() => window.location.reload()}>
+        <button
+          type="button"
+          className="underline"
+          onClick={() => window.location.reload()}
+        >
           Reintentar
         </button>
       </p>
@@ -159,9 +274,13 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
   /** Campos vacíos para los que hay un dato detectado en los documentos. */
   const fillable = detected
     ? [
-        ...(Object.entries(detected.legal) as [LegalKey, Detected][]).filter(([key]) => legalValue(legal, key) === ""),
+        ...(Object.entries(detected.legal) as [LegalKey, Detected][]).filter(
+          ([key]) => legalValue(legal, key) === "",
+        ),
         ...(["landAreaM2", "builtAreaM2"] as const).flatMap((key) =>
-          detected[key] && (data[key] == null || data[key] === "") ? [[key, detected[key]] as const] : [],
+          detected[key] && (data[key] == null || data[key] === "")
+            ? [[key, detected[key]] as const]
+            : [],
         ),
       ]
     : [];
@@ -169,18 +288,38 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
   const fillFromDocuments = () => {
     if (!detected) return;
     let nextLegal = legal;
-    for (const [key, d] of Object.entries(detected.legal) as [LegalKey, Detected][]) {
+    for (const [key, d] of Object.entries(detected.legal) as [
+      LegalKey,
+      Detected,
+    ][]) {
       if (legalValue(nextLegal, key) !== "") continue;
       const [section, field] = key.split(".") as [keyof LegalDetails, string];
-      nextLegal = { ...nextLegal, [section]: { ...((nextLegal[section] as Section | null) ?? {}), [field]: d.value } };
+      nextLegal = {
+        ...nextLegal,
+        [section]: {
+          ...((nextLegal[section] as Section | null) ?? {}),
+          [field]: d.value,
+        },
+      };
     }
     setLegal(nextLegal);
     const patch: Partial<ManualClientDataResponse> = {};
-    if (detected.landAreaM2 && (data.landAreaM2 == null || data.landAreaM2 === "")) patch.landAreaM2 = detected.landAreaM2.value;
-    if (detected.builtAreaM2 && (data.builtAreaM2 == null || data.builtAreaM2 === "")) patch.builtAreaM2 = detected.builtAreaM2.value;
+    if (
+      detected.landAreaM2 &&
+      (data.landAreaM2 == null || data.landAreaM2 === "")
+    )
+      patch.landAreaM2 = detected.landAreaM2.value;
+    if (
+      detected.builtAreaM2 &&
+      (data.builtAreaM2 == null || data.builtAreaM2 === "")
+    )
+      patch.builtAreaM2 = detected.builtAreaM2.value;
     setData({ ...data, ...patch });
-    if (!reason.trim()) setReason("Datos tomados de los documentos del expediente");
-    showToast("Se llenaron los campos vacíos con lo detectado en los documentos. Revísalos y guarda.");
+    if (!reason.trim())
+      setReason("Datos tomados de los documentos del expediente");
+    showToast(
+      "Se llenaron los campos vacíos con lo detectado en los documentos. Revísalos y guarda.",
+    );
   };
 
   const moral = expediente.personType === "MORAL";
@@ -188,9 +327,13 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
   const land = expediente.propertyCaseType === "RESIDENTIAL_LAND";
   const checklist = land ? LAND_CHECKLIST : HOUSING_CHECKLIST;
 
-  const setData2 = (patch: Partial<ManualClientDataResponse>) => setData({ ...data, ...patch });
+  const setData2 = (patch: Partial<ManualClientDataResponse>) =>
+    setData({ ...data, ...patch });
   const setSection = (key: keyof LegalDetails, patch: Section) =>
-    setLegal({ ...legal, [key]: { ...((legal[key] as Section | null) ?? {}), ...patch } });
+    setLegal({
+      ...legal,
+      [key]: { ...((legal[key] as Section | null) ?? {}), ...patch },
+    });
 
   const num = (v: string) => (v.trim() === "" ? null : Number(v));
 
@@ -198,7 +341,10 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
     setSaving(true);
     try {
       await updateClientData(expediente.id, {
-        authorizedPrice: data.authorizedPrice === "" || data.authorizedPrice == null ? null : String(data.authorizedPrice).replace(/\.$/, ""),
+        authorizedPrice:
+          data.authorizedPrice === "" || data.authorizedPrice == null
+            ? null
+            : String(data.authorizedPrice).replace(/\.$/, ""),
         contractSignatureDate: data.contractSignatureDate || null,
         email: data.email,
         phone: data.phone,
@@ -237,37 +383,67 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
       {readiness ? (
         <Card>
           <CardHeader
-            title={readiness.ready ? "Listo para generar el contrato" : "Qué falta para generar el contrato"}
+            title={
+              readiness.ready
+                ? "Listo para generar el contrato"
+                : "Qué falta para generar el contrato"
+            }
             description={`Variante del contrato: ${readiness.variant}`}
           />
           {readiness.ready ? (
             <p className="flex items-center gap-2 text-sm text-success-text">
-              <CheckCircle2 className="h-4 w-4" aria-hidden /> No falta nada. Ve a &quot;Contrato y firmas&quot; para generarlo.
+              <CheckCircle2 className="h-4 w-4" aria-hidden /> No falta nada. Ve
+              a &quot;Contrato y firmas&quot; para generarlo.
             </p>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">Requisitos del proceso</p>
-                {readiness.blockers.length === 0 ? <p className="text-sm text-success-text">Completos.</p> : null}
+                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">
+                  Requisitos del proceso
+                </p>
+                {readiness.blockers.length === 0 ? (
+                  <p className="text-sm text-success-text">Completos.</p>
+                ) : null}
                 <ul className="flex flex-col gap-1 text-sm">
                   {readiness.blockers.map((b) => (
-                    <li key={b} className="flex items-start gap-1.5 text-warning-text">
-                      <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /> {b}
+                    <li
+                      key={b}
+                      className="flex items-start gap-1.5 text-warning-text"
+                    >
+                      <CircleAlert
+                        className="mt-0.5 h-4 w-4 shrink-0"
+                        aria-hidden
+                      />{" "}
+                      {b}
                     </li>
                   ))}
                 </ul>
               </div>
               <div>
-                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">Datos del contrato</p>
-                {readiness.missingData.length === 0 ? <p className="text-sm text-success-text">Completos.</p> : null}
+                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">
+                  Datos del contrato
+                </p>
+                {readiness.missingData.length === 0 ? (
+                  <p className="text-sm text-success-text">Completos.</p>
+                ) : null}
                 <ul className="flex max-h-72 flex-col gap-1 overflow-y-auto text-sm">
                   {readiness.missingData.map((m) => (
-                    <li key={m} className="flex items-start gap-1.5 text-warning-text">
-                      <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /> {m}
+                    <li
+                      key={m}
+                      className="flex items-start gap-1.5 text-warning-text"
+                    >
+                      <CircleAlert
+                        className="mt-0.5 h-4 w-4 shrink-0"
+                        aria-hidden
+                      />{" "}
+                      {m}
                     </li>
                   ))}
                 </ul>
-                <p className="mt-2 text-xs text-muted">Los datos personales de cada participante se capturan en la pestaña &quot;Participantes&quot;.</p>
+                <p className="mt-2 text-xs text-muted">
+                  Los datos personales de cada participante se capturan en la
+                  pestaña &quot;Participantes&quot;.
+                </p>
               </div>
             </div>
           )}
@@ -282,8 +458,12 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
           />
           <ul className="flex flex-col gap-1 text-sm">
             {readiness.inconsistencies.map((item) => (
-              <li key={item} className="flex items-start gap-1.5 text-warning-text">
-                <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /> {item}
+              <li
+                key={item}
+                className="flex items-start gap-1.5 text-warning-text"
+              >
+                <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />{" "}
+                {item}
               </li>
             ))}
           </ul>
@@ -295,10 +475,14 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="flex items-center gap-2 font-medium text-obsessed">
-                <Sparkles className="h-4 w-4 text-dark-gold" aria-hidden /> Hay {fillable.length} dato(s) detectados en los documentos para campos vacíos
+                <Sparkles className="h-4 w-4 text-dark-gold" aria-hidden /> Hay{" "}
+                {fillable.length} dato(s) detectados en los documentos para
+                campos vacíos
               </p>
               <p className="text-sm text-muted">
-                La revisión automática los leyó de la escritura, el acta, el poder o el predial. Revísalos contra el documento antes de guardar.
+                La revisión automática los leyó de la escritura, el acta, el
+                poder o el predial. Revísalos contra el documento antes de
+                guardar.
               </p>
             </div>
             <Button variant="secondary" onClick={fillFromDocuments}>
@@ -316,30 +500,58 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
             <MoneyInput
               disabled={!editable}
               label="Precio autorizado"
-              value={typeof data.authorizedPrice === "string" ? data.authorizedPrice : moneyToRaw(data.authorizedPrice)}
-              onChange={(raw) => setData2({ authorizedPrice: raw === "" ? null : raw })}
+              value={
+                typeof data.authorizedPrice === "string"
+                  ? data.authorizedPrice
+                  : moneyToRaw(data.authorizedPrice)
+              }
+              onChange={(raw) =>
+                setData2({ authorizedPrice: raw === "" ? null : raw })
+              }
             />
             {/* CC#34: lo que sugirió el cliente desde su liga; solo informativo. */}
             <p className="mt-1 text-xs text-muted">
-              Sugerido por el cliente: {formatMoneyWithCurrency(data.suggestedPrice, "MXN", "no lo indicó")} (informativo; no cambia este precio).
+              Sugerido por el cliente:{" "}
+              {formatMoneyWithCurrency(
+                data.suggestedPrice,
+                "MXN",
+                "no lo indicó",
+              )}{" "}
+              (informativo; no cambia este precio).
             </p>
           </div>
-          <Field disabled={!editable} label="Fecha de firma del contrato" type="date" value={data.contractSignatureDate} onChange={(v) => setData2({ contractSignatureDate: v })} />
-          <Field disabled={!editable}
+          <Field
+            disabled={!editable}
+            label="Fecha de firma del contrato"
+            type="date"
+            value={data.contractSignatureDate}
+            onChange={(v) => setData2({ contractSignatureDate: v })}
+          />
+          <Field
+            disabled={!editable}
             label="Medios de publicidad autorizados por el cliente"
             value={legal.advertisingMedia}
             onChange={(v) => setLegal({ ...legal, advertisingMedia: v })}
             span
             hint="Ej. portales inmobiliarios, redes sociales y letrero en el inmueble."
           />
-          <YesNo disabled={!editable}
+          <YesNo
+            disabled={!editable}
             label="¿Autoriza ceder su información a terceros con fines mercadotécnicos?"
             value={data.marketingDataAuthorized}
             onChange={(v) => setData2({ marketingDataAuthorized: v })}
           />
-          <YesNo disabled={!editable} label="¿Acepta recibir publicidad?" value={data.receiveAdsAuthorized} onChange={(v) => setData2({ receiveAdsAuthorized: v })} />
+          <YesNo
+            disabled={!editable}
+            label="¿Acepta recibir publicidad?"
+            value={data.receiveAdsAuthorized}
+            onChange={(v) => setData2({ receiveAdsAuthorized: v })}
+          />
           <div className="sm:col-span-2">
-            <label className="mb-1.5 block text-sm font-medium text-obsessed" htmlFor="visit-instructions">
+            <label
+              className="mb-1.5 block text-sm font-medium text-obsessed"
+              htmlFor="visit-instructions"
+            >
               Instrucciones para visitas
             </label>
             <textarea
@@ -351,14 +563,20 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
               className="w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm text-obsessed outline-none focus:border-gold disabled:opacity-70"
             />
             {data.visitInstructions?.trim() ? (
-              <p className="mt-1 text-xs text-muted">Texto estándar de C21 Genera; ajústalo si el caso lo requiere. Así quedará en el contrato.</p>
+              <p className="mt-1 text-xs text-muted">
+                Texto estándar de C21 Genera; ajústalo si el caso lo requiere.
+                Así quedará en el contrato.
+              </p>
             ) : (
               <p className="mt-1 flex items-center gap-1.5 text-xs text-warning-text">
-                <CircleAlert className="h-3.5 w-3.5" aria-hidden /> Este campo no debe quedar vacío: si lo dejas así, el contrato llevará el texto estándar.
+                <CircleAlert className="h-3.5 w-3.5" aria-hidden /> Este campo
+                no debe quedar vacío: si lo dejas así, el contrato llevará el
+                texto estándar.
               </p>
             )}
           </div>
-          <Field disabled={!editable}
+          <Field
+            disabled={!editable}
             label="Servicios adicionales solicitados (Anexo D)"
             value={data.additionalServicesRequested}
             onChange={(v) => setData2({ additionalServicesRequested: v })}
@@ -370,9 +588,21 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
       <Card>
         <CardHeader title="Datos del cliente para notificaciones (cláusula décima segunda)" />
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field disabled={!editable} label="Correo electrónico" type="email" value={data.email} onChange={(v) => setData2({ email: v })} />
-          <Field disabled={!editable} label="Teléfono" value={data.phone} onChange={(v) => setData2({ phone: v })} />
-          <Field disabled={!editable}
+          <Field
+            disabled={!editable}
+            label="Correo electrónico"
+            type="email"
+            value={data.email}
+            onChange={(v) => setData2({ email: v })}
+          />
+          <Field
+            disabled={!editable}
+            label="Teléfono"
+            value={data.phone}
+            onChange={(v) => setData2({ phone: v })}
+          />
+          <Field
+            disabled={!editable}
             label="Domicilio para notificaciones"
             value={data.notificationAddress}
             onChange={(v) => setData2({ notificationAddress: v })}
@@ -385,23 +615,68 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
       <Card>
         <CardHeader title="Características del inmueble (Anexo A)" />
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field disabled={!editable} label="Superficie de terreno (m²)" type="number" value={data.landAreaM2} detected={detected?.landAreaM2} onChange={(v) => setData2({ landAreaM2: num(v) })} />
-          <Field disabled={!editable}
-            label={land ? "Superficie de construcción (m², si hay)" : "Superficie de construcción (m²)"}
+          <Field
+            disabled={!editable}
+            label="Superficie de terreno (m²)"
             type="number"
-            value={data.builtAreaM2} detected={detected?.builtAreaM2}
+            value={data.landAreaM2}
+            detected={detected?.landAreaM2}
+            onChange={(v) => setData2({ landAreaM2: num(v) })}
+          />
+          <Field
+            disabled={!editable}
+            label={
+              land
+                ? "Superficie de construcción (m², si hay)"
+                : "Superficie de construcción (m²)"
+            }
+            type="number"
+            value={data.builtAreaM2}
+            detected={detected?.builtAreaM2}
             onChange={(v) => setData2({ builtAreaM2: num(v) })}
           />
-          <Field disabled={!editable} label="Estacionamientos" type="number" value={data.parkingSpots} onChange={(v) => setData2({ parkingSpots: num(v) })} />
+          <Field
+            disabled={!editable}
+            label="Estacionamientos"
+            type="number"
+            value={data.parkingSpots}
+            onChange={(v) => setData2({ parkingSpots: num(v) })}
+          />
           {!land ? (
             <>
-              <Field disabled={!editable} label="Recámaras" type="number" value={data.bedrooms} onChange={(v) => setData2({ bedrooms: num(v) })} />
-              <Field disabled={!editable} label="Baños" type="number" value={data.bathrooms} onChange={(v) => setData2({ bathrooms: num(v) })} />
+              <Field
+                disabled={!editable}
+                label="Recámaras"
+                type="number"
+                value={data.bedrooms}
+                onChange={(v) => setData2({ bedrooms: num(v) })}
+              />
+              <Field
+                disabled={!editable}
+                label="Baños"
+                type="number"
+                value={data.bathrooms}
+                onChange={(v) => setData2({ bathrooms: num(v) })}
+              />
             </>
           ) : null}
-          <Field disabled={!editable} label="Estado general de conservación" value={data.conservationStatus} onChange={(v) => setData2({ conservationStatus: v })} />
-          <ServicesField disabled={!editable} value={data.availableServices} onChange={(v) => setData2({ availableServices: v })} />
-          <Field disabled={!editable} label="Características relevantes" value={data.relevantFeatures} onChange={(v) => setData2({ relevantFeatures: v })} />
+          <Field
+            disabled={!editable}
+            label="Estado general de conservación"
+            value={data.conservationStatus}
+            onChange={(v) => setData2({ conservationStatus: v })}
+          />
+          <ServicesField
+            disabled={!editable}
+            value={data.availableServices}
+            onChange={(v) => setData2({ availableServices: v })}
+          />
+          <Field
+            disabled={!editable}
+            label="Características relevantes"
+            value={data.relevantFeatures}
+            onChange={(v) => setData2({ relevantFeatures: v })}
+          />
         </div>
       </Card>
 
@@ -409,16 +684,83 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
         <Card>
           <CardHeader title="Constitución de la persona moral (declaración II.a.2)" />
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field disabled={!editable} label="Tipo de sociedad" value={legal.company?.companyType} detected={detected?.legal["company.companyType"]} onChange={(v) => setSection("company", { companyType: v })} hint="Ej. Sociedad Anónima de Capital Variable" />
-            <Field disabled={!editable} label="RFC de la empresa" value={legal.company?.rfc} detected={detected?.legal["company.rfc"]} onChange={(v) => setSection("company", { rfc: v })} />
-            <Field disabled={!editable} label="Número de instrumento (acta constitutiva)" value={legal.company?.instrumentNumber} detected={detected?.legal["company.instrumentNumber"]} onChange={(v) => setSection("company", { instrumentNumber: v })} />
-            <Field disabled={!editable} label="Fecha del instrumento" type="date" value={legal.company?.instrumentDate} detected={detected?.legal["company.instrumentDate"]} onChange={(v) => setSection("company", { instrumentDate: v || null })} />
-            <Field disabled={!editable} label="Notario o Corredor" value={legal.company?.notaryTitle} detected={detected?.legal["company.notaryTitle"]} onChange={(v) => setSection("company", { notaryTitle: v })} hint="Escribe: Notario o Corredor" />
-            <Field disabled={!editable} label="Número de notaría / correduría" value={legal.company?.notaryNumber} detected={detected?.legal["company.notaryNumber"]} onChange={(v) => setSection("company", { notaryNumber: v })} />
-            <Field disabled={!editable} label="Lugar de la notaría" value={legal.company?.notaryPlace} detected={detected?.legal["company.notaryPlace"]} onChange={(v) => setSection("company", { notaryPlace: v })} />
-            <Field disabled={!editable} label="Nombre del notario / corredor" value={legal.company?.notaryName} detected={detected?.legal["company.notaryName"]} onChange={(v) => setSection("company", { notaryName: v })} />
-            <Field disabled={!editable} label="Registro Público de Comercio de" value={legal.company?.commerceRegistryPlace} detected={detected?.legal["company.commerceRegistryPlace"]} onChange={(v) => setSection("company", { commerceRegistryPlace: v })} />
-            <Field disabled={!editable} label="Folio mercantil" value={legal.company?.mercantileFolio} detected={detected?.legal["company.mercantileFolio"]} onChange={(v) => setSection("company", { mercantileFolio: v })} />
+            <Field
+              disabled={!editable}
+              label="Tipo de sociedad"
+              value={legal.company?.companyType}
+              detected={detected?.legal["company.companyType"]}
+              onChange={(v) => setSection("company", { companyType: v })}
+              hint="Ej. Sociedad Anónima de Capital Variable"
+            />
+            <Field
+              disabled={!editable}
+              label="RFC de la empresa"
+              value={legal.company?.rfc}
+              detected={detected?.legal["company.rfc"]}
+              onChange={(v) => setSection("company", { rfc: v })}
+            />
+            <Field
+              disabled={!editable}
+              label="Número de instrumento (acta constitutiva)"
+              value={legal.company?.instrumentNumber}
+              detected={detected?.legal["company.instrumentNumber"]}
+              onChange={(v) => setSection("company", { instrumentNumber: v })}
+            />
+            <Field
+              disabled={!editable}
+              label="Fecha del instrumento"
+              type="date"
+              value={legal.company?.instrumentDate}
+              detected={detected?.legal["company.instrumentDate"]}
+              onChange={(v) =>
+                setSection("company", { instrumentDate: v || null })
+              }
+            />
+            <Field
+              disabled={!editable}
+              label="Notario o Corredor"
+              value={legal.company?.notaryTitle}
+              detected={detected?.legal["company.notaryTitle"]}
+              onChange={(v) => setSection("company", { notaryTitle: v })}
+              hint="Escribe: Notario o Corredor"
+            />
+            <Field
+              disabled={!editable}
+              label="Número de notaría / correduría"
+              value={legal.company?.notaryNumber}
+              detected={detected?.legal["company.notaryNumber"]}
+              onChange={(v) => setSection("company", { notaryNumber: v })}
+            />
+            <Field
+              disabled={!editable}
+              label="Lugar de la notaría"
+              value={legal.company?.notaryPlace}
+              detected={detected?.legal["company.notaryPlace"]}
+              onChange={(v) => setSection("company", { notaryPlace: v })}
+            />
+            <Field
+              disabled={!editable}
+              label="Nombre del notario / corredor"
+              value={legal.company?.notaryName}
+              detected={detected?.legal["company.notaryName"]}
+              onChange={(v) => setSection("company", { notaryName: v })}
+            />
+            <Field
+              disabled={!editable}
+              label="Registro Público de Comercio de"
+              value={legal.company?.commerceRegistryPlace}
+              detected={detected?.legal["company.commerceRegistryPlace"]}
+              onChange={(v) =>
+                setSection("company", { commerceRegistryPlace: v })
+              }
+            />
+            <Field
+              disabled={!editable}
+              label="Folio mercantil"
+              value={legal.company?.mercantileFolio}
+              detected={detected?.legal["company.mercantileFolio"]}
+              onChange={(v) => setSection("company", { mercantileFolio: v })}
+            />
           </div>
         </Card>
       ) : null}
@@ -426,59 +768,270 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
       {represented ? (
         <Card>
           <CardHeader
-            title={moral ? "Facultades del representante legal (declaración II.b)" : "Poder del apoderado (declaración II.b)"}
+            title={
+              moral
+                ? "Facultades del representante legal (declaración II.b)"
+                : "Poder del apoderado (declaración II.b)"
+            }
           />
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field disabled={!editable}
+            <Field
+              disabled={!editable}
               label="Carácter con el que comparece"
-              value={legal.representation?.capacity} detected={detected?.legal["representation.capacity"]}
+              value={legal.representation?.capacity}
+              detected={detected?.legal["representation.capacity"]}
               onChange={(v) => setSection("representation", { capacity: v })}
-              hint={moral ? "Ej. representante legal / administrador único" : "Ej. apoderado"}
+              hint={
+                moral
+                  ? "Ej. representante legal / administrador único"
+                  : "Ej. apoderado"
+              }
             />
-            <Field disabled={!editable} label="Número del instrumento (poder)" value={legal.representation?.instrumentNumber} detected={detected?.legal["representation.instrumentNumber"]} onChange={(v) => setSection("representation", { instrumentNumber: v })} />
-            <Field disabled={!editable} label="Fecha del instrumento" type="date" value={legal.representation?.instrumentDate} detected={detected?.legal["representation.instrumentDate"]} onChange={(v) => setSection("representation", { instrumentDate: v || null })} />
-            <Field disabled={!editable} label="Notario o Corredor" value={legal.representation?.notaryTitle} detected={detected?.legal["representation.notaryTitle"]} onChange={(v) => setSection("representation", { notaryTitle: v })} />
-            <Field disabled={!editable} label="Número de notaría" value={legal.representation?.notaryNumber} detected={detected?.legal["representation.notaryNumber"]} onChange={(v) => setSection("representation", { notaryNumber: v })} />
-            <Field disabled={!editable} label="Lugar de la notaría" value={legal.representation?.notaryPlace} detected={detected?.legal["representation.notaryPlace"]} onChange={(v) => setSection("representation", { notaryPlace: v })} />
-            <Field disabled={!editable} label="Nombre del notario" value={legal.representation?.notaryName} detected={detected?.legal["representation.notaryName"]} onChange={(v) => setSection("representation", { notaryName: v })} />
-            <Field disabled={!editable}
-              label={moral ? "Registro Público de Comercio de" : "Registro Público de Comercio de (si está inscrito)"}
-              value={legal.representation?.registryPlace} detected={detected?.legal["representation.registryPlace"]}
-              onChange={(v) => setSection("representation", { registryPlace: v })}
+            <Field
+              disabled={!editable}
+              label="Número del instrumento (poder)"
+              value={legal.representation?.instrumentNumber}
+              detected={detected?.legal["representation.instrumentNumber"]}
+              onChange={(v) =>
+                setSection("representation", { instrumentNumber: v })
+              }
             />
-            <Field disabled={!editable} label="Folio mercantil" value={legal.representation?.registryFolio} detected={detected?.legal["representation.registryFolio"]} onChange={(v) => setSection("representation", { registryFolio: v })} />
+            <Field
+              disabled={!editable}
+              label="Fecha del instrumento"
+              type="date"
+              value={legal.representation?.instrumentDate}
+              detected={detected?.legal["representation.instrumentDate"]}
+              onChange={(v) =>
+                setSection("representation", { instrumentDate: v || null })
+              }
+            />
+            <Field
+              disabled={!editable}
+              label="Notario o Corredor"
+              value={legal.representation?.notaryTitle}
+              detected={detected?.legal["representation.notaryTitle"]}
+              onChange={(v) => setSection("representation", { notaryTitle: v })}
+            />
+            <Field
+              disabled={!editable}
+              label="Número de notaría"
+              value={legal.representation?.notaryNumber}
+              detected={detected?.legal["representation.notaryNumber"]}
+              onChange={(v) =>
+                setSection("representation", { notaryNumber: v })
+              }
+            />
+            <Field
+              disabled={!editable}
+              label="Lugar de la notaría"
+              value={legal.representation?.notaryPlace}
+              detected={detected?.legal["representation.notaryPlace"]}
+              onChange={(v) => setSection("representation", { notaryPlace: v })}
+            />
+            <Field
+              disabled={!editable}
+              label="Nombre del notario"
+              value={legal.representation?.notaryName}
+              detected={detected?.legal["representation.notaryName"]}
+              onChange={(v) => setSection("representation", { notaryName: v })}
+            />
+            <Field
+              disabled={!editable}
+              label={
+                moral
+                  ? "Registro Público de Comercio de"
+                  : "Registro Público de Comercio de (si está inscrito)"
+              }
+              value={legal.representation?.registryPlace}
+              detected={detected?.legal["representation.registryPlace"]}
+              onChange={(v) =>
+                setSection("representation", { registryPlace: v })
+              }
+            />
+            <Field
+              disabled={!editable}
+              label="Folio mercantil"
+              value={legal.representation?.registryFolio}
+              detected={detected?.legal["representation.registryFolio"]}
+              onChange={(v) =>
+                setSection("representation", { registryFolio: v })
+              }
+            />
           </div>
         </Card>
       ) : null}
 
       {expediente.accreditationType === "ESCRITURA_PUBLICA" ? (
-        <Card>
-          <CardHeader title="Escritura con la que se acredita la propiedad (declaración II.d)" />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field disabled={!editable} label="Número de escritura" value={legal.deed?.number} detected={detected?.legal["deed.number"]} onChange={(v) => setSection("deed", { number: v })} />
-            <Field disabled={!editable} label="Fecha de la escritura" type="date" value={legal.deed?.date} detected={detected?.legal["deed.date"]} onChange={(v) => setSection("deed", { date: v || null })} />
-            <Field disabled={!editable} label="Nombre del notario" value={legal.deed?.notaryName} detected={detected?.legal["deed.notaryName"]} onChange={(v) => setSection("deed", { notaryName: v })} />
-            <Field disabled={!editable} label="Número de notaría" value={legal.deed?.notaryNumber} detected={detected?.legal["deed.notaryNumber"]} onChange={(v) => setSection("deed", { notaryNumber: v })} />
-            <Field disabled={!editable} label="Lugar de la notaría" value={legal.deed?.notaryPlace} detected={detected?.legal["deed.notaryPlace"]} onChange={(v) => setSection("deed", { notaryPlace: v })} hint="Ej. Cuernavaca, Morelos" />
-            <Field disabled={!editable} label="Datos registrales / folio real (opcional)" value={legal.deed?.registryData} detected={detected?.legal["deed.registryData"]} onChange={(v) => setSection("deed", { registryData: v })} hint="Folio real o datos de inscripción, si ya se confirmaron" />
-            <Field disabled={!editable} label="Fecha de inscripción en el RPP (opcional)" type="date" value={legal.deed?.registryDate} detected={detected?.legal["deed.registryDate"]} onChange={(v) => setSection("deed", { registryDate: v || null })} />
-          </div>
-        </Card>
+        <DeedsSection
+          expedienteId={expediente.id}
+          legal={legal}
+          setLegal={(update) =>
+            setLegal((current) => (current ? update(current) : current))
+          }
+          editable={editable}
+          documents={documents}
+          observations={observations}
+          onDocumentsChanged={loadSide}
+          mainDeedFields={
+            <>
+              <Field
+                disabled={!editable}
+                label="Número de escritura"
+                value={legal.deed?.number}
+                detected={detected?.legal["deed.number"]}
+                onChange={(v) => setSection("deed", { number: v })}
+              />
+              <Field
+                disabled={!editable}
+                label="Fecha de la escritura"
+                type="date"
+                value={legal.deed?.date}
+                detected={detected?.legal["deed.date"]}
+                onChange={(v) => setSection("deed", { date: v || null })}
+              />
+              <Field
+                disabled={!editable}
+                label="Nombre del notario"
+                value={legal.deed?.notaryName}
+                detected={detected?.legal["deed.notaryName"]}
+                onChange={(v) => setSection("deed", { notaryName: v })}
+              />
+              <Field
+                disabled={!editable}
+                label="Número de notaría"
+                value={legal.deed?.notaryNumber}
+                detected={detected?.legal["deed.notaryNumber"]}
+                onChange={(v) => setSection("deed", { notaryNumber: v })}
+              />
+              <Field
+                disabled={!editable}
+                label="Lugar de la notaría"
+                value={legal.deed?.notaryPlace}
+                detected={detected?.legal["deed.notaryPlace"]}
+                onChange={(v) => setSection("deed", { notaryPlace: v })}
+                hint="Ej. Cuernavaca, Morelos"
+              />
+              <Field
+                disabled={!editable}
+                label="Datos registrales / folio real (opcional)"
+                value={legal.deed?.registryData}
+                detected={detected?.legal["deed.registryData"]}
+                onChange={(v) => setSection("deed", { registryData: v })}
+                hint="Folio real o datos de inscripción, si ya se confirmaron"
+              />
+              <Field
+                disabled={!editable}
+                label="Fecha de inscripción en el RPP (opcional)"
+                type="date"
+                value={legal.deed?.registryDate}
+                detected={detected?.legal["deed.registryDate"]}
+                onChange={(v) =>
+                  setSection("deed", { registryDate: v || null })
+                }
+              />
+            </>
+          }
+        />
       ) : (
         <Card>
           <CardHeader title="Contrato privado con el que se acredita la propiedad (declaración II.d)" />
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field disabled={!editable} label="Vendedor en ese contrato" value={legal.privateContract?.sellerName} detected={detected?.legal["privateContract.sellerName"]} onChange={(v) => setSection("privateContract", { sellerName: v })} />
-            <Field disabled={!editable} label="Comprador (el cliente)" value={legal.privateContract?.buyerName} detected={detected?.legal["privateContract.buyerName"]} onChange={(v) => setSection("privateContract", { buyerName: v })} />
-            <Field disabled={!editable} label="Fecha del contrato" type="date" value={legal.privateContract?.date} detected={detected?.legal["privateContract.date"]} onChange={(v) => setSection("privateContract", { date: v || null })} />
-            <Field disabled={!editable} label="Fecha de ratificación" type="date" value={legal.privateContract?.ratificationDate} detected={detected?.legal["privateContract.ratificationDate"]} onChange={(v) => setSection("privateContract", { ratificationDate: v || null })} />
-            <Field disabled={!editable} label="Ratificado ante" value={legal.privateContract?.ratifiedBefore} detected={detected?.legal["privateContract.ratifiedBefore"]} onChange={(v) => setSection("privateContract", { ratifiedBefore: v })} hint="Ej. la fe pública del Notario Público" />
-            <Field disabled={!editable} label="Número de notaría" value={legal.privateContract?.notaryNumber} detected={detected?.legal["privateContract.notaryNumber"]} onChange={(v) => setSection("privateContract", { notaryNumber: v })} />
-            <Field disabled={!editable} label="Lugar de la notaría" value={legal.privateContract?.notaryPlace} detected={detected?.legal["privateContract.notaryPlace"]} onChange={(v) => setSection("privateContract", { notaryPlace: v })} />
-            <Field disabled={!editable} label="Nombre del notario" value={legal.privateContract?.notaryName} detected={detected?.legal["privateContract.notaryName"]} onChange={(v) => setSection("privateContract", { notaryName: v })} />
-            <Field disabled={!editable} label="Fecha de inscripción en el RPP" type="date" value={legal.privateContract?.registryDate} detected={detected?.legal["privateContract.registryDate"]} onChange={(v) => setSection("privateContract", { registryDate: v || null })} />
-            <Field disabled={!editable} label="Registro Público de la Propiedad de" value={legal.privateContract?.registryPlace} detected={detected?.legal["privateContract.registryPlace"]} onChange={(v) => setSection("privateContract", { registryPlace: v })} />
-            <Field disabled={!editable} label="Folio real" value={legal.privateContract?.realFolio} detected={detected?.legal["privateContract.realFolio"]} onChange={(v) => setSection("privateContract", { realFolio: v })} />
+            <Field
+              disabled={!editable}
+              label="Vendedor en ese contrato"
+              value={legal.privateContract?.sellerName}
+              detected={detected?.legal["privateContract.sellerName"]}
+              onChange={(v) => setSection("privateContract", { sellerName: v })}
+            />
+            <Field
+              disabled={!editable}
+              label="Comprador (el cliente)"
+              value={legal.privateContract?.buyerName}
+              detected={detected?.legal["privateContract.buyerName"]}
+              onChange={(v) => setSection("privateContract", { buyerName: v })}
+            />
+            <Field
+              disabled={!editable}
+              label="Fecha del contrato"
+              type="date"
+              value={legal.privateContract?.date}
+              detected={detected?.legal["privateContract.date"]}
+              onChange={(v) =>
+                setSection("privateContract", { date: v || null })
+              }
+            />
+            <Field
+              disabled={!editable}
+              label="Fecha de ratificación"
+              type="date"
+              value={legal.privateContract?.ratificationDate}
+              detected={detected?.legal["privateContract.ratificationDate"]}
+              onChange={(v) =>
+                setSection("privateContract", { ratificationDate: v || null })
+              }
+            />
+            <Field
+              disabled={!editable}
+              label="Ratificado ante"
+              value={legal.privateContract?.ratifiedBefore}
+              detected={detected?.legal["privateContract.ratifiedBefore"]}
+              onChange={(v) =>
+                setSection("privateContract", { ratifiedBefore: v })
+              }
+              hint="Ej. la fe pública del Notario Público"
+            />
+            <Field
+              disabled={!editable}
+              label="Número de notaría"
+              value={legal.privateContract?.notaryNumber}
+              detected={detected?.legal["privateContract.notaryNumber"]}
+              onChange={(v) =>
+                setSection("privateContract", { notaryNumber: v })
+              }
+            />
+            <Field
+              disabled={!editable}
+              label="Lugar de la notaría"
+              value={legal.privateContract?.notaryPlace}
+              detected={detected?.legal["privateContract.notaryPlace"]}
+              onChange={(v) =>
+                setSection("privateContract", { notaryPlace: v })
+              }
+            />
+            <Field
+              disabled={!editable}
+              label="Nombre del notario"
+              value={legal.privateContract?.notaryName}
+              detected={detected?.legal["privateContract.notaryName"]}
+              onChange={(v) => setSection("privateContract", { notaryName: v })}
+            />
+            <Field
+              disabled={!editable}
+              label="Fecha de inscripción en el RPP"
+              type="date"
+              value={legal.privateContract?.registryDate}
+              detected={detected?.legal["privateContract.registryDate"]}
+              onChange={(v) =>
+                setSection("privateContract", { registryDate: v || null })
+              }
+            />
+            <Field
+              disabled={!editable}
+              label="Registro Público de la Propiedad de"
+              value={legal.privateContract?.registryPlace}
+              detected={detected?.legal["privateContract.registryPlace"]}
+              onChange={(v) =>
+                setSection("privateContract", { registryPlace: v })
+              }
+            />
+            <Field
+              disabled={!editable}
+              label="Folio real"
+              value={legal.privateContract?.realFolio}
+              detected={detected?.legal["privateContract.realFolio"]}
+              onChange={(v) => setSection("privateContract", { realFolio: v })}
+            />
           </div>
         </Card>
       )}
@@ -487,30 +1040,92 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
         <Card>
           <CardHeader title="Régimen de condominio (declaración II.f)" />
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field disabled={!editable} label="Número de escritura del régimen" value={legal.condominium?.deedNumber} detected={detected?.legal["condominium.deedNumber"]} onChange={(v) => setSection("condominium", { deedNumber: v })} />
-            <Field disabled={!editable} label="Fecha" type="date" value={legal.condominium?.date} detected={detected?.legal["condominium.date"]} onChange={(v) => setSection("condominium", { date: v || null })} />
-            <Field disabled={!editable} label="Número de notaría" value={legal.condominium?.notaryNumber} detected={detected?.legal["condominium.notaryNumber"]} onChange={(v) => setSection("condominium", { notaryNumber: v })} />
-            <Field disabled={!editable} label="Lugar de la notaría" value={legal.condominium?.notaryPlace} detected={detected?.legal["condominium.notaryPlace"]} onChange={(v) => setSection("condominium", { notaryPlace: v })} />
-            <Field disabled={!editable} label="Nombre del notario" value={legal.condominium?.notaryName} detected={detected?.legal["condominium.notaryName"]} onChange={(v) => setSection("condominium", { notaryName: v })} />
-            <Field disabled={!editable} label="Fecha de inscripción" type="date" value={legal.condominium?.registryDate} detected={detected?.legal["condominium.registryDate"]} onChange={(v) => setSection("condominium", { registryDate: v || null })} />
-            <Field disabled={!editable} label="Folio real" value={legal.condominium?.realFolio} detected={detected?.legal["condominium.realFolio"]} onChange={(v) => setSection("condominium", { realFolio: v })} />
+            <Field
+              disabled={!editable}
+              label="Número de escritura del régimen"
+              value={legal.condominium?.deedNumber}
+              detected={detected?.legal["condominium.deedNumber"]}
+              onChange={(v) => setSection("condominium", { deedNumber: v })}
+            />
+            <Field
+              disabled={!editable}
+              label="Fecha"
+              type="date"
+              value={legal.condominium?.date}
+              detected={detected?.legal["condominium.date"]}
+              onChange={(v) => setSection("condominium", { date: v || null })}
+            />
+            <Field
+              disabled={!editable}
+              label="Número de notaría"
+              value={legal.condominium?.notaryNumber}
+              detected={detected?.legal["condominium.notaryNumber"]}
+              onChange={(v) => setSection("condominium", { notaryNumber: v })}
+            />
+            <Field
+              disabled={!editable}
+              label="Lugar de la notaría"
+              value={legal.condominium?.notaryPlace}
+              detected={detected?.legal["condominium.notaryPlace"]}
+              onChange={(v) => setSection("condominium", { notaryPlace: v })}
+            />
+            <Field
+              disabled={!editable}
+              label="Nombre del notario"
+              value={legal.condominium?.notaryName}
+              detected={detected?.legal["condominium.notaryName"]}
+              onChange={(v) => setSection("condominium", { notaryName: v })}
+            />
+            <Field
+              disabled={!editable}
+              label="Fecha de inscripción"
+              type="date"
+              value={legal.condominium?.registryDate}
+              detected={detected?.legal["condominium.registryDate"]}
+              onChange={(v) =>
+                setSection("condominium", { registryDate: v || null })
+              }
+            />
+            <Field
+              disabled={!editable}
+              label="Folio real"
+              value={legal.condominium?.realFolio}
+              detected={detected?.legal["condominium.realFolio"]}
+              onChange={(v) => setSection("condominium", { realFolio: v })}
+            />
           </div>
         </Card>
       ) : null}
 
       <Card>
         <CardHeader
-          title={land ? "Documentación del terreno (declaración II.g)" : "Documentación de la vivienda (declaración II.g)"}
+          title={
+            land
+              ? "Documentación del terreno (declaración II.g)"
+              : "Documentación de la vivienda (declaración II.g)"
+          }
           description="¿El cliente cuenta con esta documentación o información?"
         />
         <ul className="flex flex-col gap-3">
           {checklist.map(([key, question]) => (
-            <li key={key} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <li
+              key={key}
+              className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+            >
               <span className="text-sm text-obsessed">{question}</span>
-              <YesNo disabled={!editable}
+              <YesNo
+                disabled={!editable}
                 label=""
                 value={legal.propertyChecklist?.[key] ?? null}
-                onChange={(v) => setLegal({ ...legal, propertyChecklist: { ...(legal.propertyChecklist ?? {}), [key]: v } })}
+                onChange={(v) =>
+                  setLegal({
+                    ...legal,
+                    propertyChecklist: {
+                      ...(legal.propertyChecklist ?? {}),
+                      [key]: v,
+                    },
+                  })
+                }
               />
             </li>
           ))}
@@ -528,18 +1143,29 @@ export function ContractDataTab({ expediente, participants, reload }: Expediente
               containerClassName="flex-1"
             />
             <Button onClick={save} disabled={saving}>
-              <Save className="h-4 w-4" aria-hidden /> {saving ? "Guardando…" : "Guardar datos del contrato"}
+              <Save className="h-4 w-4" aria-hidden />{" "}
+              {saving ? "Guardando…" : "Guardar datos del contrato"}
             </Button>
           </div>
           <div className="mt-2">
             <SaveStatus status={draftStatus} lastSavedAt={draftSavedAt} />
-            {draftStatus === "saved" ? <span className="ml-1 text-xs text-muted">como borrador; presiona &quot;Guardar&quot; para aplicarlo al contrato.</span> : null}
+            {draftStatus === "saved" ? (
+              <span className="ml-1 text-xs text-muted">
+                como borrador; presiona &quot;Guardar&quot; para aplicarlo al
+                contrato.
+              </span>
+            ) : null}
           </div>
-          <p className="mt-2 text-xs text-muted">Si ya existe un contrato sin firmar, al guardar cambios quedará sin efecto y habrá que generar una versión nueva.</p>
+          <p className="mt-2 text-xs text-muted">
+            Si ya existe un contrato sin firmar, al guardar cambios quedará sin
+            efecto y habrá que generar una versión nueva.
+          </p>
         </Card>
       ) : (
         <p className="text-sm text-muted">
-          {expediente.correctable ? "No tienes permiso para editar estos datos." : "Los datos están bloqueados porque el contrato ya se firmó o el expediente ya se decidió."}
+          {expediente.correctable
+            ? "No tienes permiso para editar estos datos."
+            : "Los datos están bloqueados porque el contrato ya se firmó o el expediente ya se decidió."}
         </p>
       )}
     </div>
@@ -571,20 +1197,36 @@ function Field({
   const differs = detected !== undefined && detected.value !== text(value);
   return (
     <div className={span ? "sm:col-span-2" : ""}>
-      <Input label={label} type={type} value={text(value)} onChange={(e) => onChange(e.target.value)} disabled={disabled} hint={hint} />
+      <Input
+        label={label}
+        type={type}
+        value={text(value)}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        hint={hint}
+      />
       {detected && differs ? (
         <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted">
           <span>
-            Detectado en {detected.source}: <span className="font-medium text-obsessed">{detected.value}</span>
+            Detectado en {detected.source}:{" "}
+            <span className="font-medium text-obsessed">{detected.value}</span>
           </span>
           {!disabled ? (
-            <button type="button" className="font-medium text-dark-gold hover:underline" onClick={() => onChange(detected.value)}>
+            <button
+              type="button"
+              className="font-medium text-dark-gold hover:underline"
+              onClick={() => onChange(detected.value)}
+            >
               Usar
             </button>
           ) : null}
         </p>
       ) : null}
-      {detected && !differs ? <p className="mt-1 text-xs text-success-text">Coincide con {detected.source}.</p> : null}
+      {detected && !differs ? (
+        <p className="mt-1 text-xs text-success-text">
+          Coincide con {detected.source}.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -602,7 +1244,9 @@ function YesNo({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      {label ? <span className="text-sm font-medium text-obsessed">{label}</span> : null}
+      {label ? (
+        <span className="text-sm font-medium text-obsessed">{label}</span>
+      ) : null}
       <div className="flex gap-2">
         {[true, false].map((option) => (
           <button
@@ -621,25 +1265,42 @@ function YesNo({
 }
 
 /** Control de Cambios #22: servicios del inmueble como casillas agrupadas, más "Otros servicios". */
-function ServicesField({ value, onChange, disabled }: { value: string | null; onChange: (v: string) => void; disabled?: boolean }) {
+function ServicesField({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string | null;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
   const selection = parseServices(value);
   const toggle = (item: string, checked: boolean) =>
     onChange(
       formatServices({
-        selected: checked ? [...selection.selected, item] : selection.selected.filter((s) => s !== item),
+        selected: checked
+          ? [...selection.selected, item]
+          : selection.selected.filter((s) => s !== item),
         others: selection.others,
       }),
     );
   return (
     <fieldset className="sm:col-span-3" disabled={disabled}>
-      <legend className="mb-2 text-sm font-medium text-obsessed">Servicios con los que cuenta</legend>
+      <legend className="mb-2 text-sm font-medium text-obsessed">
+        Servicios con los que cuenta
+      </legend>
       <div className="grid gap-4 sm:grid-cols-2">
         {PROPERTY_SERVICE_GROUPS.map((group) => (
           <div key={group.title}>
-            <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted">{group.title}</p>
+            <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted">
+              {group.title}
+            </p>
             <div className="flex flex-col gap-1.5">
               {group.items.map((item) => (
-                <label key={item} className="flex items-start gap-2 text-sm text-obsessed">
+                <label
+                  key={item}
+                  className="flex items-start gap-2 text-sm text-obsessed"
+                >
                   <input
                     type="checkbox"
                     className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-c21-dark-gold)]"
@@ -654,10 +1315,19 @@ function ServicesField({ value, onChange, disabled }: { value: string | null; on
         ))}
       </div>
       <label className="mt-3 block text-sm">
-        <span className="mb-1.5 block font-medium text-obsessed">Otros servicios</span>
+        <span className="mb-1.5 block font-medium text-obsessed">
+          Otros servicios
+        </span>
         <input
           value={selection.others}
-          onChange={(e) => onChange(formatServices({ selected: selection.selected, others: e.target.value }))}
+          onChange={(e) =>
+            onChange(
+              formatServices({
+                selected: selection.selected,
+                others: e.target.value,
+              }),
+            )
+          }
           placeholder="Servicios que no están en la lista"
           className="min-h-10 w-full rounded-xl border border-border bg-card px-3.5 text-obsessed outline-none focus:border-gold disabled:opacity-70"
         />

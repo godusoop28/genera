@@ -87,6 +87,16 @@ public class InternalDocumentController {
         documentService.addCustomDocument(expedienteId, request == null ? null : request.name(), request == null ? null : request.participantId(), user.toActor()));
   }
 
+  /** Control de Cambios #48: «Agregar otra escritura» (otro terreno o la construcción de la misma operación). */
+  @PostMapping("/api/v1/internal/expedientes/{expedienteId}/documents/additional-deeds")
+  @PreAuthorize("hasAnyAuthority('EXPEDIENT_EDIT', 'DOCUMENT_UPLOAD')")
+  @ResponseStatus(HttpStatus.CREATED)
+  public DocumentResponse addAdditionalDeed(
+      @PathVariable UUID expedienteId, @RequestBody CustomDocumentRequest request, @AuthenticationPrincipal Jwt jwt) {
+    CurrentUser user = requireExpediente(expedienteId, jwt);
+    return toResponse(documentService.addAdditionalDeed(expedienteId, request == null ? null : request.name(), user.toActor()));
+  }
+
   /** Control de Cambios #5: falta, pero se aprueba seguir sin él por ahora (con nota). */
   @PutMapping("/api/v1/internal/documents/{documentId}/exception")
   @PreAuthorize("hasAuthority('DOCUMENT_EXCEPTION')")

@@ -1,6 +1,7 @@
 package com.c21genera.expedientes;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -18,10 +19,49 @@ public record LegalDetails(
     PrivateContractData privateContract,
     CondominiumData condominium,
     Map<String, Boolean> propertyChecklist,
-    String advertisingMedia) {
+    String advertisingMedia,
+    /* Control de Cambios #48: a qué terreno o parte corresponde la escritura principal. */
+    String deedLabel,
+    Boolean deedIncludesConstruction,
+    /* Control de Cambios #48: otras escrituras de la misma operación, cada una con su documento. */
+    List<AdditionalDeed> additionalDeeds) {
+
+  public LegalDetails(
+      CompanyData company,
+      RepresentationData representation,
+      DeedData deed,
+      PrivateContractData privateContract,
+      CondominiumData condominium,
+      Map<String, Boolean> propertyChecklist,
+      String advertisingMedia) {
+    this(company, representation, deed, privateContract, condominium, propertyChecklist, advertisingMedia, null, null, null);
+  }
 
   public static LegalDetails empty() {
     return new LegalDetails(null, null, null, null, null, Map.of(), null);
+  }
+
+  /**
+   * Control de Cambios #48: una escritura más de la misma operación (p. ej. otro terreno o la
+   * construcción). documentId: el documento «escritura adicional» del expediente del que salen sus
+   * datos (nunca se mezclan con los de otra escritura). includeInContract: si el contrato la lista.
+   */
+  public record AdditionalDeed(
+      java.util.UUID documentId,
+      String label,
+      Boolean includesConstruction,
+      Boolean includeInContract,
+      String number,
+      LocalDate date,
+      String notaryName,
+      String notaryNumber,
+      String notaryPlace,
+      String registryData,
+      LocalDate registryDate) {
+
+    public DeedData asDeedData() {
+      return new DeedData(number, date, notaryName, notaryNumber, notaryPlace, registryData, registryDate);
+    }
   }
 
   /** Persona moral (declaración II.a.2). */

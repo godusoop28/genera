@@ -92,6 +92,17 @@ public interface DocumentsApi {
       /* Control de Cambios #14: el asesor lo marcó "Pendiente" (también cuenta en exception: no bloquea). */
       boolean markedPending) {
 
+    /**
+     * Control de Cambios #48: escritura adicional (otro terreno o la construcción de la misma
+     * operación). Es un documento de tipo escritura agregado con su propio nombre; la escritura del
+     * listado conserva el nombre estándar.
+     */
+    public boolean isAdditionalDeed() {
+      return type == com.c21genera.shared.domain.DocumentTypeCode.DEED
+          && name != null
+          && !name.equals(com.c21genera.shared.domain.DocumentTypeLabels.of(type));
+    }
+
     public RequirementStatusView(
         UUID documentId,
         com.c21genera.shared.domain.DocumentTypeCode type,
