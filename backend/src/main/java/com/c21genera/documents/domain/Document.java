@@ -292,6 +292,8 @@ public class Document extends AuditableEntity {
       throw new ConflictException("DOCUMENT_ALREADY_ACCEPTED", "Un documento ya aceptado no puede marcarse como \"No aplica\".");
     }
     this.status = DocumentStatus.NOT_APPLICABLE;
+    // Control de Cambios #46: un "No aplica" deja de ser pendiente (no se cuenta ni se recuerda).
+    clearPending();
     this.notApplicableJustification = justification;
     this.notApplicableByUserId = byUserId;
     this.notApplicableAt = when;

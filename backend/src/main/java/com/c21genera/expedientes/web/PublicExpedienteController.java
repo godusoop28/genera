@@ -94,6 +94,20 @@ public class PublicExpedienteController {
     tokenApi.revoke(resolve(token), Actor.client(), "el cliente indicó que no reconoce el expediente");
   }
 
+  /**
+   * Control de Cambios #44: quien captura en la liga (a veces el asesor con el cliente) sigue a
+   * los documentos sin firmar el aviso en nombre del titular. El aviso queda «Pendiente de firma»
+   * (lo firma después en una liga, en esta misma o en papel). Si ya pasó ese paso, no hace nada.
+   */
+  @PostMapping("/privacy-defer")
+  public void deferPrivacy(@PathVariable String token) {
+    UUID expedienteId = resolve(token);
+    ExpedienteStatus status = expedienteService.get(expedienteId).getStatus();
+    if (status == ExpedienteStatus.DRAFT || status == ExpedienteStatus.WAITING_PRIVACY) {
+      expedienteService.deferPrivacySignature(expedienteId, "Se continuó en la liga del expediente sin firmar el aviso (se firma después)", Actor.client());
+    }
+  }
+
   @GetMapping("/client-data")
   public PublicClientDataResponse clientData(@PathVariable String token) {
     return PublicClientDataResponse.from(expedienteService.manualDataOf(resolve(token)));

@@ -430,27 +430,68 @@ class _DocumentRowState extends State<_DocumentRow> {
   }
 
   /// Control de Cambios #14: "Marcar como pendiente" con nota y fecha estimada opcionales.
+  /// Control de Cambios #46: primero se pregunta si el documento aplica; «No aplica» exige motivo.
   Future<void> markPending() async {
     var note = '';
     String? due;
     var busy = false;
+    var applies = true;
+    var justification = '';
+    final canNa = context.read<AuthState>().can('DOCUMENT_MARK_NOT_APPLICABLE') && doc.type != 'INE' && doc.status != 'ACCEPTED';
     await showAppSheet(
       context,
       title: 'Marcar como pendiente: ${_documentName(doc)}',
       builder: (ctx, setSheet) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const MutedText('Todavía no está listo pero se entregará después. No bloquea el avance del expediente y, al subirse, pasa a entregado.', size: 12),
-        const SizedBox(height: 12),
-        AppTextField(label: 'Nota (opcional)', maxLines: 2, hint: 'Ej. El cliente lo tramita en el municipio.', onChanged: (v) => note = v),
-        const SizedBox(height: 12),
-        DateField(label: 'Fecha estimada de entrega (opcional)', value: due, first: DateTime.now().toIso8601String(), onChanged: (v) => setSheet(() => due = v)),
+        const MutedText('¿Este documento aplica a la propiedad?'),
+        RadioGroup<bool>(
+          groupValue: applies,
+          onChanged: (v) => setSheet(() => applies = v ?? true),
+          child: Column(children: [
+            const RadioListTile<bool>(
+              value: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text('Sí aplica; lo entregaré después.'),
+              subtitle: Text('Queda «Pendiente» y podrá solicitarse posteriormente.'),
+            ),
+            RadioListTile<bool>(
+              value: false,
+              enabled: canNa,
+              contentPadding: EdgeInsets.zero,
+              title: const Text('No aplica.'),
+              subtitle: Text(canNa ? 'Quedará «No aplica» y no se solicitará después para este expediente.' : 'No disponible para este documento o para tu rol.'),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 8),
+        if (!applies)
+          AppTextField(
+            label: 'Indica el motivo (obligatorio, mínimo 15 caracteres)',
+            maxLines: 3,
+            autofocus: true,
+            hint: 'Ej. Es un terreno sin construcción: no tiene contrato de luz a su nombre.',
+            onChanged: (v) => setSheet(() => justification = v),
+          )
+        else ...[
+          const MutedText('Todavía no está listo pero se entregará después. No bloquea el avance del expediente y, al subirse, pasa a entregado.', size: 12),
+          const SizedBox(height: 12),
+          AppTextField(label: 'Nota (opcional)', maxLines: 2, hint: 'Ej. El cliente lo tramita en el municipio.', onChanged: (v) => note = v),
+          const SizedBox(height: 12),
+          DateField(label: 'Fecha estimada de entrega (opcional)', value: due, first: DateTime.now().toIso8601String(), onChanged: (v) => setSheet(() => due = v)),
+        ],
       ]),
       footer: (ctx, setSheet) => [
         Btn('Cancelar', variant: BtnVariant.ghost, onPressed: () => Navigator.pop(ctx)),
-        Btn('Marcar pendiente', icon: Icons.schedule, loading: busy, onPressed: () async {
-          setSheet(() => busy = true);
-          await act(() => api.markDocumentPending(doc.id, note.trim(), due), 'Marcado como pendiente de entrega (no bloquea el expediente).');
-          if (ctx.mounted) Navigator.pop(ctx);
-        }),
+        Btn(applies ? 'Marcar pendiente' : 'Marcar como No aplica', icon: Icons.schedule, loading: busy, onPressed: !applies && justification.trim().length < 15
+            ? null
+            : () async {
+                setSheet(() => busy = true);
+                if (applies) {
+                  await act(() => api.markDocumentPending(doc.id, note.trim(), due), 'Marcado como pendiente de entrega (no bloquea el expediente).');
+                } else {
+                  await act(() => api.markNotApplicable(doc.id, justification.trim()), 'Marcado como No aplica: ya no se pedirá ni contará como pendiente.');
+                }
+                if (ctx.mounted) Navigator.pop(ctx);
+              }),
       ],
     );
   }

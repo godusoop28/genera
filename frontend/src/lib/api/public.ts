@@ -158,3 +158,27 @@ export function listPublicPhotos(token: string) {
 export function uploadPublicPhotos(token: string, files: File[], onProgress?: (progress: UploadProgress) => void) {
   return uploadFiles<PhotosResponse>(`/public/expedientes/${token}/photos`, "files", files, onProgress);
 }
+
+/** Control de Cambios #44: quien captura sigue a los documentos sin firmar el aviso por el titular. */
+export function deferPublicPrivacy(token: string) {
+  return apiClient.post<void>(`/public/expedientes/${token}/privacy-defer`, {});
+}
+
+/** Control de Cambios #44: liga exclusiva para firmar el aviso (no da acceso al expediente). */
+export interface PrivacySignLinkView {
+  noticeVersion: number;
+  noticeEffectiveFrom: string;
+  noticeSha256: string;
+  expiresAt: string;
+}
+
+export function getPrivacySignLink(token: string) {
+  return apiClient.get<PrivacySignLinkView>(`/public/privacy-sign/${token}`);
+}
+
+export function signPrivacyViaLink(token: string, secondaryConsent: boolean, signatureBase64Png: string) {
+  return apiClient.post<{ signedAt: string; secondaryPurposesAccepted: boolean }>(`/public/privacy-sign/${token}`, {
+    secondaryConsent,
+    signatureBase64Png,
+  });
+}

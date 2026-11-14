@@ -58,9 +58,29 @@ import {
   returnReasonLabels,
 } from "@/lib/labels";
 import { useCan } from "@/lib/permissions";
-import { ACCEPTED_FILE_TYPES, UploadValidationError } from "@/lib/upload-limits";
+import {
+  ACCEPTED_FILE_TYPES,
+  UploadValidationError,
+} from "@/lib/upload-limits";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, ArrowRightLeft, Bot, Check, Clock, Eye, History, Info, Layers, Loader2, Pencil, Plus, RefreshCw, Trash2, Upload, X } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRightLeft,
+  Bot,
+  Check,
+  Clock,
+  Eye,
+  History,
+  Info,
+  Layers,
+  Loader2,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { NotaryStagesPanel } from "./NotaryStagesPanel";
 import type { ExpedienteContext } from "./page";
@@ -70,29 +90,56 @@ const IN_PROGRESS = ["UPLOADED", "PROCESSING"];
 // Aceptar un documento no detiene la lectura con IA: mientras la versión vigente no termina, sigue "en proceso"
 // (antes, al aceptarlo se mostraba "No se leyeron datos" y la pantalla dejaba de actualizarse).
 function isInProgress(doc: DocumentResponse): boolean {
-  if (doc.pipelineStatus && IN_PROGRESS.includes(doc.pipelineStatus)) return true;
+  if (doc.pipelineStatus && IN_PROGRESS.includes(doc.pipelineStatus))
+    return true;
   const v = doc.latestVersion;
   if (!v) return false;
-  return v.processingStatus === "QUEUED" || v.processingStatus === "PROCESSING" || (v.processingStatus === "PROCESSED" && !v.aiAssessedAt && !v.aiCheckFailed);
+  return (
+    v.processingStatus === "QUEUED" ||
+    v.processingStatus === "PROCESSING" ||
+    (v.processingStatus === "PROCESSED" && !v.aiAssessedAt && !v.aiCheckFailed)
+  );
 }
 
 /** Nombre con el que se muestra: el capturado si se agregó a mano (Control de Cambios #1), si no el del tipo. */
-function documentName(d: Pick<DocumentResponse, "type" | "customName">): string {
+function documentName(
+  d: Pick<DocumentResponse, "type" | "customName">,
+): string {
   return d.customName ?? documentTypeLabel(d.type);
 }
 
-type StatusFilter = "ALL" | "MISSING" | "MARKED_PENDING" | "TO_REVIEW" | "RETURNED";
+type StatusFilter =
+  "ALL" | "MISSING" | "MARKED_PENDING" | "TO_REVIEW" | "RETURNED";
 
-const statusFilters: Record<StatusFilter, { label: string; matches: (d: DocumentResponse) => boolean }> = {
+const statusFilters: Record<
+  StatusFilter,
+  { label: string; matches: (d: DocumentResponse) => boolean }
+> = {
   ALL: { label: "Todos", matches: () => true },
-  MISSING: { label: "Faltantes", matches: (d) => d.required && d.status === "PENDING" },
+  MISSING: {
+    label: "Faltantes",
+    matches: (d) => d.required && d.status === "PENDING",
+  },
   // Control de Cambios #14: los que el asesor marcó "Pendiente" (se entregan después).
-  MARKED_PENDING: { label: "Pendientes de entrega", matches: (d) => Boolean(d.markedPending) },
-  TO_REVIEW: { label: "Por revisar", matches: (d) => d.status === "UPLOADED" || d.status === "READY_FOR_REVIEW" },
-  RETURNED: { label: "Devueltos o rechazados", matches: (d) => d.status === "RETURNED" || d.status === "REJECTED" },
+  MARKED_PENDING: {
+    label: "Pendientes de entrega",
+    matches: (d) => Boolean(d.markedPending),
+  },
+  TO_REVIEW: {
+    label: "Por revisar",
+    matches: (d) => d.status === "UPLOADED" || d.status === "READY_FOR_REVIEW",
+  },
+  RETURNED: {
+    label: "Devueltos o rechazados",
+    matches: (d) => d.status === "RETURNED" || d.status === "REJECTED",
+  },
 };
 
-export function DocumentsPanel({ expediente, participants, reload }: ExpedienteContext) {
+export function DocumentsPanel({
+  expediente,
+  participants,
+  reload,
+}: ExpedienteContext) {
   const { showToast } = useToast();
   const can = useCan();
   const [documents, setDocuments] = useState<DocumentResponse[] | null>(null);
@@ -101,7 +148,10 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
   const [reprocessingAll, setReprocessingAll] = useState(false);
   const [addingDocument, setAddingDocument] = useState(false);
   const names = Object.fromEntries(participants.map((p) => [p.id, p.fullName]));
-  const canReprocess = can("DOCUMENT_ACCEPT") || can("EXTRACTED_DATA_EDIT") || can("DOCUMENT_UPLOAD");
+  const canReprocess =
+    can("DOCUMENT_ACCEPT") ||
+    can("EXTRACTED_DATA_EDIT") ||
+    can("DOCUMENT_UPLOAD");
 
   const load = useCallback(() => {
     listDocuments(expediente.id)
@@ -122,27 +172,47 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
   }, [documents, processing, load]);
 
   const onChanged = async (updated?: DocumentResponse) => {
-    if (updated) setDocuments((prev) => prev?.map((d) => (d.id === updated.id ? updated : d)) ?? null);
+    if (updated)
+      setDocuments(
+        (prev) => prev?.map((d) => (d.id === updated.id ? updated : d)) ?? null,
+      );
     load();
     await reload();
   };
 
-  const visible = (documents ?? []).filter((d) => d.required || d.currentVersionNumber > 0 || d.status === "NOT_APPLICABLE" || showOptional);
-  const isPending = (d: DocumentResponse) => d.required && d.status !== "ACCEPTED" && d.status !== "NOT_APPLICABLE";
+  const visible = (documents ?? []).filter(
+    (d) =>
+      d.required ||
+      d.currentVersionNumber > 0 ||
+      d.status === "NOT_APPLICABLE" ||
+      showOptional,
+  );
+  const isPending = (d: DocumentResponse) =>
+    d.required && d.status !== "ACCEPTED" && d.status !== "NOT_APPLICABLE";
   const pendingCount = visible.filter(isPending).length;
-  const markedPendingCount = (documents ?? []).filter((d) => d.markedPending).length;
+  const markedPendingCount = (documents ?? []).filter(
+    (d) => d.markedPending,
+  ).length;
   const requiredCount = visible.filter((d) => d.required).length;
-  const withFiles = (documents ?? []).filter((d) => d.latestVersion && d.status !== "NOT_APPLICABLE");
+  const withFiles = (documents ?? []).filter(
+    (d) => d.latestVersion && d.status !== "NOT_APPLICABLE",
+  );
   const filtered = visible.filter(statusFilters[filter].matches);
   // Un expediente con varios copropietarios llega a 20+ requisitos: se agrupan por persona
   // (en el orden del alta) y al final lo del inmueble y la empresa, para no recorrer una sola lista.
   const groups = [
     ...[...participants]
       .sort((a, b) => a.ordinal - b.ordinal)
-      .map((p) => ({ key: p.id, title: p.fullName, subtitle: participantRoleLabels[p.role], docs: filtered.filter((d) => d.participantId === p.id) })),
+      .map((p) => ({
+        key: p.id,
+        title: p.fullName,
+        subtitle: participantRoleLabels[p.role],
+        docs: filtered.filter((d) => d.participantId === p.id),
+      })),
     {
       key: "inmueble",
-      title: expediente.personType === "MORAL" ? "Inmueble y empresa" : "Inmueble",
+      title:
+        expediente.personType === "MORAL" ? "Inmueble y empresa" : "Inmueble",
       subtitle: undefined,
       docs: filtered.filter((d) => !d.participantId || !names[d.participantId]),
     },
@@ -165,18 +235,22 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
           }
         />
         <p className="-mt-2 mb-3 text-xs text-muted">
-          Lo necesario para publicar y promover el inmueble; no tienen que estar al corriente. Estado de cada uno: recibido, pendiente o excepción.
+          Lo necesario para publicar y promover el inmueble; no tienen que estar
+          al corriente. Estado de cada uno: recibido, pendiente o excepción.
         </p>
         {markedPendingCount > 0 ? (
           <p className="mb-3 flex items-center gap-2 rounded-lg bg-info-bg px-3 py-2 text-sm text-info-text">
             <Clock className="h-4 w-4 shrink-0" aria-hidden />
-            {markedPendingCount === 1 ? "1 documento está pendiente de entrega" : `${markedPendingCount} documentos están pendientes de entrega`}{" "}
+            {markedPendingCount === 1
+              ? "1 documento está pendiente de entrega"
+              : `${markedPendingCount} documentos están pendientes de entrega`}{" "}
             (marcados por el asesor; no bloquean el avance del expediente).
           </p>
         ) : null}
         {processing ? (
           <p className="mb-3 flex items-center gap-2 rounded-lg bg-app-bg px-3 py-2 text-xs text-muted">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> La extracción automática continúa. Puedes seguir trabajando; la
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> La
+            extracción automática continúa. Puedes seguir trabajando; la
             información se actualiza sola.
           </p>
         ) : null}
@@ -189,8 +263,12 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
               onClick={async () => {
                 setReprocessingAll(true);
                 try {
-                  const { reprocessed } = await reprocessAllDocuments(expediente.id);
-                  showToast(`Se volvieron a procesar ${reprocessed} archivo(s) con las reglas actuales; los datos se actualizan solos.`);
+                  const { reprocessed } = await reprocessAllDocuments(
+                    expediente.id,
+                  );
+                  showToast(
+                    `Se volvieron a procesar ${reprocessed} archivo(s) con las reglas actuales; los datos se actualizan solos.`,
+                  );
                   load();
                 } catch (err) {
                   showToast(errorText(err));
@@ -199,17 +277,26 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
                 }
               }}
             >
-              <RefreshCw className={`h-4 w-4 ${reprocessingAll ? "animate-spin" : ""}`} aria-hidden /> Reprocesar todos con IA
+              <RefreshCw
+                className={`h-4 w-4 ${reprocessingAll ? "animate-spin" : ""}`}
+                aria-hidden
+              />{" "}
+              Reprocesar todos con IA
             </Button>
           </div>
         ) : null}
         {documents === null ? (
           <p className="flex items-center gap-2 text-sm text-muted">
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Cargando requisitos…
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Cargando
+            requisitos…
           </p>
         ) : (
           <>
-            <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="Filtrar documentos">
+            <div
+              className="mb-4 flex flex-wrap gap-2"
+              role="group"
+              aria-label="Filtrar documentos"
+            >
               {(Object.keys(statusFilters) as StatusFilter[]).map((id) => {
                 const active = filter === id;
                 const n = visible.filter(statusFilters[id].matches).length;
@@ -221,28 +308,60 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
                     aria-pressed={active}
                     className={cn(
                       "inline-flex min-h-9 items-center gap-2 rounded-full border px-3 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/30",
-                      active ? "border-gold bg-gold text-brand-ink" : "border-border bg-card text-muted hover:border-gold/60 hover:text-obsessed",
+                      active
+                        ? "border-gold bg-gold text-brand-ink"
+                        : "border-border bg-card text-muted hover:border-gold/60 hover:text-obsessed",
                     )}
                   >
                     {statusFilters[id].label}
-                    <span className={cn("rounded-full px-1.5 text-xs tabular-nums", active ? "bg-white/40" : "bg-app-bg")}>{n}</span>
+                    <span
+                      className={cn(
+                        "rounded-full px-1.5 text-xs tabular-nums",
+                        active ? "bg-white/40" : "bg-app-bg",
+                      )}
+                    >
+                      {n}
+                    </span>
                   </button>
                 );
               })}
             </div>
-            {groups.length === 0 ? <p className="text-sm text-muted">No hay documentos con este filtro.</p> : null}
+            {groups.length === 0 ? (
+              <p className="text-sm text-muted">
+                No hay documentos con este filtro.
+              </p>
+            ) : null}
             <div className="flex flex-col gap-6">
               {groups.map((group) => {
                 const groupPending = group.docs.filter(isPending).length;
                 return (
-                  <section key={group.key} aria-labelledby={`docs-${group.key}`}>
+                  <section
+                    key={group.key}
+                    aria-labelledby={`docs-${group.key}`}
+                  >
                     <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-border pb-2">
-                      <h3 id={`docs-${group.key}`} className="min-w-0 break-words text-sm font-semibold text-obsessed">
+                      <h3
+                        id={`docs-${group.key}`}
+                        className="min-w-0 break-words text-sm font-semibold text-obsessed"
+                      >
                         {group.title}
-                        {group.subtitle ? <span className="ml-2 text-xs font-normal text-muted">{group.subtitle}</span> : null}
+                        {group.subtitle ? (
+                          <span className="ml-2 text-xs font-normal text-muted">
+                            {group.subtitle}
+                          </span>
+                        ) : null}
                       </h3>
-                      <span className={cn("text-xs font-medium", groupPending > 0 ? "text-warning-text" : "text-success-text")}>
-                        {groupPending > 0 ? `${groupPending} pendiente(s)` : "Sin pendientes"}
+                      <span
+                        className={cn(
+                          "text-xs font-medium",
+                          groupPending > 0
+                            ? "text-warning-text"
+                            : "text-success-text",
+                        )}
+                      >
+                        {groupPending > 0
+                          ? `${groupPending} pendiente(s)`
+                          : "Sin pendientes"}
                       </span>
                     </div>
                     <div className="flex flex-col gap-3">
@@ -252,14 +371,20 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
                           document={doc}
                           allDocuments={documents}
                           names={names}
-                          participantName={doc.participantId ? names[doc.participantId] : undefined}
+                          participantName={
+                            doc.participantId
+                              ? names[doc.participantId]
+                              : undefined
+                          }
                           onChanged={onChanged}
                           canUpload={can("DOCUMENT_UPLOAD")}
                           canAccept={can("DOCUMENT_ACCEPT")}
                           canReturn={can("DOCUMENT_RETURN")}
                           canReject={can("DOCUMENT_REJECT")}
                           canOverride={can("DOCUMENT_QUALITY_OVERRIDE")}
-                          canMarkNotApplicable={can("DOCUMENT_MARK_NOT_APPLICABLE")}
+                          canMarkNotApplicable={can(
+                            "DOCUMENT_MARK_NOT_APPLICABLE",
+                          )}
                           canException={can("DOCUMENT_EXCEPTION")}
                           canRequestUpdate={can("DOCUMENT_UPDATE_REQUEST")}
                           canEditData={can("EXTRACTED_DATA_EDIT")}
@@ -275,21 +400,39 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
         )}
         {can("EXPEDIENT_EDIT") || can("DOCUMENT_UPLOAD") ? (
           <div className="mt-4">
-            <Button variant="secondary" size="sm" onClick={() => setAddingDocument(true)}>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setAddingDocument(true)}
+            >
               <Plus className="h-4 w-4" aria-hidden /> Agregar otro documento
             </Button>
           </div>
         ) : null}
-        <button type="button" className="mt-3 block text-xs text-dark-gold hover:underline" onClick={() => setShowOptional((v) => !v)}>
-          {showOptional ? "Ocultar documentos que no aplican" : "Mostrar también documentos que no aplican a este expediente"}
+        <button
+          type="button"
+          className="mt-3 block text-xs text-dark-gold hover:underline"
+          onClick={() => setShowOptional((v) => !v)}
+        >
+          {showOptional
+            ? "Ocultar documentos que no aplican"
+            : "Mostrar también documentos que no aplican a este expediente"}
         </button>
       </Card>
 
-      <NotaryStagesPanel expedienteId={expediente.id} names={names} stamp={(documents ?? []).map((d) => `${d.id}:${d.currentVersionNumber}:${d.status}`).join("|")} />
+      <NotaryStagesPanel
+        expedienteId={expediente.id}
+        names={names}
+        stamp={(documents ?? [])
+          .map((d) => `${d.id}:${d.currentVersionNumber}:${d.status}`)
+          .join("|")}
+      />
 
       {addingDocument ? (
         <AddDocumentModal
-          participants={[...participants].sort((a, b) => a.ordinal - b.ordinal).map((p) => ({ id: p.id, name: p.fullName }))}
+          participants={[...participants]
+            .sort((a, b) => a.ordinal - b.ordinal)
+            .map((p) => ({ id: p.id, name: p.fullName }))}
           onCancel={() => setAddingDocument(false)}
           onConfirm={async (name, participantId) => {
             try {
@@ -303,7 +446,6 @@ export function DocumentsPanel({ expediente, participants, reload }: ExpedienteC
           }}
         />
       ) : null}
-
     </div>
   );
 }
@@ -347,7 +489,9 @@ function DocumentRow({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
-  const [fields, setFields] = useState<ExtractedFieldObservationResponse[] | null>(null);
+  const [fields, setFields] = useState<
+    ExtractedFieldObservationResponse[] | null
+  >(null);
   const [showData, setShowData] = useState(false);
   const [history, setHistory] = useState<ReviewHistoryResponse[] | null>(null);
   const [review, setReview] = useState<"return" | "reject" | null>(null);
@@ -356,8 +500,12 @@ function DocumentRow({
   const [moving, setMoving] = useState(false);
   const [notApplicable, setNotApplicable] = useState(false);
   const [reprocessing, setReprocessing] = useState(false);
-  const [viewing, setViewing] = useState<{ id: string; title: string } | null>(null);
-  const [versions, setVersions] = useState<DocumentVersionResponse[] | null>(null);
+  const [viewing, setViewing] = useState<{ id: string; title: string } | null>(
+    null,
+  );
+  const [versions, setVersions] = useState<DocumentVersionResponse[] | null>(
+    null,
+  );
   const [exceptionOpen, setExceptionOpen] = useState(false);
   const [updateOpen, setUpdateOpen] = useState(false);
   const [pendingOpen, setPendingOpen] = useState(false);
@@ -368,7 +516,10 @@ function DocumentRow({
   const issues = v?.blockingIssues ?? [];
   const warnings = v?.warnings ?? [];
   const inProgress = isInProgress(doc);
-  const reviewable = ["READY_FOR_REVIEW", "UPLOADED", "RETURNED"].includes(doc.status) && v && !["QUEUED", "PROCESSING"].includes(v.processingStatus);
+  const reviewable =
+    ["READY_FOR_REVIEW", "UPLOADED", "RETURNED"].includes(doc.status) &&
+    v &&
+    !["QUEUED", "PROCESSING"].includes(v.processingStatus);
   const mismatch = v?.aiTypeMatches === false;
   const docLabel = documentName(doc);
   const resolved = doc.status === "ACCEPTED" || doc.status === "NOT_APPLICABLE";
@@ -386,7 +537,10 @@ function DocumentRow({
     };
   }, [showData, assessedAt, doc.id, showToast]);
 
-  const act = async (action: () => Promise<DocumentResponse>, success: string) => {
+  const act = async (
+    action: () => Promise<DocumentResponse>,
+    success: string,
+  ) => {
     try {
       const updated = await action();
       showToast(success);
@@ -401,7 +555,9 @@ function DocumentRow({
       if (canOverride) {
         setOverriding(true);
       } else {
-        showToast("Este archivo no se puede leer: devuélvelo al cliente o pide a un director o administrador que autorice la excepción.");
+        showToast(
+          "Este archivo no se puede leer: devuélvelo al cliente o pide a un director o administrador que autorice la excepción.",
+        );
       }
       return;
     }
@@ -409,7 +565,12 @@ function DocumentRow({
       setConfirmingMismatch(true);
       return;
     }
-    act(() => acceptDocument(doc.id), warnings.length > 0 ? "Documento aceptado (las advertencias quedaron registradas)." : "Documento aceptado.");
+    act(
+      () => acceptDocument(doc.id),
+      warnings.length > 0
+        ? "Documento aceptado (las advertencias quedaron registradas)."
+        : "Documento aceptado.",
+    );
   };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -418,11 +579,17 @@ function DocumentRow({
     setUploading(true);
     setProgress(null);
     try {
-      await uploadVersion(doc.id, Array.from(files), (p) => setProgress(p.percent));
-      showToast("Archivo cargado. El procesamiento y la extracción siguen en segundo plano: puedes seguir trabajando.");
+      await uploadVersion(doc.id, Array.from(files), (p) =>
+        setProgress(p.percent),
+      );
+      showToast(
+        "Archivo cargado. El procesamiento y la extracción siguen en segundo plano: puedes seguir trabajando.",
+      );
       await onChanged();
     } catch (err) {
-      showToast(err instanceof UploadValidationError ? err.message : errorText(err));
+      showToast(
+        err instanceof UploadValidationError ? err.message : errorText(err),
+      );
     } finally {
       setUploading(false);
       setProgress(null);
@@ -434,7 +601,9 @@ function DocumentRow({
     setReprocessing(true);
     try {
       const updated = await reprocessDocument(doc.id);
-      showToast("Se está volviendo a procesar con IA. Los datos se actualizan solos al terminar; puedes seguir trabajando.");
+      showToast(
+        "Se está volviendo a procesar con IA. Los datos se actualizan solos al terminar; puedes seguir trabajando.",
+      );
       await onChanged(updated);
     } catch (err) {
       showToast(errorText(err));
@@ -446,13 +615,19 @@ function DocumentRow({
   const toggleVersions = async () => {
     if (versions) return setVersions(null);
     try {
-      setVersions([...(await listVersions(doc.id))].sort((a, b) => b.versionNumber - a.versionNumber));
+      setVersions(
+        [...(await listVersions(doc.id))].sort(
+          (a, b) => b.versionNumber - a.versionNumber,
+        ),
+      );
     } catch (err) {
       showToast(errorText(err));
     }
   };
 
-  const moveTargets = allDocuments.filter((d) => d.id !== doc.id && d.status !== "ACCEPTED");
+  const moveTargets = allDocuments.filter(
+    (d) => d.id !== doc.id && d.status !== "ACCEPTED",
+  );
 
   const confirmRemove = async () => {
     setRemoveBusy(true);
@@ -463,7 +638,9 @@ function DocumentRow({
         await onChanged();
       } else {
         const updated = await removeDocumentFile(doc.id);
-        showToast("Archivo eliminado: el documento quedó pendiente y puedes subirlo de nuevo.");
+        showToast(
+          "Archivo eliminado: el documento quedó pendiente y puedes subirlo de nuevo.",
+        );
         await onChanged(updated);
       }
       setRemoving(null);
@@ -503,10 +680,18 @@ function DocumentRow({
                 aria-label="Nombre del documento"
                 className="min-h-9 min-w-0 flex-1 rounded-lg border border-border bg-card px-2 text-sm text-obsessed outline-none focus:border-gold"
               />
-              <Button size="sm" onClick={saveName} disabled={(renaming ?? "").trim().length < 3}>
+              <Button
+                size="sm"
+                onClick={saveName}
+                disabled={(renaming ?? "").trim().length < 3}
+              >
                 <Check className="h-4 w-4" aria-hidden /> Guardar
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => setRenaming(null)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setRenaming(null)}
+              >
                 Cancelar
               </Button>
             </div>
@@ -514,7 +699,9 @@ function DocumentRow({
             <p className="flex flex-wrap items-center gap-1.5 text-sm font-medium text-obsessed">
               <span>
                 {docLabel}
-                {participantName ? <span className="text-muted"> — {participantName}</span> : null}
+                {participantName ? (
+                  <span className="text-muted"> — {participantName}</span>
+                ) : null}
               </span>
               {doc.customName && canUpload ? (
                 <button
@@ -529,7 +716,11 @@ function DocumentRow({
             </p>
           )}
           {doc.type === "PROOF_OF_ADDRESS" ? (
-            <AddressProofKindLine document={doc} canEdit={canUpload || canAccept} onChanged={onChanged} />
+            <AddressProofKindLine
+              document={doc}
+              canEdit={canUpload || canAccept}
+              onChanged={onChanged}
+            />
           ) : null}
           <p className="text-xs text-muted">
             {doc.required
@@ -537,28 +728,47 @@ function DocumentRow({
                 ? `Obligatorio · el cliente lo sube después${doc.deferralReason ? ` (razón: ${doc.deferralReason})` : ""}`
                 : "Obligatorio"
               : "Opcional / no aplica en este caso"}
-            {v ? ` · Versión ${v.versionNumber}, cargada ${formatDateTime(v.uploadedAt)} por ${v.uploadedVia === "PUBLIC_PORTAL" ? "el cliente" : v.uploadedByName ?? "el staff"}` : ""}
+            {v
+              ? ` · Versión ${v.versionNumber}, cargada ${formatDateTime(v.uploadedAt)} por ${v.uploadedVia === "PUBLIC_PORTAL" ? "el cliente" : (v.uploadedByName ?? "el staff")}`
+              : ""}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {doc.pipelineStatus && doc.pipelineStatus !== "ACCEPTED" ? (
             <Badge tone={pipelineStatusTone[doc.pipelineStatus]}>
-              {inProgress ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> : null}
+              {inProgress ? (
+                <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+              ) : null}
               {pipelineStatusLabels[doc.pipelineStatus]}
             </Badge>
           ) : null}
-          {doc.required && doc.deferred && doc.status === "PENDING" && !doc.exceptionAt && !doc.markedPending ? <Badge tone="neutral">Para después</Badge> : null}
-          {doc.markedPending ? <Badge tone="info">Pendiente de entrega</Badge> : null}
-          {doc.exceptionAt && doc.status !== "ACCEPTED" ? <Badge tone="info">Excepción aprobada</Badge> : null}
-          {doc.updateRequestedAt ? <Badge tone="warning">Requiere actualización</Badge> : null}
-          <Badge tone={documentStatusTone[doc.status]}>{documentStatusLabels[doc.status]}</Badge>
+          {doc.required &&
+          doc.deferred &&
+          doc.status === "PENDING" &&
+          !doc.exceptionAt &&
+          !doc.markedPending ? (
+            <Badge tone="neutral">Para después</Badge>
+          ) : null}
+          {doc.markedPending ? (
+            <Badge tone="info">Pendiente de entrega</Badge>
+          ) : null}
+          {doc.exceptionAt && doc.status !== "ACCEPTED" ? (
+            <Badge tone="info">Excepción aprobada</Badge>
+          ) : null}
+          {doc.updateRequestedAt ? (
+            <Badge tone="warning">Requiere actualización</Badge>
+          ) : null}
+          <Badge tone={documentStatusTone[doc.status]}>
+            {documentStatusLabels[doc.status]}
+          </Badge>
         </div>
       </div>
 
       {issues.length > 0 && doc.status !== "ACCEPTED" ? (
         <div className="mt-3 rounded-lg bg-danger-bg px-3 py-2 text-sm text-danger-text">
           <p className="flex items-center gap-1.5 font-medium">
-            <AlertTriangle className="h-4 w-4" aria-hidden /> No se puede leer: solo se acepta con autorización de excepción
+            <AlertTriangle className="h-4 w-4" aria-hidden /> No se puede leer:
+            solo se acepta con autorización de excepción
           </p>
           <ul className="ml-5 mt-1 list-disc">
             {issues.map((issue) => (
@@ -572,12 +782,21 @@ function DocumentRow({
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-warning-bg px-3 py-2 text-sm text-warning-text">
           <p className="flex items-start gap-1.5">
             <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-            El archivo parece ser {v?.aiDetectedKind ? `un(a) ${v.aiDetectedKind}` : "otro documento"} aunque fue cargado como {docLabel}. Los datos
-            que se leyeron se conservaron.
+            El archivo parece ser{" "}
+            {v?.aiDetectedKind
+              ? `un(a) ${v.aiDetectedKind}`
+              : "otro documento"}{" "}
+            aunque fue cargado como {docLabel}. Los datos que se leyeron se
+            conservaron.
           </p>
           {canUpload && moveTargets.length > 0 ? (
-            <Button variant="secondary" size="sm" onClick={() => setMoving(true)}>
-              <ArrowRightLeft className="h-4 w-4" aria-hidden /> Cambiar tipo de documento
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setMoving(true)}
+            >
+              <ArrowRightLeft className="h-4 w-4" aria-hidden /> Cambiar tipo de
+              documento
             </Button>
           ) : null}
         </div>
@@ -585,7 +804,9 @@ function DocumentRow({
 
       {warnings.length > 0 && doc.status !== "ACCEPTED" ? (
         <div className="mt-3 rounded-lg bg-app-bg px-3 py-2 text-xs text-muted">
-          <p className="font-medium text-obsessed">Advertencias (no impiden aceptarlo):</p>
+          <p className="font-medium text-obsessed">
+            Advertencias (no impiden aceptarlo):
+          </p>
           <ul className="ml-5 mt-1 list-disc">
             {warnings.map((w) => (
               <li key={w}>{w}</li>
@@ -595,80 +816,143 @@ function DocumentRow({
       ) : null}
 
       {inProgress ? (
-        <p className="mt-2 text-xs text-muted">La extracción automática continúa. Puedes seguir trabajando; este documento se actualiza solo.</p>
+        <p className="mt-2 text-xs text-muted">
+          La extracción automática continúa. Puedes seguir trabajando; este
+          documento se actualiza solo.
+        </p>
       ) : null}
       {doc.status === "RETURNED" || doc.status === "REJECTED" ? (
         <p className="mt-2 rounded-lg bg-warning-bg px-3 py-2 text-sm text-warning-text">
-          {doc.status === "RETURNED" ? "Devuelto al cliente" : "Rechazado"} el {formatDateTime(doc.lastReviewedAt)}. Motivo que ve el cliente:{" "}
+          {doc.status === "RETURNED" ? "Devuelto al cliente" : "Rechazado"} el{" "}
+          {formatDateTime(doc.lastReviewedAt)}. Motivo que ve el cliente:{" "}
           <strong>{label(returnReasonLabels, doc.lastReviewReasonCode)}</strong>
           {doc.lastReviewComment ? ` — "${doc.lastReviewComment}"` : ""}
         </p>
       ) : null}
       {doc.exceptionAt && doc.status !== "ACCEPTED" ? (
         <p className="mt-2 rounded-lg bg-app-bg px-3 py-2 text-sm text-muted">
-          Excepción aprobada el {formatDateTime(doc.exceptionAt)}: {doc.exceptionNote}. No bloquea la aprobación ni el contrato; el cliente puede
-          entregarlo después desde su liga.
+          Excepción aprobada el {formatDateTime(doc.exceptionAt)}:{" "}
+          {doc.exceptionNote}. No bloquea la aprobación ni el contrato; el
+          cliente puede entregarlo después desde su liga.
         </p>
       ) : null}
       {doc.markedPending ? (
         <p className="mt-2 rounded-lg bg-info-bg px-3 py-2 text-sm text-info-text">
           Pendiente de entrega desde el {formatDateTime(doc.pendingAt)}
-          {doc.pendingDueDate ? ` · entrega estimada: ${formatDate(doc.pendingDueDate)}` : ""}
-          {doc.pendingNote ? ` · ${doc.pendingNote}` : ""}. No bloquea el avance; al subirse el archivo queda como entregado.
+          {doc.pendingDueDate
+            ? ` · entrega estimada: ${formatDate(doc.pendingDueDate)}`
+            : ""}
+          {doc.pendingNote ? ` · ${doc.pendingNote}` : ""}. No bloquea el
+          avance; al subirse el archivo queda como entregado.
         </p>
       ) : null}
       {doc.updateRequestedAt ? (
         <p className="mt-2 rounded-lg bg-warning-bg px-3 py-2 text-sm text-warning-text">
-          Se pidió una versión actualizada el {formatDateTime(doc.updateRequestedAt)}: {doc.updateRequestNote}. La versión actual se conserva en el
-          historial.
+          Se pidió una versión actualizada el{" "}
+          {formatDateTime(doc.updateRequestedAt)}: {doc.updateRequestNote}. La
+          versión actual se conserva en el historial.
         </p>
       ) : null}
       {doc.status === "NOT_APPLICABLE" ? (
         <p className="mt-2 rounded-lg bg-app-bg px-3 py-2 text-sm text-muted">
-          Marcado como &quot;No aplica&quot; el {formatDateTime(doc.notApplicableAt)}: {doc.notApplicableJustification}
+          Marcado como &quot;No aplica&quot; el{" "}
+          {formatDateTime(doc.notApplicableAt)}:{" "}
+          {doc.notApplicableJustification}
         </p>
       ) : null}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <input ref={fileInputRef} type="file" accept={ACCEPTED_FILE_TYPES} multiple className="hidden" onChange={handleUpload} />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={ACCEPTED_FILE_TYPES}
+          multiple
+          className="hidden"
+          onChange={handleUpload}
+        />
         {reviewable && canAccept ? (
           <Button size="sm" onClick={handleAccept}>
-            <Check className="h-4 w-4" aria-hidden /> {issues.length > 0 ? "Aceptar por excepción…" : "Aceptar"}
+            <Check className="h-4 w-4" aria-hidden />{" "}
+            {issues.length > 0 ? "Aceptar por excepción…" : "Aceptar"}
           </Button>
         ) : null}
         {v ? (
-          <Button variant="secondary" size="sm" onClick={() => setShowData((s) => !s)}>
-            <Bot className="h-4 w-4" aria-hidden /> {showData ? "Ocultar datos leídos" : "Datos leídos del documento"}
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setShowData((s) => !s)}
+          >
+            <Bot className="h-4 w-4" aria-hidden />{" "}
+            {showData ? "Ocultar datos leídos" : "Datos leídos del documento"}
           </Button>
         ) : null}
         {v ? (
-          <Button variant="secondary" size="sm" onClick={() => setViewing({ id: v.id, title: `${docLabel} · versión ${v.versionNumber}` })}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() =>
+              setViewing({
+                id: v.id,
+                title: `${docLabel} · versión ${v.versionNumber}`,
+              })
+            }
+          >
             <Eye className="h-4 w-4" aria-hidden /> Ver archivo
           </Button>
         ) : null}
         {v && canReprocess ? (
-          <Button variant="ghost" size="sm" onClick={handleReprocess} disabled={reprocessing || inProgress}>
-            <RefreshCw className={`h-4 w-4 ${reprocessing ? "animate-spin" : ""}`} aria-hidden /> Reprocesar con IA
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleReprocess}
+            disabled={reprocessing || inProgress}
+          >
+            <RefreshCw
+              className={`h-4 w-4 ${reprocessing ? "animate-spin" : ""}`}
+              aria-hidden
+            />{" "}
+            Reprocesar con IA
           </Button>
         ) : null}
-        {v && canUpload && doc.status !== "ACCEPTED" && moveTargets.length > 0 ? (
+        {v &&
+        canUpload &&
+        doc.status !== "ACCEPTED" &&
+        moveTargets.length > 0 ? (
           <Button variant="ghost" size="sm" onClick={() => setMoving(true)}>
-            <ArrowRightLeft className="h-4 w-4" aria-hidden /> Cambiar tipo de documento
+            <ArrowRightLeft className="h-4 w-4" aria-hidden /> Cambiar tipo de
+            documento
           </Button>
         ) : null}
         {reviewable && canReturn ? (
-          <Button variant="secondary" size="sm" onClick={() => setReview("return")}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setReview("return")}
+          >
             Devolver al cliente
           </Button>
         ) : null}
         {reviewable && canReject ? (
-          <Button variant="danger" size="sm" onClick={() => setReview("reject")}>
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => setReview("reject")}
+          >
             Rechazar
           </Button>
         ) : null}
         {canUpload ? (
-          <Button variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-            {uploading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4" aria-hidden />}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+          >
+            {uploading ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            ) : (
+              <Upload className="h-4 w-4" aria-hidden />
+            )}
             {uploading
               ? progress !== null && progress < 100
                 ? `Subiendo ${progress}%`
@@ -686,54 +970,113 @@ function DocumentRow({
           </Button>
         ) : null}
         {canUpload && doc.customName ? (
-          <Button variant="ghost" size="sm" onClick={() => setRemoving("document")}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setRemoving("document")}
+          >
             <Trash2 className="h-4 w-4" aria-hidden /> Quitar documento
           </Button>
         ) : null}
         {/* La identificación no se omite: si no hay INE se carga otra identificación oficial y se acepta con justificación. */}
-        {canMarkNotApplicable && doc.type !== "INE" && doc.status !== "ACCEPTED" && doc.status !== "NOT_APPLICABLE" ? (
-          <Button variant="ghost" size="sm" onClick={() => setNotApplicable(true)}>
+        {canMarkNotApplicable &&
+        doc.type !== "INE" &&
+        doc.status !== "ACCEPTED" &&
+        doc.status !== "NOT_APPLICABLE" ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setNotApplicable(true)}
+          >
             No aplica…
           </Button>
         ) : null}
         {canMarkNotApplicable && doc.status === "NOT_APPLICABLE" ? (
-          <Button variant="ghost" size="sm" onClick={() => act(() => requestAgain(doc.id), "El documento se volvió a solicitar.")}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              act(
+                () => requestAgain(doc.id),
+                "El documento se volvió a solicitar.",
+              )
+            }
+          >
             Volver a solicitar
           </Button>
         ) : null}
         {(canUpload || canAccept) && !doc.markedPending && !resolved ? (
-          <Button variant="ghost" size="sm" onClick={() => setPendingOpen(true)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setPendingOpen(true)}
+          >
             <Clock className="h-4 w-4" aria-hidden /> Marcar como pendiente…
           </Button>
         ) : null}
         {(canUpload || canAccept) && doc.markedPending ? (
-          <Button variant="ghost" size="sm" onClick={() => act(() => clearDocumentPending(doc.id), "Se quitó la marca de pendiente.")}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              act(
+                () => clearDocumentPending(doc.id),
+                "Se quitó la marca de pendiente.",
+              )
+            }
+          >
             Quitar pendiente
           </Button>
         ) : null}
         {canException && doc.required && !doc.exceptionAt && !resolved ? (
-          <Button variant="ghost" size="sm" onClick={() => setExceptionOpen(true)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setExceptionOpen(true)}
+          >
             Aprobar excepción…
           </Button>
         ) : null}
         {canException && doc.exceptionAt && doc.status !== "ACCEPTED" ? (
-          <Button variant="ghost" size="sm" onClick={() => act(() => revokeException(doc.id), "Se retiró la excepción: el documento vuelve a ser necesario.")}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              act(
+                () => revokeException(doc.id),
+                "Se retiró la excepción: el documento vuelve a ser necesario.",
+              )
+            }
+          >
             Retirar excepción
           </Button>
         ) : null}
-        {canRequestUpdate && v && !doc.updateRequestedAt && doc.status !== "NOT_APPLICABLE" ? (
+        {canRequestUpdate &&
+        v &&
+        !doc.updateRequestedAt &&
+        doc.status !== "NOT_APPLICABLE" ? (
           <Button variant="ghost" size="sm" onClick={() => setUpdateOpen(true)}>
             Requiere actualización…
           </Button>
         ) : null}
         {canRequestUpdate && doc.updateRequestedAt ? (
-          <Button variant="ghost" size="sm" onClick={() => act(() => cancelDocumentUpdate(doc.id), "Se canceló la solicitud de actualización.")}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              act(
+                () => cancelDocumentUpdate(doc.id),
+                "Se canceló la solicitud de actualización.",
+              )
+            }
+          >
             Cancelar actualización
           </Button>
         ) : null}
         {doc.currentVersionNumber > 0 ? (
           <Button variant="ghost" size="sm" onClick={toggleVersions}>
-            <Layers className="h-4 w-4" aria-hidden /> Versiones ({doc.currentVersionNumber})
+            <Layers className="h-4 w-4" aria-hidden /> Versiones (
+            {doc.currentVersionNumber})
           </Button>
         ) : null}
         {v ? (
@@ -754,8 +1097,14 @@ function DocumentRow({
         ) : null}
       </div>
       {uploading && progress !== null ? (
-        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-app-bg" aria-hidden>
-          <div className="h-full bg-gold transition-all" style={{ width: `${progress}%` }} />
+        <div
+          className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-app-bg"
+          aria-hidden
+        >
+          <div
+            className="h-full bg-gold transition-all"
+            style={{ width: `${progress}%` }}
+          />
         </div>
       ) : null}
 
@@ -764,30 +1113,60 @@ function DocumentRow({
           document={doc}
           fields={fields}
           canEdit={canEditData}
-          onEdited={(updated) => setFields((prev) => prev?.map((f) => (f.id === updated.id ? updated : f)) ?? null)}
+          onEdited={(updated) =>
+            setFields(
+              (prev) =>
+                prev?.map((f) => (f.id === updated.id ? updated : f)) ?? null,
+            )
+          }
         />
       ) : null}
 
       {versions ? (
-        <ul className="mt-3 flex flex-col gap-1 rounded-lg bg-app-bg p-3 text-xs text-muted" aria-label="Versiones del documento">
+        <ul
+          className="mt-3 flex flex-col gap-1 rounded-lg bg-app-bg p-3 text-xs text-muted"
+          aria-label="Versiones del documento"
+        >
           {versions.map((ver) => (
-            <li key={ver.id} className="flex flex-wrap items-center justify-between gap-2">
+            <li
+              key={ver.id}
+              className="flex flex-wrap items-center justify-between gap-2"
+            >
               <span>
                 <strong className="text-obsessed">V{ver.versionNumber}</strong>
-                {ver.id === v?.id ? <span className="ml-1.5 font-medium text-success-text">(activa)</span> : null}
-                {ver.removedAt ? <span className="ml-1.5 font-medium text-danger-text">(eliminada {formatDateTime(ver.removedAt)})</span> : null} · cargada{" "}
-                {formatDateTime(ver.uploadedAt)} por {ver.uploadedVia === "PUBLIC_PORTAL" ? "el cliente" : ver.uploadedByName ?? "el staff"}
+                {ver.id === v?.id ? (
+                  <span className="ml-1.5 font-medium text-success-text">
+                    (activa)
+                  </span>
+                ) : null}
+                {ver.removedAt ? (
+                  <span className="ml-1.5 font-medium text-danger-text">
+                    (eliminada {formatDateTime(ver.removedAt)})
+                  </span>
+                ) : null}{" "}
+                · cargada {formatDateTime(ver.uploadedAt)} por{" "}
+                {ver.uploadedVia === "PUBLIC_PORTAL"
+                  ? "el cliente"
+                  : (ver.uploadedByName ?? "el staff")}
               </span>
               <button
                 type="button"
                 className="font-medium text-dark-gold hover:underline"
-                onClick={() => setViewing({ id: ver.id, title: `${docLabel} · versión ${ver.versionNumber}` })}
+                onClick={() =>
+                  setViewing({
+                    id: ver.id,
+                    title: `${docLabel} · versión ${ver.versionNumber}`,
+                  })
+                }
               >
                 Ver
               </button>
             </li>
           ))}
-          <li className="pt-1">Las versiones anteriores y las eliminadas se conservan para trazabilidad y auditoría.</li>
+          <li className="pt-1">
+            Las versiones anteriores y las eliminadas se conservan para
+            trazabilidad y auditoría.
+          </li>
         </ul>
       ) : null}
 
@@ -797,10 +1176,20 @@ function DocumentRow({
           {history.map((h) => (
             <li key={h.id}>
               {formatDateTime(h.reviewedAt)} —{" "}
-              {h.decision === "ACCEPTED" ? (h.overrideJustification ? "Aceptado POR EXCEPCIÓN" : "Aceptado") : h.decision === "RETURNED" ? "Devuelto" : "Rechazado"}
-              {h.reasonCode ? `: ${label(returnReasonLabels, h.reasonCode)}` : ""}
+              {h.decision === "ACCEPTED"
+                ? h.overrideJustification
+                  ? "Aceptado POR EXCEPCIÓN"
+                  : "Aceptado"
+                : h.decision === "RETURNED"
+                  ? "Devuelto"
+                  : "Rechazado"}
+              {h.reasonCode
+                ? `: ${label(returnReasonLabels, h.reasonCode)}`
+                : ""}
               {h.comment ? ` — "${h.comment}"` : ""}
-              {h.overrideJustification ? ` — Justificación: "${h.overrideJustification}" (alertas: ${h.overriddenIssues})` : ""}
+              {h.overrideJustification
+                ? ` — Justificación: "${h.overrideJustification}" (alertas: ${h.overriddenIssues})`
+                : ""}
             </li>
           ))}
         </ul>
@@ -813,8 +1202,13 @@ function DocumentRow({
           onCancel={() => setReview(null)}
           onConfirm={async (reasonCode, comment) => {
             await act(
-              () => (review === "return" ? returnDocument(doc.id, reasonCode, comment) : rejectDocument(doc.id, reasonCode, comment)),
-              review === "return" ? "Guardado: el documento se devolvió y el cliente verá el motivo en su liga." : "Documento rechazado; el cliente verá el motivo.",
+              () =>
+                review === "return"
+                  ? returnDocument(doc.id, reasonCode, comment)
+                  : rejectDocument(doc.id, reasonCode, comment),
+              review === "return"
+                ? "Guardado: el documento se devolvió y el cliente verá el motivo en su liga."
+                : "Documento rechazado; el cliente verá el motivo.",
             );
             setReview(null);
           }}
@@ -824,14 +1218,30 @@ function DocumentRow({
       <Modal
         open={removing !== null}
         onClose={() => setRemoving(null)}
-        title={removing === "document" ? `Quitar ${docLabel}` : `Eliminar el archivo de ${docLabel}`}
+        title={
+          removing === "document"
+            ? `Quitar ${docLabel}`
+            : `Eliminar el archivo de ${docLabel}`
+        }
         footer={
           <>
-            <Button variant="ghost" onClick={() => setRemoving(null)} disabled={removeBusy}>
+            <Button
+              variant="ghost"
+              onClick={() => setRemoving(null)}
+              disabled={removeBusy}
+            >
               Cancelar
             </Button>
-            <Button variant="danger" onClick={confirmRemove} disabled={removeBusy}>
-              {removeBusy ? "Eliminando…" : removing === "document" ? "Quitar documento" : "Eliminar archivo"}
+            <Button
+              variant="danger"
+              onClick={confirmRemove}
+              disabled={removeBusy}
+            >
+              {removeBusy
+                ? "Eliminando…"
+                : removing === "document"
+                  ? "Quitar documento"
+                  : "Eliminar archivo"}
             </Button>
           </>
         }
@@ -865,8 +1275,10 @@ function DocumentRow({
         title={`¿Aceptar como ${docLabel}?`}
         description={
           <p>
-            La revisión automática indica que el archivo parece ser {v?.aiDetectedKind ? `un(a) ${v.aiDetectedKind}` : "otro documento"}. Si
-            revisaste el archivo y sí es {docLabel}, acéptalo; si es otro documento, usa &quot;Cambiar tipo de documento&quot;.
+            La revisión automática indica que el archivo parece ser{" "}
+            {v?.aiDetectedKind ? `un(a) ${v.aiDetectedKind}` : "otro documento"}
+            . Si revisaste el archivo y sí es {docLabel}, acéptalo; si es otro
+            documento, usa &quot;Cambiar tipo de documento&quot;.
           </p>
         }
         label="Nota (opcional)"
@@ -884,13 +1296,18 @@ function DocumentRow({
         title="Aceptar por excepción"
         description={
           <>
-            <p className="mb-2">La revisión automática indica que este archivo no se puede leer:</p>
+            <p className="mb-2">
+              La revisión automática indica que este archivo no se puede leer:
+            </p>
             <ul className="ml-5 list-disc">
               {issues.map((i) => (
                 <li key={i}>{i}</li>
               ))}
             </ul>
-            <p className="mt-2">La aceptación quedará registrada con tu usuario y esta justificación.</p>
+            <p className="mt-2">
+              La aceptación quedará registrada con tu usuario y esta
+              justificación.
+            </p>
           </>
         }
         label="¿Por qué es válido pese a las alertas?"
@@ -898,12 +1315,20 @@ function DocumentRow({
         confirmLabel="Aceptar por excepción"
         onCancel={() => setOverriding(false)}
         onConfirm={async (justification) => {
-          await act(() => acceptDocument(doc.id, justification), "Documento aceptado por excepción (registrado en la bitácora).");
+          await act(
+            () => acceptDocument(doc.id, justification),
+            "Documento aceptado por excepción (registrado en la bitácora).",
+          );
           setOverriding(false);
         }}
       />
 
-      <DocumentViewerModal key={viewing?.id ?? "closed"} versionId={viewing?.id ?? null} title={viewing?.title ?? ""} onClose={() => setViewing(null)} />
+      <DocumentViewerModal
+        key={viewing?.id ?? "closed"}
+        versionId={viewing?.id ?? null}
+        title={viewing?.title ?? ""}
+        onClose={() => setViewing(null)}
+      />
 
       <ReasonModal
         open={exceptionOpen}
@@ -915,7 +1340,10 @@ function DocumentRow({
         confirmLabel="Aprobar excepción"
         onCancel={() => setExceptionOpen(false)}
         onConfirm={async (note) => {
-          await act(() => approveException(doc.id, note), "Excepción aprobada (queda en el historial).");
+          await act(
+            () => approveException(doc.id, note),
+            "Excepción aprobada (queda en el historial).",
+          );
           setExceptionOpen(false);
         }}
       />
@@ -923,9 +1351,24 @@ function DocumentRow({
       {pendingOpen ? (
         <PendingModal
           documentLabel={docLabel}
+          canMarkNotApplicable={
+            canMarkNotApplicable &&
+            doc.type !== "INE" &&
+            doc.status !== "ACCEPTED"
+          }
           onCancel={() => setPendingOpen(false)}
           onConfirm={async (note, dueDate) => {
-            await act(() => markDocumentPending(doc.id, note, dueDate), "Marcado como pendiente de entrega (no bloquea el expediente).");
+            await act(
+              () => markDocumentPending(doc.id, note, dueDate),
+              "Marcado como pendiente de entrega (no bloquea el expediente).",
+            );
+            setPendingOpen(false);
+          }}
+          onNotApplicable={async (justification) => {
+            await act(
+              () => markNotApplicable(doc.id, justification),
+              "Marcado como No aplica: ya no se pedirá ni contará como pendiente.",
+            );
             setPendingOpen(false);
           }}
         />
@@ -941,7 +1384,10 @@ function DocumentRow({
         confirmLabel="Pedir actualización"
         onCancel={() => setUpdateOpen(false)}
         onConfirm={async (note) => {
-          await act(() => requestDocumentUpdate(doc.id, note), "Se pidió la versión actualizada al cliente.");
+          await act(
+            () => requestDocumentUpdate(doc.id, note),
+            "Se pidió la versión actualizada al cliente.",
+          );
           setUpdateOpen(false);
         }}
       />
@@ -956,7 +1402,10 @@ function DocumentRow({
         confirmLabel="Marcar como No aplica"
         onCancel={() => setNotApplicable(false)}
         onConfirm={async (justification) => {
-          await act(() => markNotApplicable(doc.id, justification), "Marcado como No aplica.");
+          await act(
+            () => markNotApplicable(doc.id, justification),
+            "Marcado como No aplica.",
+          );
           setNotApplicable(false);
         }}
       />
@@ -964,11 +1413,26 @@ function DocumentRow({
   );
 }
 
-function confidenceBadge(confidence: number | null): { text: string; tone: "success" | "info" | "warning" | "neutral" } {
-  if (confidence === null) return { text: "sin dato de confianza", tone: "neutral" };
-  if (confidence >= 0.8) return { text: `confianza alta (${Math.round(confidence * 100)}%)`, tone: "success" };
-  if (confidence >= 0.5) return { text: `confianza media (${Math.round(confidence * 100)}%)`, tone: "info" };
-  return { text: `confianza baja (${Math.round(confidence * 100)}%): revisar`, tone: "warning" };
+function confidenceBadge(confidence: number | null): {
+  text: string;
+  tone: "success" | "info" | "warning" | "neutral";
+} {
+  if (confidence === null)
+    return { text: "sin dato de confianza", tone: "neutral" };
+  if (confidence >= 0.8)
+    return {
+      text: `confianza alta (${Math.round(confidence * 100)}%)`,
+      tone: "success",
+    };
+  if (confidence >= 0.5)
+    return {
+      text: `confianza media (${Math.round(confidence * 100)}%)`,
+      tone: "info",
+    };
+  return {
+    text: `confianza baja (${Math.round(confidence * 100)}%): revisar`,
+    tone: "warning",
+  };
 }
 
 /** "Datos leídos del documento": qué detectó la IA, si se lee, cada dato con su confianza y página, y advertencias. */
@@ -993,15 +1457,15 @@ function ExtractedDataPanel({
         ? (v.aiFieldsFound ?? 0) > 0
           ? `Difícil de leer: se extrajeron ${v.aiFieldsFound} datos, revísalos contra el archivo`
           : "No legible"
-      : v.aiLegible === true
-        ? v.qualityLevel === "ACCEPTED_WITH_WARNINGS"
-          ? "Legible (con advertencias de calidad)"
-          : "Legible"
-        : v.aiCheckFailed
-          ? "Sin revisión automática: verifícalo visualmente"
-          : inProgress
-            ? "En revisión…"
-            : "Sin determinar";
+        : v.aiLegible === true
+          ? v.qualityLevel === "ACCEPTED_WITH_WARNINGS"
+            ? "Legible (con advertencias de calidad)"
+            : "Legible"
+          : v.aiCheckFailed
+            ? "Sin revisión automática: verifícalo visualmente"
+            : inProgress
+              ? "En revisión…"
+              : "Sin determinar";
   const schemaFields = (fields ?? []).filter((f) => !f.extra);
   const extraFields = (fields ?? []).filter((f) => f.extra);
 
@@ -1010,7 +1474,9 @@ function ExtractedDataPanel({
       <dl className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
         <div>
           <dt className="text-muted">Documento detectado</dt>
-          <dd className="text-sm text-obsessed">{v.aiDetectedKind ?? (inProgress ? "En revisión…" : "—")}</dd>
+          <dd className="text-sm text-obsessed">
+            {v.aiDetectedKind ?? (inProgress ? "En revisión…" : "—")}
+          </dd>
         </div>
         <div>
           <dt className="text-muted">Legibilidad</dt>
@@ -1019,32 +1485,54 @@ function ExtractedDataPanel({
         <div>
           <dt className="text-muted">Cobertura</dt>
           <dd className="text-sm text-obsessed">
-            {v.aiFieldsExpected != null && v.aiFieldsFound != null ? `${v.aiFieldsFound} de ${v.aiFieldsExpected} datos` : "—"}
-            {v.aiPagesTotal ? ` · ${v.aiPagesAnalyzed ?? "?"} de ${v.aiPagesTotal} páginas revisadas` : ""}
+            {v.aiFieldsExpected != null && v.aiFieldsFound != null
+              ? `${v.aiFieldsFound} de ${v.aiFieldsExpected} datos`
+              : "—"}
+            {v.aiPagesTotal
+              ? ` · ${v.aiPagesAnalyzed ?? "?"} de ${v.aiPagesTotal} páginas revisadas`
+              : ""}
           </dd>
         </div>
       </dl>
-      {v.aiObservations ? <p className="mt-2 text-xs text-muted">Observaciones: {v.aiObservations}</p> : null}
+      {v.aiObservations ? (
+        <p className="mt-2 text-xs text-muted">
+          Observaciones: {v.aiObservations}
+        </p>
+      ) : null}
 
       {fields === null ? (
         <p className="mt-3 text-xs text-muted">Cargando datos leídos…</p>
       ) : fields.length === 0 ? (
         <p className="mt-3 text-xs text-muted">
-          {inProgress ? "La extracción automática continúa; los datos aparecerán aquí al terminar." : "No se leyeron datos de este archivo. Puedes reprocesarlo con IA o capturarlos a mano."}
+          {inProgress
+            ? "La extracción automática continúa; los datos aparecerán aquí al terminar."
+            : "No se leyeron datos de este archivo. Puedes reprocesarlo con IA o capturarlos a mano."}
         </p>
       ) : (
         <>
           <ul className="mt-3 flex flex-col divide-y divide-border">
             {schemaFields.map((f) => (
-              <FieldRow key={f.id} field={f} canEdit={canEdit} onEdited={onEdited} />
+              <FieldRow
+                key={f.id}
+                field={f}
+                canEdit={canEdit}
+                onEdited={onEdited}
+              />
             ))}
           </ul>
           {extraFields.length > 0 ? (
             <>
-              <p className="mt-3 text-xs font-medium text-obsessed">Otros datos encontrados</p>
+              <p className="mt-3 text-xs font-medium text-obsessed">
+                Otros datos encontrados
+              </p>
               <ul className="mt-1 flex flex-col divide-y divide-border">
                 {extraFields.map((f) => (
-                  <FieldRow key={f.id} field={f} canEdit={canEdit} onEdited={onEdited} />
+                  <FieldRow
+                    key={f.id}
+                    field={f}
+                    canEdit={canEdit}
+                    onEdited={onEdited}
+                  />
                 ))}
               </ul>
             </>
@@ -1068,7 +1556,9 @@ function FieldRow({
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(f.confirmedValue ?? f.detectedValue ?? "");
   const [saving, setSaving] = useState(false);
-  const confidence = confidenceBadge(f.confirmedValue !== null ? 1 : f.confidence);
+  const confidence = confidenceBadge(
+    f.confirmedValue !== null ? 1 : f.confidence,
+  );
   const alternatives = f.alternatives ?? [];
   const choosing = alternatives.length > 1 && f.confirmedValue === null;
 
@@ -1079,7 +1569,11 @@ function FieldRow({
     try {
       onEdited(await confirmField(f.id, final));
       setEditing(false);
-      showToast(chosen ? "Valor elegido: queda registrado con tu nombre." : "Dato confirmado.");
+      showToast(
+        chosen
+          ? "Valor elegido: queda registrado con tu nombre."
+          : "Dato confirmado.",
+      );
     } catch (err) {
       showToast(errorText(err));
     } finally {
@@ -1102,33 +1596,69 @@ function FieldRow({
               className="min-w-0 flex-1 rounded-lg border border-border bg-card px-2 py-1 text-sm outline-none focus:border-gold"
               autoFocus
             />
-            <button type="button" aria-label="Guardar dato" onClick={() => save()} disabled={saving} className="text-success-text">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Check className="h-4 w-4" aria-hidden />}
+            <button
+              type="button"
+              aria-label="Guardar dato"
+              onClick={() => save()}
+              disabled={saving}
+              className="text-success-text"
+            >
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              ) : (
+                <Check className="h-4 w-4" aria-hidden />
+              )}
             </button>
-            <button type="button" aria-label="Cancelar" onClick={() => setEditing(false)} className="text-muted">
+            <button
+              type="button"
+              aria-label="Cancelar"
+              onClick={() => setEditing(false)}
+              className="text-muted"
+            >
               <X className="h-4 w-4" aria-hidden />
             </button>
           </div>
         ) : (
-          <p className="text-sm break-words text-obsessed">{f.confirmedValue ?? f.detectedValue ?? "—"}</p>
+          <p className="text-sm break-words text-obsessed">
+            {f.confirmedValue ?? f.detectedValue ?? "—"}
+          </p>
         )}
         {choosing ? (
           // Control de Cambios #19: la escritura trae varios valores (antecedentes); una persona elige el del instrumento actual.
           <div className="mt-2 rounded-lg border border-warning-text/30 bg-warning-bg p-2.5">
             <p className="flex items-start gap-1.5 text-xs font-medium text-warning-text">
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-              Se encontraron varios valores en el documento. ¿Cuál corresponde a este instrumento?
+              <AlertTriangle
+                className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                aria-hidden
+              />
+              Se encontraron varios valores en el documento. ¿Cuál corresponde a
+              este instrumento?
             </p>
             <ul className="mt-2 flex flex-col gap-1.5">
               {alternatives.map((a) => (
-                <li key={a.value} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-card px-2 py-1.5">
+                <li
+                  key={a.value}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-card px-2 py-1.5"
+                >
                   <span className="min-w-0 text-sm text-obsessed">
                     <strong className="break-words">{a.value}</strong>
-                    {a.context ? <span className="text-xs text-muted"> — {a.context}</span> : null}
-                    {a.page ? <span className="text-xs text-muted"> · pág. {a.page}</span> : null}
+                    {a.context ? (
+                      <span className="text-xs text-muted"> — {a.context}</span>
+                    ) : null}
+                    {a.page ? (
+                      <span className="text-xs text-muted">
+                        {" "}
+                        · pág. {a.page}
+                      </span>
+                    ) : null}
                   </span>
                   {canEdit ? (
-                    <Button size="sm" variant="secondary" disabled={saving} onClick={() => save(a.value)}>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={saving}
+                      onClick={() => save(a.value)}
+                    >
                       Es este
                     </Button>
                   ) : null}
@@ -1145,11 +1675,28 @@ function FieldRow({
         ) : null}
       </div>
       <div className="flex items-center gap-2">
-        <Badge tone={f.confirmedValue !== null ? "success" : choosing ? "warning" : confidence.tone}>
-          {f.confirmedValue !== null ? "confirmado por el staff" : choosing ? "elegir valor" : confidence.text}
+        <Badge
+          tone={
+            f.confirmedValue !== null
+              ? "success"
+              : choosing
+                ? "warning"
+                : confidence.tone
+          }
+        >
+          {f.confirmedValue !== null
+            ? "confirmado por el staff"
+            : choosing
+              ? "elegir valor"
+              : confidence.text}
         </Badge>
         {canEdit && !editing ? (
-          <button type="button" aria-label="Editar dato" onClick={() => setEditing(true)} className="text-muted hover:text-obsessed">
+          <button
+            type="button"
+            aria-label="Editar dato"
+            onClick={() => setEditing(true)}
+            className="text-muted hover:text-obsessed"
+          >
             <Pencil className="h-3.5 w-3.5" aria-hidden />
           </button>
         ) : null}
@@ -1200,10 +1747,13 @@ function MoveModal({
       }
     >
       <p className="mb-3 text-sm text-muted">
-        El archivo cargado como <strong>{documentName(doc)}</strong> pasa al documento que elijas (sin que el cliente lo vuelva a subir) y se
-        lee otra vez con ese tipo. {documentName(doc)} vuelve a quedar pendiente.
+        El archivo cargado como <strong>{documentName(doc)}</strong> pasa al
+        documento que elijas (sin que el cliente lo vuelva a subir) y se lee
+        otra vez con ese tipo. {documentName(doc)} vuelve a quedar pendiente.
       </p>
-      <label className="mb-1 block text-sm font-medium text-obsessed">¿A qué documento corresponde?</label>
+      <label className="mb-1 block text-sm font-medium text-obsessed">
+        ¿A qué documento corresponde?
+      </label>
       <select
         value={target}
         onChange={(e) => setTarget(e.target.value)}
@@ -1212,8 +1762,12 @@ function MoveModal({
         {targets.map((d) => (
           <option key={d.id} value={d.id}>
             {documentName(d)}
-            {d.participantId && names[d.participantId] ? ` — ${names[d.participantId]}` : ""}
-            {d.latestVersion ? " (ya tiene archivo: se agrega como versión nueva)" : ""}
+            {d.participantId && names[d.participantId]
+              ? ` — ${names[d.participantId]}`
+              : ""}
+            {d.latestVersion
+              ? " (ya tiene archivo: se agrega como versión nueva)"
+              : ""}
           </option>
         ))}
       </select>
@@ -1232,7 +1786,9 @@ function ReviewModal({
   onCancel: () => void;
   onConfirm: (reasonCode: ReturnReasonCode, comment: string) => Promise<void>;
 }) {
-  const [reasonCode, setReasonCode] = useState<ReturnReasonCode>("ILLEGIBLE_INFORMATION");
+  const [reasonCode, setReasonCode] = useState<ReturnReasonCode>(
+    "ILLEGIBLE_INFORMATION",
+  );
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const valid = reasonCode !== "OTHER" || comment.trim().length > 0;
@@ -1240,7 +1796,11 @@ function ReviewModal({
     <Modal
       open
       onClose={onCancel}
-      title={mode === "return" ? `Devolver "${documentLabel}" al cliente` : `Rechazar "${documentLabel}"`}
+      title={
+        mode === "return"
+          ? `Devolver "${documentLabel}" al cliente`
+          : `Rechazar "${documentLabel}"`
+      }
       footer={
         <>
           <Button variant="ghost" onClick={onCancel}>
@@ -1263,7 +1823,9 @@ function ReviewModal({
         </>
       }
     >
-      <label className="mb-1 block text-sm font-medium text-obsessed">Motivo</label>
+      <label className="mb-1 block text-sm font-medium text-obsessed">
+        Motivo
+      </label>
       <select
         value={reasonCode}
         onChange={(e) => setReasonCode(e.target.value as ReturnReasonCode)}
@@ -1276,7 +1838,8 @@ function ReviewModal({
         ))}
       </select>
       <label className="mb-1 block text-sm font-medium text-obsessed">
-        Indicación para el cliente {reasonCode === "OTHER" ? "(obligatoria)" : "(recomendada)"}
+        Indicación para el cliente{" "}
+        {reasonCode === "OTHER" ? "(obligatoria)" : "(recomendada)"}
       </label>
       <textarea
         value={comment}
@@ -1285,7 +1848,10 @@ function ReviewModal({
         placeholder="Ej. La foto salió cortada; tómala de nuevo mostrando la hoja completa."
         className="w-full rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm outline-none focus:border-gold"
       />
-      <p className="mt-2 text-xs text-muted">El cliente verá este motivo en su liga y recibirá un aviso por correo si registró uno.</p>
+      <p className="mt-2 text-xs text-muted">
+        El cliente verá este motivo en su liga y recibirá un aviso por correo si
+        registró uno.
+      </p>
     </Modal>
   );
 }
@@ -1325,17 +1891,25 @@ function AddDocumentModal({
               }
             }}
           >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />} Agregar
+            {busy ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            ) : (
+              <Plus className="h-4 w-4" aria-hidden />
+            )}{" "}
+            Agregar
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-4 text-sm">
         <p className="text-muted">
-          Para un documento que no está en la lista. Se guarda en el expediente igual que los demás y se le pide al cliente en su liga.
+          Para un documento que no está en la lista. Se guarda en el expediente
+          igual que los demás y se le pide al cliente en su liga.
         </p>
         <label className="flex flex-col gap-1.5">
-          <span className="font-medium text-obsessed">Nombre del documento</span>
+          <span className="font-medium text-obsessed">
+            Nombre del documento
+          </span>
           <input
             autoFocus
             maxLength={120}
@@ -1380,7 +1954,12 @@ function AddressProofKindLine({
   const change = async (kind: string) => {
     setBusy(true);
     try {
-      await onChanged(await setAddressProofKind(doc.id, (kind || null) as AddressProofKind | null));
+      await onChanged(
+        await setAddressProofKind(
+          doc.id,
+          (kind || null) as AddressProofKind | null,
+        ),
+      );
     } catch (err) {
       showToast(errorText(err));
     } finally {
@@ -1389,7 +1968,10 @@ function AddressProofKindLine({
   };
   return (
     <div className="mt-1 flex flex-col gap-1 text-xs text-muted">
-      <p>Se acepta: recibo de luz, estado de cuenta bancario, recibo de Telmex, de telefonía o de internet.</p>
+      <p>
+        Se acepta: recibo de luz, estado de cuenta bancario, recibo de Telmex,
+        de telefonía o de internet.
+      </p>
       {canEdit ? (
         <label className="flex flex-wrap items-center gap-2">
           <span>Tipo entregado:</span>
@@ -1408,25 +1990,41 @@ function AddressProofKindLine({
           </select>
         </label>
       ) : (
-        <p>Tipo entregado: {doc.addressProofKind ? ADDRESS_PROOF_KIND_LABELS[doc.addressProofKind] : "sin indicar"}</p>
+        <p>
+          Tipo entregado:{" "}
+          {doc.addressProofKind
+            ? ADDRESS_PROOF_KIND_LABELS[doc.addressProofKind]
+            : "sin indicar"}
+        </p>
       )}
     </div>
   );
 }
 
-/** Control de Cambios #14: "Marcar como pendiente" con nota y fecha estimada opcionales. */
+/**
+ * Control de Cambios #14: "Marcar como pendiente" con nota y fecha estimada opcionales.
+ * Control de Cambios #46: antes se pregunta si el documento aplica. «Sí aplica; lo entregaré
+ * después» lo deja pendiente con su seguimiento; «No aplica» exige el motivo y deja de pedirse.
+ */
 function PendingModal({
   documentLabel,
+  canMarkNotApplicable,
   onCancel,
   onConfirm,
+  onNotApplicable,
 }: {
   documentLabel: string;
+  canMarkNotApplicable: boolean;
   onCancel: () => void;
   onConfirm: (note: string, dueDate: string | null) => Promise<void>;
+  onNotApplicable: (justification: string) => Promise<void>;
 }) {
+  const [applies, setApplies] = useState(true);
+  const [justification, setJustification] = useState("");
   const [note, setNote] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [busy, setBusy] = useState(false);
+  const naValid = justification.trim().length >= 15;
   return (
     <Modal
       open
@@ -1438,45 +2036,124 @@ function PendingModal({
             Cancelar
           </Button>
           <Button
-            disabled={busy}
+            disabled={busy || (!applies && !naValid)}
             onClick={async () => {
               setBusy(true);
               try {
-                await onConfirm(note.trim(), dueDate || null);
+                if (applies) await onConfirm(note.trim(), dueDate || null);
+                else await onNotApplicable(justification.trim());
               } finally {
                 setBusy(false);
               }
             }}
           >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Clock className="h-4 w-4" aria-hidden />} Marcar pendiente
+            {busy ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            ) : (
+              <Clock className="h-4 w-4" aria-hidden />
+            )}{" "}
+            {applies ? "Marcar pendiente" : "Marcar como No aplica"}
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-4 text-sm">
-        <p className="text-muted">
-          El documento todavía no está listo pero se entregará después. No bloquea el avance del expediente y, al subirse, pasa a entregado.
-        </p>
-        <label className="flex flex-col gap-1.5">
-          <span className="font-medium text-obsessed">Nota (opcional)</span>
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            rows={2}
-            maxLength={1000}
-            placeholder="Ej. El cliente lo tramita en el municipio."
-            className="rounded-lg border border-border bg-card px-3 py-2 text-obsessed outline-none focus:border-gold"
-          />
-        </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="font-medium text-obsessed">Fecha estimada de entrega (opcional)</span>
-          <input
-            type="date"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-            className="min-h-10 rounded-lg border border-border bg-card px-3 text-obsessed"
-          />
-        </label>
+        <fieldset className="flex flex-col gap-2">
+          <legend className="mb-1 font-medium text-obsessed">
+            ¿Este documento aplica a la propiedad?
+          </legend>
+          <label className="flex cursor-pointer items-start gap-2">
+            <input
+              type="radio"
+              name="pending-applies"
+              className="mt-0.5 accent-dark-gold"
+              checked={applies}
+              onChange={() => setApplies(true)}
+            />
+            <span>
+              <span className="font-medium text-obsessed">
+                Sí aplica; lo entregaré después.
+              </span>{" "}
+              <span className="text-muted">
+                Queda «Pendiente» y podrá solicitarse posteriormente.
+              </span>
+            </span>
+          </label>
+          <label
+            className={cn(
+              "flex items-start gap-2",
+              canMarkNotApplicable
+                ? "cursor-pointer"
+                : "cursor-not-allowed opacity-60",
+            )}
+          >
+            <input
+              type="radio"
+              name="pending-applies"
+              className="mt-0.5 accent-dark-gold"
+              checked={!applies}
+              disabled={!canMarkNotApplicable}
+              onChange={() => setApplies(false)}
+            />
+            <span>
+              <span className="font-medium text-obsessed">No aplica.</span>{" "}
+              <span className="text-muted">
+                Quedará «No aplica» y no se solicitará después para este
+                expediente.
+              </span>
+              {!canMarkNotApplicable ? (
+                <span className="block text-xs text-warning-text">
+                  No disponible para este documento o para tu rol.
+                </span>
+              ) : null}
+            </span>
+          </label>
+        </fieldset>
+        {!applies ? (
+          <label className="flex flex-col gap-1.5">
+            <span className="font-medium text-obsessed">
+              Indica el motivo (obligatorio, mínimo 15 caracteres)
+            </span>
+            <textarea
+              value={justification}
+              onChange={(e) => setJustification(e.target.value)}
+              rows={3}
+              maxLength={1000}
+              autoFocus
+              placeholder="Ej. Es un terreno sin construcción: no tiene contrato de luz a su nombre."
+              className="rounded-lg border border-border bg-card px-3 py-2 text-obsessed outline-none focus:border-gold"
+            />
+          </label>
+        ) : (
+          <>
+            <p className="text-muted">
+              El documento todavía no está listo pero se entregará después. No
+              bloquea el avance del expediente y, al subirse, pasa a entregado.
+            </p>
+            <label className="flex flex-col gap-1.5">
+              <span className="font-medium text-obsessed">Nota (opcional)</span>
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                rows={2}
+                maxLength={1000}
+                placeholder="Ej. El cliente lo tramita en el municipio."
+                className="rounded-lg border border-border bg-card px-3 py-2 text-obsessed outline-none focus:border-gold"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="font-medium text-obsessed">
+                Fecha estimada de entrega (opcional)
+              </span>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="min-h-10 rounded-lg border border-border bg-card px-3 text-obsessed"
+              />
+            </label>
+          </>
+        )}
       </div>
     </Modal>
   );

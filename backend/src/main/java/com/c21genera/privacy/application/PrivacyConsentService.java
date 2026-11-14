@@ -60,7 +60,17 @@ public class PrivacyConsentService implements PrivacyApi {
       boolean secondaryPurposesAccepted,
       String signatureBase64Png,
       String ipAddress,
-      String userAgent) {}
+      String userAgent,
+      String channel) {
+
+    public RecordConsentCommand(
+        UUID expedienteId, boolean mainPurposesAccepted, boolean secondaryPurposesAccepted, String signatureBase64Png, String ipAddress, String userAgent) {
+      this(expedienteId, mainPurposesAccepted, secondaryPurposesAccepted, signatureBase64Png, ipAddress, userAgent, CHANNEL_PORTAL);
+    }
+  }
+
+  public static final String CHANNEL_PORTAL = "PORTAL";
+  public static final String CHANNEL_SIGN_LINK = "SIGN_LINK";
 
   public PrivacyConsent recordConsent(RecordConsentCommand command) {
     LegalTemplate notice = currentNotice();
@@ -100,13 +110,14 @@ public class PrivacyConsentService implements PrivacyApi {
               command.userAgent(),
               signatureStorageKey,
               signatureSha256);
-      privacyConsentRepository.save(consent);
+      // Con id asignado, save() hace merge: hay que seguir con la instancia administrada.
+      consent = privacyConsentRepository.save(consent);
     }
 
     // expedientes escucha este evento para avanzar su propio estado; privacy
     // no lo comanda directamente (evita una dependencia cíclica entre
     // módulos, ver AGENTS §7).
-    consent.markDigital();
+    consent.markDigital(command.channel());
     events.publishEvent(
         new PrivacyAccepted(command.expedienteId(), command.mainPurposesAccepted(), command.secondaryPurposesAccepted()));
 

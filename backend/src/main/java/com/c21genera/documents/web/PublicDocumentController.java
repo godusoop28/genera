@@ -39,12 +39,16 @@ public class PublicDocumentController {
     this.tokenApi = tokenApi;
   }
 
-  /** Los requisitos que no aplican (no obligatorios y sin archivo) no se le muestran al cliente. */
+  /**
+   * Los requisitos que no aplican (no obligatorios y sin archivo) no se le muestran al cliente.
+   * Control de Cambios #46: tampoco los marcados «No aplica» en su expediente: no se le vuelven a pedir.
+   */
   @GetMapping
   public List<PublicDocumentResponse> list(@PathVariable String token) {
     UUID expedienteId = resolve(token);
     List<Document> documents =
         documentService.documentsOf(expedienteId).stream()
+            .filter(d -> d.getStatus() != com.c21genera.documents.DocumentStatus.NOT_APPLICABLE)
             .filter(d -> d.isRequired() || d.getCurrentVersionNumber() > 0 || isOptionalButUseful(d))
             .toList();
     var latest = documentService.latestVersions(documents.stream().map(Document::getId).toList());

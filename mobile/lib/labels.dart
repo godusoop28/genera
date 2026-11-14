@@ -271,7 +271,7 @@ const documentTypeLabels = {
   'MARRIAGE_CERTIFICATE': 'Acta de matrimonio',
   'PRIVATE_CONTRACT': 'Contrato privado de compraventa ratificado',
   'INCORPORATION_DEED': 'Acta constitutiva',
-  'PRIVACY_NOTICE': 'Aviso de privacidad firmado',
+  'PRIVACY_NOTICE': 'Aviso de Privacidad',
   'SIGNED_CONTRACT': 'Contrato firmado',
   'OTHER': 'Otro',
 };

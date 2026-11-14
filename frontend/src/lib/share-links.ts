@@ -4,7 +4,7 @@
  * segmento, así que la reconstruimos con el dominio desde el que se usa el
  * sistema y la ruta real del frontend.
  */
-export function frontendLink(backendUrl: string, route: "carga" | "firma"): string {
+export function frontendLink(backendUrl: string, route: "carga" | "firma" | "aviso"): string {
   const token = backendUrl.split(/[?#]/)[0].replace(/\/+$/, "").split("/").pop() ?? "";
   if (!token || typeof window === "undefined") return backendUrl;
   return `${window.location.origin}/${route}/${token}`;

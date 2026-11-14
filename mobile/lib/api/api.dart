@@ -234,6 +234,9 @@ Future<int> autofillExpediente(String expedienteId) async => (_j(await _c.post('
 Future<Json> getPrivacyStatus(String expedienteId) async => _j(await _c.get('/internal/expedientes/$expedienteId/privacy'));
 Future<void> deferPrivacySignature(String expedienteId) =>
     _c.post('/internal/expedientes/$expedienteId/privacy/defer', {'reason': 'Alta presencial: el aviso se firma después'});
+/// Control de Cambios #44: liga exclusiva para que el cliente firme el aviso (la anterior deja de funcionar).
+Future<Json> issuePrivacySignLink(String expedienteId) async => _j(await _c.post('/internal/expedientes/$expedienteId/privacy/sign-link', {}));
+Future<void> revokePrivacySignLink(String expedienteId) => _c.delete('/internal/expedientes/$expedienteId/privacy/sign-link');
 Future<void> uploadPhysicalPrivacySignature(String expedienteId, List<UploadFile> files, bool secondaryPurposesAccepted) =>
     _c.upload('/internal/expedientes/$expedienteId/privacy/physical-signature?secondaryPurposesAccepted=$secondaryPurposesAccepted', 'files', files);
 Future<List<ExtractedField>> getExtractedFields(String documentId) async => _l(await _c.get('/internal/documents/$documentId/extracted-fields'), ExtractedField.fromJson);

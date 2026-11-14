@@ -39,7 +39,7 @@ public final class DocumentTypeLabels {
       case MARRIAGE_CERTIFICATE -> "Acta de matrimonio";
       case PRIVATE_CONTRACT -> "Contrato privado de compraventa ratificado";
       case INCORPORATION_DEED -> "Acta constitutiva";
-      case PRIVACY_NOTICE -> "Aviso de privacidad firmado";
+      case PRIVACY_NOTICE -> "Aviso de Privacidad";
       case SIGNED_CONTRACT -> "Contrato firmado";
       case OTHER -> "Otro documento";
     };
@@ -80,7 +80,7 @@ public final class DocumentTypeLabels {
       case MARRIAGE_CERTIFICATE -> "Acta de matrimonio del Registro Civil";
       case PRIVATE_CONTRACT -> "Contrato privado de compraventa de un inmueble, con ratificación de firmas ante notario o autoridad";
       case INCORPORATION_DEED -> "Acta constitutiva de una sociedad mercantil, otorgada ante notario o corredor público";
-      case PRIVACY_NOTICE -> "Aviso de privacidad de CENTURY 21 Genera firmado a mano por el titular";
+      case PRIVACY_NOTICE -> "Aviso de privacidad de CENTURY 21 Genera firmado por el titular: a mano (escaneo) o copia con hoja de constancia de firma electrónica";
       case SIGNED_CONTRACT -> "Contrato de prestación de servicios de intermediación firmado (PDF de DocuSign o escaneo del contrato firmado a mano)";
       case OTHER -> "Cualquier documento";
     };

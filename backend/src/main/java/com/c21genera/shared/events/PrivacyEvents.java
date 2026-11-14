@@ -15,4 +15,10 @@ public final class PrivacyEvents {
       this(expedienteId, mainPurposesAccepted, secondaryPurposesAccepted, false, Actor.client());
     }
   }
+
+  /** Control de Cambios #44: el staff generó (o reenvió) la liga exclusiva para firmar el aviso. */
+  public record PrivacySignLinkIssued(UUID expedienteId, java.time.Instant expiresAt, Actor actor) {}
+
+  /** Control de Cambios #44: el staff desactivó la liga de firma del aviso. */
+  public record PrivacySignLinkRevoked(UUID expedienteId, Actor actor) {}
 }

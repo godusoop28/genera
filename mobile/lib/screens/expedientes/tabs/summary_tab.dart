@@ -9,6 +9,7 @@ import '../../../labels.dart';
 import '../../../money.dart';
 import '../../../share_links.dart';
 import '../../../state/auth.dart';
+import '../../../ui/applicability_sheet.dart';
 import '../../../ui/file_pick.dart';
 import '../../../ui/property_type_picker.dart';
 import '../../../ui/widgets.dart';
@@ -602,6 +603,36 @@ class _DocumentTimingCardState extends State<_DocumentTimingCard> {
     });
   }
 
+  Future<void> markNa(DocumentResponse d, String justification) async {
+    setState(() => saving = d.id);
+    try {
+      final updated = await api.markNotApplicable(d.id, justification);
+      if (mounted) {
+        setState(() => documents = documents?.map((x) => x.id == updated.id ? updated : x).toList());
+        showToast(context, '"${d.customName ?? documentTypeLabel(d.type)}" quedó como No aplica: ya no se le pedirá al cliente.');
+      }
+    } catch (err) {
+      if (mounted) showToast(context, errorText(err));
+    } finally {
+      if (mounted) setState(() => saving = null);
+    }
+  }
+
+  Future<void> applyAgain(DocumentResponse d) async {
+    setState(() => saving = d.id);
+    try {
+      final updated = await api.requestAgain(d.id);
+      if (mounted) {
+        setState(() => documents = documents?.map((x) => x.id == updated.id ? updated : x).toList());
+        showToast(context, 'El documento vuelve a pedirse; el cambio quedó en la bitácora.');
+      }
+    } catch (err) {
+      if (mounted) showToast(context, errorText(err));
+    } finally {
+      if (mounted) setState(() => saving = null);
+    }
+  }
+
   Future<void> change(List<DocumentResponse> docs, bool deferred, [String? reason]) async {
     final targets = docs.where((d) => d.deferred != deferred).toList();
     if (targets.isEmpty) return;
@@ -627,7 +658,10 @@ class _DocumentTimingCardState extends State<_DocumentTimingCard> {
       );
     }
     final open = docs.where((d) => d.required && d.status != 'ACCEPTED' && d.status != 'NOT_APPLICABLE').toList();
-    if (open.isEmpty) return const SizedBox.shrink();
+    // CC#46: los «No aplica» se muestran aparte con su motivo y se pueden corregir.
+    final notApplicable = docs.where((d) => d.required && d.status == 'NOT_APPLICABLE').toList();
+    if (open.isEmpty && notApplicable.isEmpty) return const SizedBox.shrink();
+    final canNa = context.watch<AuthState>().can('DOCUMENT_MARK_NOT_APPLICABLE');
     final ctx = widget.ctx;
     final names = {for (final p in ctx.participants) p.id: p};
     final ordered = [...ctx.participants]..sort((a, b) => a.ordinal.compareTo(b.ordinal));
@@ -701,17 +735,21 @@ class _DocumentTimingCardState extends State<_DocumentTimingCard> {
                             if (v == true) {
                               change([d], false);
                             } else {
-                              final reason = await askReason(
+                              // CC#46: se pregunta si aplica (se entrega después) o no aplica (con motivo).
+                              final answer = await askApplicability(
                                 context,
-                                title: '¿Por qué no pides "${d.customName ?? documentTypeLabel(d.type)}" ahora?',
-                                description:
-                                    'El cliente podrá subirlo después desde su misma liga. Escribe la razón de esta excepción: queda en el expediente y en la bitácora para que el equipo entienda por qué no se pidió.',
-                                label: 'Razón',
-                                placeholder: 'Ej. El cliente está tramitando el certificado de libertad de gravamen y lo tendrá la próxima semana.',
-                                minLength: 10,
-                                confirmLabel: 'Dejar para después',
+                                documentName: d.customName ?? documentTypeLabel(d.type),
+                                canMarkNotApplicable: canNa,
+                                notApplicableBlockedReason: d.type == 'INE'
+                                    ? 'La identificación no admite «No aplica»: si no tiene INE, se carga otra identificación oficial vigente.'
+                                    : null,
                               );
-                              if (reason != null) change([d], true, reason);
+                              if (answer == null) return;
+                              if (answer.later) {
+                                change([d], true, answer.text);
+                              } else {
+                                markNa(d, answer.text);
+                              }
                             }
                           },
                     title: Text(d.customName ?? documentTypeLabel(d.type), style: TextStyle(fontSize: 13.5, color: c.fg)),
@@ -722,6 +760,24 @@ class _DocumentTimingCardState extends State<_DocumentTimingCard> {
                     ),
                   ),
                 ),
+              ),
+          ],
+          if (notApplicable.isNotEmpty) ...[
+            const Divider(height: 24),
+            Text('No aplican a este expediente', style: TextStyle(fontWeight: FontWeight.w600, color: c.fg, fontSize: 13.5)),
+            const SizedBox(height: 6),
+            for (final d in notApplicable)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(d.customName ?? documentTypeLabel(d.type), style: TextStyle(fontSize: 13.5, color: c.fg)),
+                      MutedText('No aplica: ${d.notApplicableJustification ?? ''}', size: 12),
+                    ]),
+                  ),
+                  if (canNa) Btn('Sí aplica', small: true, variant: BtnVariant.ghost, onPressed: saving != null ? null : () => applyAgain(d)),
+                ]),
               ),
           ],
         ],
@@ -743,6 +799,8 @@ class _PrivacyCard extends StatefulWidget {
 class _PrivacyCardState extends State<_PrivacyCard> {
   Json? status;
   bool busy = false;
+  /// CC#44: liga recién generada (solo se muestra una vez: el backend guarda únicamente su hash).
+  ({String url, String expiresAt})? newLink;
 
   ExpedienteResponse get e => widget.ctx.expediente;
 
@@ -796,7 +854,21 @@ class _PrivacyCardState extends State<_PrivacyCard> {
     if (ok != true || !mounted) return;
     final files = await pickUploadFiles(context);
     if (files == null) return;
-    await act(() => api.uploadPhysicalPrivacySignature(e.id, files, secondary), 'Aviso firmado cargado: quedó registrado en el expediente.');
+    await act(() => api.uploadPhysicalPrivacySignature(e.id, files, secondary),
+        'Aviso cargado: está en Documentos como «Aviso de Privacidad». Revisa que esté firmado y acéptalo ahí.');
+  }
+
+  Future<void> issueLink() async {
+    setState(() => busy = true);
+    try {
+      final issued = await api.issuePrivacySignLink(e.id);
+      if (mounted) setState(() => newLink = (url: frontendLink(issued['url'] as String? ?? '', 'aviso'), expiresAt: issued['expiresAt'] as String? ?? ''));
+      await load();
+    } catch (err) {
+      if (mounted) showToast(context, errorText(err));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
   }
 
   @override
@@ -804,33 +876,73 @@ class _PrivacyCardState extends State<_PrivacyCard> {
     final auth = context.watch<AuthState>();
     final s = status;
     final signed = s?['status'] == 'SIGNED';
+    // CC#45: un escaneo cargado no es firma confirmada hasta aceptarlo en Documentos.
+    final verifying = s?['status'] == 'PENDING_VERIFICATION';
+    final signedDigitally = signed && s?['signatureMethod'] == 'DIGITAL';
+    final link = s?['signLink'] as Map<String, dynamic>?;
     final canEdit = auth.can('EXPEDIENT_EDIT') || auth.can('DOCUMENT_UPLOAD');
     final beforeDocuments = e.status == 'DRAFT' || e.status == 'WAITING_PRIVACY';
+    final how = s?['signatureMethod'] == 'PHYSICAL'
+        ? 'En papel, en la oficina'
+        : s?['signatureChannel'] == 'SIGN_LINK'
+            ? 'En la liga para firmar el aviso, con firma digital'
+            : 'En su liga, con firma digital';
+    final message = newLink == null
+        ? ''
+        : 'Hola, te compartimos la liga de CENTURY 21 Genera para leer y firmar tu Aviso de Privacidad.\n'
+            'Solo sirve para firmar el aviso; no necesitas crear una cuenta. La liga es personal: no la compartas.\n\n${newLink!.url}';
     return AppCard(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const CardHeader(
           title: 'Aviso de privacidad',
-          description: 'No detiene el alta: el titular puede firmarlo en su liga o en papel en la oficina. Se necesita firmado antes del contrato.',
+          description: 'No detiene el alta: el titular puede firmarlo en una liga o en papel en la oficina. Se necesita firmado antes del contrato.',
         ),
         if (s == null)
           const MutedText('Cargando…', size: 12)
         else
           Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
-            AppBadge(signed ? 'Firmado' : 'Pendiente de firma', tone: signed ? Tone.success : Tone.warning),
-            if (signed)
+            AppBadge(signed ? 'Firmado' : verifying ? 'Firma por verificar' : 'Pendiente de firma', tone: signed ? Tone.success : Tone.warning),
+            if (signed || verifying)
               MutedText(
-                '${s['signatureMethod'] == 'PHYSICAL' ? 'En papel, en la oficina' : 'En su liga, con firma digital'} · ${formatDateTime(s['signedAt'] as String?)}'
+                '$how · ${formatDateTime(s['signedAt'] as String?)}'
                 '${s['secondaryPurposesAccepted'] == false ? ' · finalidades secundarias y promocionales: no autorizadas' : s['secondaryPurposesAccepted'] == true ? ' · finalidades secundarias y promocionales: autorizadas' : ''}',
                 size: 12,
               ),
           ]),
+        if (verifying) ...[
+          const SizedBox(height: 8),
+          const MutedText('Se cargó un archivo, pero cargarlo no confirma la firma. Ábrelo en Documentos («Aviso de Privacidad»), comprueba que esté firmado y acéptalo.', size: 11),
+        ] else if (s?['signedDocumentId'] != null) ...[
+          const SizedBox(height: 8),
+          const MutedText('El aviso firmado está en la pestaña Documentos como «Aviso de Privacidad».', size: 11),
+        ],
         if (canEdit) ...[
           const SizedBox(height: 12),
           Wrap(spacing: 6, runSpacing: 6, children: [
             if (beforeDocuments)
               Btn('Continuar sin firmar', icon: Icons.fast_forward_outlined, small: true, loading: busy, onPressed: () => act(() => api.deferPrivacySignature(e.id), 'El expediente sigue al paso de documentos. El aviso queda pendiente de firma.')),
-            Btn(signed ? 'Cargar otro aviso firmado' : 'Cargar aviso firmado', icon: Icons.upload_outlined, small: true, variant: BtnVariant.secondary, onPressed: busy ? null : uploadSigned),
+            if (!signedDigitally)
+              Btn(link?['usable'] == true ? 'Generar una liga nueva' : 'Generar liga para firmar aviso de privacidad',
+                  icon: Icons.link, small: true, variant: beforeDocuments ? BtnVariant.secondary : BtnVariant.primary, onPressed: busy ? null : issueLink),
+            Btn(signed || verifying ? 'Cargar otro aviso firmado' : 'Cargar aviso firmado', icon: Icons.upload_outlined, small: true, variant: BtnVariant.secondary, onPressed: busy ? null : uploadSigned),
           ]),
+          if (newLink != null) ...[
+            const SizedBox(height: 10),
+            MutedText('Solo sirve para leer y firmar el aviso de este expediente. Vence el ${formatDateTime(newLink!.expiresAt)} y deja de funcionar al firmarse. El aviso sigue pendiente hasta que el cliente lo firme.', size: 11),
+            const SizedBox(height: 8),
+            _ShareMessage(message: message, phone: null, subject: 'Aviso de privacidad · CENTURY 21 Genera'),
+          ] else if (link != null && !signedDigitally) ...[
+            const SizedBox(height: 8),
+            if (link['usedAt'] != null)
+              MutedText('Liga para firmar el aviso usada el ${formatDateTime(link['usedAt'] as String?)}.', size: 11)
+            else if (link['usable'] == true) ...[
+              MutedText(
+                  'Hay una liga para firmar el aviso activa (vence el ${formatDateTime(link['expiresAt'] as String?)}${link['lastOpenedAt'] != null ? '; el cliente la abrió el ${formatDateTime(link['lastOpenedAt'] as String?)}' : '; aún no se abre'}). Por seguridad no se vuelve a mostrar: genera una nueva para reenviarla.',
+                  size: 11),
+              Btn('Desactivar liga', icon: Icons.link_off, small: true, variant: BtnVariant.ghost, onPressed: busy ? null : () => act(() => api.revokePrivacySignLink(e.id), 'La liga para firmar el aviso quedó desactivada.')),
+            ] else
+              MutedText('La última liga para firmar el aviso ${link['revokedAt'] != null ? 'se desactivó' : 'venció'}. Genera una nueva si el cliente aún no lo firma.', size: 11),
+          ],
           const SizedBox(height: 6),
           const MutedText('Para imprimirlo y firmarlo en la oficina, usa "Imprimir para firma" en la versión web.', size: 11),
         ],

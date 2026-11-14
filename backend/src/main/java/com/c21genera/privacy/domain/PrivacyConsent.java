@@ -52,20 +52,39 @@ public class PrivacyConsent {
 
   private UUID signedDocumentId;
 
+  /** Control de Cambios #44: PORTAL (liga del expediente) o SIGN_LINK (liga exclusiva del aviso). */
+  @Column(length = 16)
+  private String signatureChannel;
+
   protected PrivacyConsent() {}
 
   /** Firmado a mano en la oficina: el staff cargó el escaneo como documento del expediente. */
   public void markPhysical(UUID recordedByUserId, UUID signedDocumentId) {
     this.signatureMethod = "PHYSICAL";
+    this.signatureChannel = null;
     this.recordedByUserId = recordedByUserId;
     this.signedDocumentId = signedDocumentId;
   }
 
-  /** Volvió a firmar en su liga: el registro vigente es el digital. */
-  public void markDigital() {
+  /**
+   * Volvió a firmar en su liga: el registro vigente es el digital. La constancia PDF que se guarda
+   * en los documentos del expediente se genera después (Control de Cambios #45) y se enlaza con
+   * {@link #attachSignedCopy}.
+   */
+  public void markDigital(String channel) {
     this.signatureMethod = "DIGITAL";
+    this.signatureChannel = channel;
     this.recordedByUserId = null;
     this.signedDocumentId = null;
+  }
+
+  /** Control de Cambios #45: documento del expediente con la constancia de la firma digital. */
+  public void attachSignedCopy(UUID documentId) {
+    this.signedDocumentId = documentId;
+  }
+
+  public String getSignatureChannel() {
+    return signatureChannel;
   }
 
   public String getSignatureMethod() {

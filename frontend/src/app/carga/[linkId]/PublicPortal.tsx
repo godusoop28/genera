@@ -11,7 +11,10 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { MoneyInput } from "@/components/ui/MoneyInput";
 import { SaveStatus } from "@/components/ui/SaveStatus";
 import { ORG_OFFICE_ADDRESS, ORG_OFFICE_MAPS_URL } from "@/data/organization";
-import { PRIVACY_CONSENT_TEXT, PRIVACY_SECONDARY_CONSENT_TEXT } from "@/data/privacy-reference";
+import {
+  PRIVACY_CONSENT_TEXT,
+  PRIVACY_SECONDARY_CONSENT_TEXT,
+} from "@/data/privacy-reference";
 import { ApiError } from "@/lib/api/client";
 import { PortalSurveys } from "@/components/surveys/PortalSurveys";
 import { markDocumentPrepDone } from "@/lib/api/surveys";
@@ -26,6 +29,7 @@ import {
   reportNotRecognized,
   listPublicParticipants,
   recordPrivacyConsent,
+  deferPublicPrivacy,
   removePublicCoOwner,
   renamePublicOwner,
   submitDocuments,
@@ -46,17 +50,52 @@ import { documentTypeLabel } from "@/lib/document-type-labels";
 import { moneyToRaw } from "@/lib/money";
 import { readDraft, writeDraft } from "@/lib/drafts";
 import { DraftSync, type DraftSaveState } from "@/lib/draft-sync";
-import { ACCEPTED_FILE_TYPES, UploadValidationError } from "@/lib/upload-limits";
-import { publicDraftTransport, sessionDraftStore } from "@/lib/use-server-draft";
-import { civilStatusLabels, label, maritalRegimeLabels, participantRoleLabels, returnReasonLabels, ADDRESS_PROOF_KIND_LABELS, ADDRESS_PROOF_KINDS } from "@/lib/labels";
-import { AlertTriangle, Bot, CheckCircle2, FileText, HelpCircle, Loader2, MapPin, Pencil, Plus, ScanLine, ShieldCheck, Trash2, Upload } from "lucide-react";
+import {
+  ACCEPTED_FILE_TYPES,
+  UploadValidationError,
+} from "@/lib/upload-limits";
+import {
+  publicDraftTransport,
+  sessionDraftStore,
+} from "@/lib/use-server-draft";
+import {
+  civilStatusLabels,
+  label,
+  maritalRegimeLabels,
+  participantRoleLabels,
+  returnReasonLabels,
+  ADDRESS_PROOF_KIND_LABELS,
+  ADDRESS_PROOF_KINDS,
+} from "@/lib/labels";
+import {
+  AlertTriangle,
+  Bot,
+  CheckCircle2,
+  FileText,
+  HelpCircle,
+  Loader2,
+  MapPin,
+  Pencil,
+  Plus,
+  ScanLine,
+  ShieldCheck,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const steps = ["Confirmar", "Aviso de privacidad", "Tus datos", "Documentos", "Listo"];
+const steps = [
+  "Confirmar",
+  "Aviso de privacidad",
+  "Tus datos",
+  "Documentos",
+  "Listo",
+];
 
 function initialStepFor(status: PublicExpedienteResponse["status"]): number {
   if (status === "DRAFT" || status === "WAITING_PRIVACY") return 2;
-  if (status === "WAITING_DOCUMENTS" || status === "CORRECTIONS_REQUESTED") return 4;
+  if (status === "WAITING_DOCUMENTS" || status === "CORRECTIONS_REQUESTED")
+    return 4;
   return 5;
 }
 
@@ -64,7 +103,12 @@ function initialStepFor(status: PublicExpedienteResponse["status"]): number {
 function canEditOwners(expediente: PublicExpedienteResponse): boolean {
   return (
     expediente.personType === "FISICA" &&
-    ["WAITING_DOCUMENTS", "DOCUMENTS_RECEIVED", "UNDER_REVIEW", "CORRECTIONS_REQUESTED"].includes(expediente.status)
+    [
+      "WAITING_DOCUMENTS",
+      "DOCUMENTS_RECEIVED",
+      "UNDER_REVIEW",
+      "CORRECTIONS_REQUESTED",
+    ].includes(expediente.status)
   );
 }
 
@@ -73,30 +117,42 @@ const clientStatusText: Record<PublicExpedienteResponse["status"], string> = {
   DRAFT: "Tu expediente está listo para que empieces.",
   WAITING_PRIVACY: "Falta que aceptes el aviso de privacidad.",
   WAITING_DOCUMENTS: "Falta que cargues tus documentos.",
-  DOCUMENTS_RECEIVED: "Recibimos tus documentos; nuestro equipo los está revisando.",
+  DOCUMENTS_RECEIVED:
+    "Recibimos tus documentos; nuestro equipo los está revisando.",
   UNDER_REVIEW: "Nuestro equipo está revisando tus documentos.",
-  CORRECTIONS_REQUESTED: "Hay documentos que necesitamos que corrijas. Revisa el motivo en cada uno.",
-  DOCUMENTS_APPROVED: "Tus documentos fueron aceptados. Sigue la preparación del contrato.",
-  RECEPTION_SIGNED: "Tus documentos fueron aceptados. Estamos preparando tu contrato.",
+  CORRECTIONS_REQUESTED:
+    "Hay documentos que necesitamos que corrijas. Revisa el motivo en cada uno.",
+  DOCUMENTS_APPROVED:
+    "Tus documentos fueron aceptados. Sigue la preparación del contrato.",
+  RECEPTION_SIGNED:
+    "Tus documentos fueron aceptados. Estamos preparando tu contrato.",
   CONTRACT_PREPARATION: "Estamos preparando tu contrato.",
-  READY_FOR_SIGNATURE: "Tu contrato está listo para firmarse; cada firmante recibirá su liga personal de firma.",
-  CONTRACT_SIGNED: "Tu contrato quedó firmado. Tu asesor te entregará tu tanto firmado.",
+  READY_FOR_SIGNATURE:
+    "Tu contrato está listo para firmarse; cada firmante recibirá su liga personal de firma.",
+  CONTRACT_SIGNED:
+    "Tu contrato quedó firmado. Tu asesor te entregará tu tanto firmado.",
   PROPERTY_ACCEPTED: "Tu inmueble fue aceptado. ¡Gracias!",
   PROPERTY_REJECTED: "Tu asesor se pondrá en contacto contigo.",
   CLOSED: "Este expediente está cerrado.",
 };
 
 export function PublicPortal({ token }: { token: string }) {
-  const [expediente, setExpediente] = useState<PublicExpedienteResponse | null>(null);
+  const [expediente, setExpediente] = useState<PublicExpedienteResponse | null>(
+    null,
+  );
   // Al recargar la página el cliente vuelve al paso en el que iba. (Seguro de
   // leer en el estado inicial: nada depende del paso hasta cargar el expediente.)
   const stepKey = `portal:${token}:step`;
   const [savedStep] = useState(() => {
     const saved = readDraft<{ step: number; maxReached: number }>(stepKey);
-    return saved && saved.step >= 1 && saved.step <= steps.length ? saved : null;
+    return saved && saved.step >= 1 && saved.step <= steps.length
+      ? saved
+      : null;
   });
   const [step, setStep] = useState(savedStep?.step ?? 1);
-  const [maxReached, setMaxReached] = useState(savedStep ? Math.max(savedStep.step, savedStep.maxReached) : 1);
+  const [maxReached, setMaxReached] = useState(
+    savedStep ? Math.max(savedStep.step, savedStep.maxReached) : 1,
+  );
   const [invalid, setInvalid] = useState(false);
   const [notRecognized, setNotRecognized] = useState(false);
   const [connectionError, setConnectionError] = useState(false);
@@ -114,7 +170,10 @@ export function PublicPortal({ token }: { token: string }) {
           // Solo una liga inválida o vencida se trata como tal. Un error de red o
           // del servidor (p. ej. mientras despierta) se reintenta solo, sin
           // sacar al cliente de donde iba ni perder lo que capturó.
-          if (err instanceof ApiError && [401, 403, 404, 410].includes(err.status)) {
+          if (
+            err instanceof ApiError &&
+            [401, 403, 404, 410].includes(err.status)
+          ) {
             setInvalid(true);
           } else {
             setConnectionError(true);
@@ -141,14 +200,20 @@ export function PublicPortal({ token }: { token: string }) {
   }, [connectionError, loadExpediente]);
 
   // El paso también se guarda en el servidor: al abrir la liga en otro equipo se continúa donde se iba.
-  const stepTransport = useMemo(() => publicDraftTransport(token, "portal-step"), [token]);
+  const stepTransport = useMemo(
+    () => publicDraftTransport(token, "portal-step"),
+    [token],
+  );
   useEffect(() => {
     if (savedStep) return;
     stepTransport
       .load()
       .then((payload) => {
         if (!payload) return;
-        const saved = JSON.parse(payload) as { step: number; maxReached: number };
+        const saved = JSON.parse(payload) as {
+          step: number;
+          maxReached: number;
+        };
         if (saved.step >= 1 && saved.step <= steps.length) {
           setStep(saved.step);
           setMaxReached(Math.max(saved.step, saved.maxReached));
@@ -162,22 +227,32 @@ export function PublicPortal({ token }: { token: string }) {
     setStep(next);
     setMaxReached(reached);
     writeDraft(stepKey, { step: next, maxReached: reached });
-    void stepTransport.save(JSON.stringify({ step: next, maxReached: reached })).catch(() => undefined);
+    void stepTransport
+      .save(JSON.stringify({ step: next, maxReached: reached }))
+      .catch(() => undefined);
   };
 
   // El paso guardado puede ser "Listo" de un envío anterior; si el equipo
   // devolvió o rechazó un documento, el cliente cae en "Documentos" para
   // volver a subirlo.
-  const shownStep = expediente?.status === "CORRECTIONS_REQUESTED" && step === 5 ? 4 : step;
+  const shownStep =
+    expediente?.status === "CORRECTIONS_REQUESTED" && step === 5 ? 4 : step;
 
   if (notRecognized) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-app-bg px-4 text-center">
         <div className="max-w-md">
-          <ShieldCheck className="mx-auto mb-3 h-8 w-8 text-dark-gold" aria-hidden />
-          <p className="text-sm font-medium text-obsessed">Gracias por avisarnos. Desactivamos esta liga.</p>
+          <ShieldCheck
+            className="mx-auto mb-3 h-8 w-8 text-dark-gold"
+            aria-hidden
+          />
+          <p className="text-sm font-medium text-obsessed">
+            Gracias por avisarnos. Desactivamos esta liga.
+          </p>
           <p className="mt-2 text-sm text-muted">
-            Nadie podrá cargar datos ni documentos en ella. Si esperabas una liga de CENTURY 21 Genera, pide a tu asesor que te envíe la correcta.
+            Nadie podrá cargar datos ni documentos en ella. Si esperabas una
+            liga de CENTURY 21 Genera, pide a tu asesor que te envíe la
+            correcta.
           </p>
         </div>
       </div>
@@ -188,8 +263,12 @@ export function PublicPortal({ token }: { token: string }) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-app-bg px-4 text-center">
         <div>
-          <p className="text-sm font-medium text-obsessed">Esta liga no es válida, ya venció o fue reemplazada por una nueva.</p>
-          <p className="mt-2 text-sm text-muted">Pide a tu asesor una liga nueva.</p>
+          <p className="text-sm font-medium text-obsessed">
+            Esta liga no es válida, ya venció o fue reemplazada por una nueva.
+          </p>
+          <p className="mt-2 text-sm text-muted">
+            Pide a tu asesor una liga nueva.
+          </p>
         </div>
       </div>
     );
@@ -199,9 +278,18 @@ export function PublicPortal({ token }: { token: string }) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-app-bg px-4 text-center">
         <div>
-          <p className="text-sm text-muted">{connectionError ? "No pudimos conectarnos. Reintentando en unos segundos…" : "Cargando…"}</p>
+          <p className="text-sm text-muted">
+            {connectionError
+              ? "No pudimos conectarnos. Reintentando en unos segundos…"
+              : "Cargando…"}
+          </p>
           {connectionError ? (
-            <Button variant="secondary" size="sm" className="mt-3" onClick={() => void loadExpediente()}>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="mt-3"
+              onClick={() => void loadExpediente()}
+            >
               Reintentar ahora
             </Button>
           ) : null}
@@ -229,27 +317,43 @@ export function PublicPortal({ token }: { token: string }) {
 
       <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-8 lg:px-8 lg:py-10">
         <div className="mb-2 flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold text-obsessed">Expediente {expediente.folio}</h1>
+          <h1 className="text-2xl font-semibold text-obsessed">
+            Expediente {expediente.folio}
+          </h1>
           <Badge tone="neutral">Recepción de documentos</Badge>
         </div>
-        <p className="max-w-2xl text-sm text-muted">No necesitas crear una cuenta. Esta liga es tu acceso personal: no la compartas.</p>
+        <p className="max-w-2xl text-sm text-muted">
+          No necesitas crear una cuenta. Esta liga es tu acceso personal: no la
+          compartas.
+        </p>
 
         {connectionError ? (
           <p className="mt-4 rounded-lg bg-warning-bg px-3 py-2 text-sm text-warning-text">
-            Se perdió la conexión por un momento. Lo que capturaste se conserva; reintentando…
+            Se perdió la conexión por un momento. Lo que capturaste se conserva;
+            reintentando…
           </p>
         ) : null}
 
         <div className="mt-8 rounded-2xl border border-border bg-card p-5">
-          <Stepper steps={steps} currentStep={shownStep} maxReachedStep={maxReached} onStepClick={goTo} />
+          <Stepper
+            steps={steps}
+            currentStep={shownStep}
+            maxReachedStep={maxReached}
+            onStepClick={goTo}
+          />
         </div>
 
         <PortalSurveys token={token} />
-        {expediente.status !== "DRAFT" && expediente.status !== "WAITING_PRIVACY" && privacySigned === false && shownStep !== 2 && shownStep !== 1 ? (
+        {expediente.status !== "DRAFT" &&
+        expediente.status !== "WAITING_PRIVACY" &&
+        privacySigned === false &&
+        shownStep !== 2 &&
+        shownStep !== 1 ? (
           <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-warning-text/30 bg-warning-bg p-4 text-sm text-warning-text">
             <p className="flex items-start gap-2">
               <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" aria-hidden />
-              Falta que firmes tu aviso de privacidad. Puedes hacerlo aquí o en nuestra oficina.
+              Falta que firmes tu aviso de privacidad. Puedes hacerlo aquí o en
+              nuestra oficina.
             </p>
             <Button variant="secondary" size="sm" onClick={() => goTo(2)}>
               Firmar aviso de privacidad
@@ -271,7 +375,23 @@ export function PublicPortal({ token }: { token: string }) {
               token={token}
               onContinue={() => {
                 setPrivacySigned(true);
-                goTo(privacySigned === false ? initialStepFor(expediente.status) : 3);
+                goTo(
+                  privacySigned === false
+                    ? initialStepFor(expediente.status)
+                    : 3,
+                );
+              }}
+              onSignLater={async () => {
+                // CC#44: nadie firma por el titular para poder avanzar; el aviso queda pendiente.
+                if (
+                  expediente.status === "DRAFT" ||
+                  expediente.status === "WAITING_PRIVACY"
+                ) {
+                  await deferPublicPrivacy(token);
+                  await loadExpediente();
+                }
+                setPrivacySigned(false);
+                goTo(3);
               }}
             />
           ) : null}
@@ -299,7 +419,9 @@ export function PublicPortal({ token }: { token: string }) {
             <ConfirmationStep
               token={token}
               expediente={expediente}
-              onEditOwners={canEditOwners(expediente) ? () => goTo(3) : undefined}
+              onEditOwners={
+                canEditOwners(expediente) ? () => goTo(3) : undefined
+              }
               onUploadLater={() => goTo(4)}
             />
           ) : null}
@@ -336,42 +458,76 @@ function ConfirmStep({
       await reportNotRecognized(token);
       onNotRecognized();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No pudimos registrar tu aviso. Intenta de nuevo o avisa a tu asesor.");
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "No pudimos registrar tu aviso. Intenta de nuevo o avisa a tu asesor.",
+      );
       setReporting(false);
     }
   };
 
   return (
     <Card>
-      <CardHeader title="Confirma que este es tu expediente" description="Mostramos los datos parcialmente para proteger tu privacidad." />
+      <CardHeader
+        title="Confirma que este es tu expediente"
+        description="Mostramos los datos parcialmente para proteger tu privacidad."
+      />
       <dl className="grid gap-3 text-sm sm:grid-cols-2">
         <div className="rounded-lg bg-app-bg p-3">
           <dt className="text-xs text-muted">Titular(es)</dt>
-          <dd className="font-medium text-obsessed">{expediente.maskedOwnerName}</dd>
+          <dd className="font-medium text-obsessed">
+            {expediente.maskedOwnerName}
+          </dd>
         </div>
         <div className="rounded-lg bg-app-bg p-3">
           <dt className="text-xs text-muted">Inmueble</dt>
-          <dd className="font-medium text-obsessed">{expediente.maskedPropertyAddress || "Sin referencia registrada"}</dd>
+          <dd className="font-medium text-obsessed">
+            {expediente.maskedPropertyAddress || "Sin referencia registrada"}
+          </dd>
         </div>
       </dl>
-      <p className="mt-4 text-sm text-muted">{clientStatusText[expediente.status]}</p>
+      <p className="mt-4 text-sm text-muted">
+        {clientStatusText[expediente.status]}
+      </p>
       {confirmingNotMine ? (
-        <div className="mt-5 rounded-xl border border-warning-text/30 bg-warning-bg p-4" role="region" aria-label="Confirmar que no reconoces el expediente">
-          <p className="text-sm font-medium text-warning-text">¿Seguro que este expediente no es tuyo?</p>
+        <div
+          className="mt-5 rounded-xl border border-warning-text/30 bg-warning-bg p-4"
+          role="region"
+          aria-label="Confirmar que no reconoces el expediente"
+        >
+          <p className="text-sm font-medium text-warning-text">
+            ¿Seguro que este expediente no es tuyo?
+          </p>
           <p className="mt-1 text-sm text-warning-text">
-            Desactivaremos esta liga para que nadie cargue datos en ella y tu asesor verá tu aviso. Si sí era tuya, tendrá que enviarte una nueva.
+            Desactivaremos esta liga para que nadie cargue datos en ella y tu
+            asesor verá tu aviso. Si sí era tuya, tendrá que enviarte una nueva.
           </p>
           {error ? (
-            <p role="alert" className="mt-2 text-sm font-medium text-danger-text">
+            <p
+              role="alert"
+              className="mt-2 text-sm font-medium text-danger-text"
+            >
               {error}
             </p>
           ) : null}
           <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
-            <Button variant="secondary" onClick={() => setConfirmingNotMine(false)} disabled={reporting}>
+            <Button
+              variant="secondary"
+              onClick={() => setConfirmingNotMine(false)}
+              disabled={reporting}
+            >
               Cancelar
             </Button>
-            <Button variant="dark" onClick={reportNotMine} disabled={reporting} aria-busy={reporting}>
-              {reporting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+            <Button
+              variant="dark"
+              onClick={reportNotMine}
+              disabled={reporting}
+              aria-busy={reporting}
+            >
+              {reporting ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              ) : null}
               Sí, desactivar esta liga
             </Button>
           </div>
@@ -379,11 +535,19 @@ function ConfirmStep({
       ) : (
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="flex items-start gap-2 text-sm text-muted">
-            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-dark-gold" aria-hidden />
-            Si no reconoces al titular o el inmueble, no continúes: la liga podría no ser para ti.
+            <ShieldCheck
+              className="mt-0.5 h-4 w-4 shrink-0 text-dark-gold"
+              aria-hidden
+            />
+            Si no reconoces al titular o el inmueble, no continúes: la liga
+            podría no ser para ti.
           </p>
           <div className="flex shrink-0 flex-col-reverse gap-2 sm:flex-row">
-            <Button variant="secondary" size="lg" onClick={() => setConfirmingNotMine(true)}>
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={() => setConfirmingNotMine(true)}
+            >
               No reconozco este expediente
             </Button>
             <Button size="lg" onClick={onContinue}>
@@ -396,10 +560,21 @@ function ConfirmStep({
   );
 }
 
-function PrivacyStep({ token, onContinue }: { token: string; onContinue: () => void }) {
+function PrivacyStep({
+  token,
+  onContinue,
+  onSignLater,
+}: {
+  token: string;
+  onContinue: () => void;
+  onSignLater: () => Promise<void>;
+}) {
+  const [deferring, setDeferring] = useState(false);
   const [mainConsent, setMainConsent] = useState(false);
   const [secondaryConsent, setSecondaryConsent] = useState(false);
-  const [signatureDataUrl, setSignatureDataUrl] = useState<string | undefined>(undefined);
+  const [signatureDataUrl, setSignatureDataUrl] = useState<string | undefined>(
+    undefined,
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -407,10 +582,19 @@ function PrivacyStep({ token, onContinue }: { token: string; onContinue: () => v
     setSubmitting(true);
     setError(null);
     try {
-      await recordPrivacyConsent(token, mainConsent, mainConsent && secondaryConsent, signatureDataUrl);
+      await recordPrivacyConsent(
+        token,
+        mainConsent,
+        mainConsent && secondaryConsent,
+        signatureDataUrl,
+      );
       onContinue();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No se pudo registrar tu consentimiento. Intenta de nuevo.");
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "No se pudo registrar tu consentimiento. Intenta de nuevo.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -442,19 +626,68 @@ function PrivacyStep({ token, onContinue }: { token: string; onContinue: () => v
               onChange={(e) => setSecondaryConsent(e.target.checked)}
               className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-[var(--color-c21-dark-gold)]"
             />
-            <span className="text-sm text-obsessed">{PRIVACY_SECONDARY_CONSENT_TEXT}</span>
+            <span className="text-sm text-obsessed">
+              {PRIVACY_SECONDARY_CONSENT_TEXT}
+            </span>
           </label>
-          <p className="mt-1.5 pl-7 text-xs text-muted">Se marca al aceptar el aviso; puedes desmarcarla si no autorizas esas finalidades. No bloquea el proceso.</p>
+          <p className="mt-1.5 pl-7 text-xs text-muted">
+            Se marca al aceptar el aviso; puedes desmarcarla si no autorizas
+            esas finalidades. No bloquea el proceso.
+          </p>
         </div>
         <div className="mt-5 border-t border-border pt-4">
-          <p className="mb-2 text-sm font-medium text-obsessed">Firma del titular</p>
-          <SignatureMock onSign={setSignatureDataUrl} signed={Boolean(signatureDataUrl)} />
+          <p className="mb-2 text-sm font-medium text-obsessed">
+            Firma del titular
+          </p>
+          <SignatureMock
+            onSign={setSignatureDataUrl}
+            signed={Boolean(signatureDataUrl)}
+          />
         </div>
       </Card>
       {error ? <p className="text-sm text-danger-text">{error}</p> : null}
-      <div className="flex justify-end">
-        <Button size="lg" disabled={!mainConsent || !signatureDataUrl || submitting} onClick={handleContinue}>
-          {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-xs text-muted sm:max-w-sm">
+          <Button
+            variant="ghost"
+            disabled={submitting || deferring}
+            onClick={async () => {
+              setDeferring(true);
+              setError(null);
+              try {
+                await onSignLater();
+              } catch (err) {
+                setError(
+                  err instanceof ApiError
+                    ? err.message
+                    : "No se pudo continuar. Intenta de nuevo.",
+                );
+              } finally {
+                setDeferring(false);
+              }
+            }}
+          >
+            {deferring ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            ) : null}
+            Firmar después
+          </Button>
+          <p className="mt-1">
+            Si el titular no está presente, continúa sin firmar: el aviso queda
+            pendiente y tu asesor le enviará una liga para firmarlo. Nadie debe
+            firmar en su nombre.
+          </p>
+        </div>
+        <Button
+          size="lg"
+          disabled={
+            !mainConsent || !signatureDataUrl || submitting || deferring
+          }
+          onClick={handleContinue}
+        >
+          {submitting ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          ) : null}
           Continuar
         </Button>
       </div>
@@ -467,7 +700,10 @@ interface ClientDataDraft {
   phone: string;
   /** CC#34: valor crudo ("4500000"); "" = vacío. Ausente en borradores anteriores. */
   suggestedPrice?: string;
-  civil: Record<string, Pick<PublicParticipantResponse, "civilStatus" | "maritalRegime">>;
+  civil: Record<
+    string,
+    Pick<PublicParticipantResponse, "civilStatus" | "maritalRegime">
+  >;
 }
 
 function ClientDataStep({
@@ -490,7 +726,9 @@ function ClientDataStep({
   const [phone, setPhone] = useState("");
   // CC#34: precio de venta sugerido por el cliente (opcional e informativo).
   const [suggestedPrice, setSuggestedPrice] = useState("");
-  const [participants, setParticipants] = useState<PublicParticipantResponse[]>([]);
+  const [participants, setParticipants] = useState<PublicParticipantResponse[]>(
+    [],
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -513,7 +751,11 @@ function ClientDataStep({
       },
     });
     syncRef.current = sync;
-    Promise.all([getClientData(token), listPublicParticipants(token), sync.restore()])
+    Promise.all([
+      getClientData(token),
+      listPublicParticipants(token),
+      sync.restore(),
+    ])
       .then(([d, p, payload]) => {
         if (!active) return;
         let draft: ClientDataDraft | null = null;
@@ -524,10 +766,24 @@ function ClientDataStep({
         }
         setEmail(draft?.email ?? d.email ?? "");
         setPhone(draft?.phone ?? d.phone ?? "");
-        setSuggestedPrice(draft?.suggestedPrice ?? moneyToRaw(d.suggestedPrice));
+        setSuggestedPrice(
+          draft?.suggestedPrice ?? moneyToRaw(d.suggestedPrice),
+        );
         // Solo los titulares persona física declaran estado civil aquí.
-        const owners = personType === "FISICA" ? p.filter((participant) => participant.role === "OWNER" || participant.role === "CO_OWNER") : [];
-        setParticipants(owners.map((participant) => ({ ...participant, ...(draft?.civil?.[participant.id] ?? {}) })));
+        const owners =
+          personType === "FISICA"
+            ? p.filter(
+                (participant) =>
+                  participant.role === "OWNER" ||
+                  participant.role === "CO_OWNER",
+              )
+            : [];
+        setParticipants(
+          owners.map((participant) => ({
+            ...participant,
+            ...(draft?.civil?.[participant.id] ?? {}),
+          })),
+        );
         setError(null);
         setLoaded(true);
       })
@@ -549,22 +805,38 @@ function ClientDataStep({
         email,
         phone,
         suggestedPrice,
-        civil: Object.fromEntries(participants.map((p) => [p.id, { civilStatus: p.civilStatus, maritalRegime: p.maritalRegime }])),
+        civil: Object.fromEntries(
+          participants.map((p) => [
+            p.id,
+            { civilStatus: p.civilStatus, maritalRegime: p.maritalRegime },
+          ]),
+        ),
       } satisfies ClientDataDraft),
     );
   }, [loaded, email, phone, suggestedPrice, participants]);
 
-  const setParticipant = (id: string, patch: Partial<PublicParticipantResponse>) =>
-    setParticipants((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+  const setParticipant = (
+    id: string,
+    patch: Partial<PublicParticipantResponse>,
+  ) =>
+    setParticipants((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+    );
 
-  const civilStatusMissing = personType === "FISICA" && participants.some((p) => !p.civilStatus);
-  const suggestedPriceError = asksSuggestedPrice && suggestedPrice !== "" && !(Number(suggestedPrice) > 0) ? "Escribe un importe mayor a cero o deja el campo vacío." : undefined;
+  const civilStatusMissing =
+    personType === "FISICA" && participants.some((p) => !p.civilStatus);
+  const suggestedPriceError =
+    asksSuggestedPrice && suggestedPrice !== "" && !(Number(suggestedPrice) > 0)
+      ? "Escribe un importe mayor a cero o deja el campo vacío."
+      : undefined;
 
   // Corrección de propietarios: se guarda al momento en el servidor, que
   // recalcula qué documentos pedir (p. ej. los del copropietario agregado).
   const [ownerBusy, setOwnerBusy] = useState(false);
   const [ownerError, setOwnerError] = useState<string | null>(null);
-  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(
+    null,
+  );
   const [newCoOwner, setNewCoOwner] = useState<string | null>(null);
 
   const runOwnerChange = async (change: () => Promise<void>) => {
@@ -574,7 +846,11 @@ function ClientDataStep({
       await change();
       onOwnersChanged();
     } catch (err) {
-      setOwnerError(err instanceof ApiError ? err.message : "No se pudo guardar el cambio. Intenta de nuevo.");
+      setOwnerError(
+        err instanceof ApiError
+          ? err.message
+          : "No se pudo guardar el cambio. Intenta de nuevo.",
+      );
     } finally {
       setOwnerBusy(false);
     }
@@ -607,18 +883,32 @@ function ClientDataStep({
       await updateClientData(
         token,
         asksSuggestedPrice
-          ? { email, phone, suggestedPrice: suggestedPrice || null, clearSuggestedPrice: suggestedPrice === "" }
+          ? {
+              email,
+              phone,
+              suggestedPrice: suggestedPrice || null,
+              clearSuggestedPrice: suggestedPrice === "",
+            }
           : { email, phone },
       );
       for (const p of participants) {
         if (p.civilStatus) {
-          await declareCivilStatus(token, p.id, p.civilStatus, p.civilStatus === "CASADO" ? p.maritalRegime : null);
+          await declareCivilStatus(
+            token,
+            p.id,
+            p.civilStatus,
+            p.civilStatus === "CASADO" ? p.maritalRegime : null,
+          );
         }
       }
       await syncRef.current?.clear();
       onContinue();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No se pudo guardar tu información. Intenta de nuevo.");
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "No se pudo guardar tu información. Intenta de nuevo.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -626,14 +916,19 @@ function ClientDataStep({
 
   return (
     <Card>
-      <CardHeader title="Tus datos" description="Los usamos para avisarte del avance de tu expediente y para saber qué documentos pedirte." />
+      <CardHeader
+        title="Tus datos"
+        description="Los usamos para avisarte del avance de tu expediente y para saber qué documentos pedirte."
+      />
       {!loaded ? (
         <p className="text-sm text-muted">{error ?? "Cargando…"}</p>
       ) : (
         <div className="flex flex-col gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-medium tracking-wide text-muted uppercase">Correo electrónico</label>
+              <label className="mb-1 block text-xs font-medium tracking-wide text-muted uppercase">
+                Correo electrónico
+              </label>
               <input
                 type="email"
                 value={email}
@@ -643,7 +938,9 @@ function ClientDataStep({
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium tracking-wide text-muted uppercase">Teléfono</label>
+              <label className="mb-1 block text-xs font-medium tracking-wide text-muted uppercase">
+                Teléfono
+              </label>
               <input
                 type="tel"
                 value={phone}
@@ -666,14 +963,17 @@ function ClientDataStep({
                 containerClassName="sm:max-w-sm"
               />
               <p className="mt-2 text-xs text-muted">
-                Este precio es únicamente informativo y no establece el precio de publicación ni el precio definitivo de venta del inmueble.
+                Este precio es únicamente informativo y no establece el precio
+                de publicación ni el precio definitivo de venta del inmueble.
               </p>
             </div>
           ) : null}
 
           {personType === "FISICA" && participants.length > 0 ? (
             <div className="border-t border-border pt-4">
-              <p className="text-sm font-medium text-obsessed">Propietarios y su estado civil</p>
+              <p className="text-sm font-medium text-obsessed">
+                Propietarios y su estado civil
+              </p>
               <p className="mb-3 text-xs text-muted">
                 Si alguno está casado se le pedirá su acta de matrimonio.
                 {ownersEditable
@@ -682,21 +982,37 @@ function ClientDataStep({
               </p>
               <div className="flex flex-col gap-3">
                 {participants.map((p) => (
-                  <div key={p.id} className="grid gap-2 rounded-lg border border-border p-3 sm:grid-cols-3 sm:items-center">
+                  <div
+                    key={p.id}
+                    className="grid gap-2 rounded-lg border border-border p-3 sm:grid-cols-3 sm:items-center"
+                  >
                     {renaming?.id === p.id ? (
                       <div className="flex flex-col gap-2 sm:col-span-3 sm:flex-row sm:items-center">
                         <input
                           autoFocus
                           value={renaming.name}
-                          onChange={(e) => setRenaming({ id: p.id, name: e.target.value })}
+                          onChange={(e) =>
+                            setRenaming({ id: p.id, name: e.target.value })
+                          }
                           placeholder="Nombre completo correcto"
                           className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-gold"
                         />
                         <div className="flex gap-2">
-                          <Button size="sm" disabled={!renaming.name.trim() || ownerBusy} onClick={() => void renameOwner(p.id, renaming.name)}>
+                          <Button
+                            size="sm"
+                            disabled={!renaming.name.trim() || ownerBusy}
+                            onClick={() =>
+                              void renameOwner(p.id, renaming.name)
+                            }
+                          >
                             Guardar
                           </Button>
-                          <Button variant="secondary" size="sm" disabled={ownerBusy} onClick={() => setRenaming(null)}>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={ownerBusy}
+                            onClick={() => setRenaming(null)}
+                          >
                             Cancelar
                           </Button>
                         </div>
@@ -704,8 +1020,12 @@ function ClientDataStep({
                     ) : null}
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <span className="block text-sm font-medium text-obsessed">{p.displayName}</span>
-                        <span className="text-xs text-muted">{participantRoleLabels[p.role]}</span>
+                        <span className="block text-sm font-medium text-obsessed">
+                          {p.displayName}
+                        </span>
+                        <span className="text-xs text-muted">
+                          {participantRoleLabels[p.role]}
+                        </span>
                       </div>
                       {ownersEditable && renaming?.id !== p.id ? (
                         <div className="flex shrink-0 gap-1">
@@ -736,7 +1056,12 @@ function ClientDataStep({
                     </div>
                     <select
                       value={p.civilStatus ?? ""}
-                      onChange={(e) => setParticipant(p.id, { civilStatus: (e.target.value || null) as BackendCivilStatus | null })}
+                      onChange={(e) =>
+                        setParticipant(p.id, {
+                          civilStatus: (e.target.value ||
+                            null) as BackendCivilStatus | null,
+                        })
+                      }
                       className="rounded-lg border border-border bg-card px-3 py-2 text-sm"
                     >
                       <option value="">Estado civil…</option>
@@ -749,7 +1074,12 @@ function ClientDataStep({
                     {p.civilStatus === "CASADO" ? (
                       <select
                         value={p.maritalRegime ?? ""}
-                        onChange={(e) => setParticipant(p.id, { maritalRegime: (e.target.value || null) as BackendMaritalRegime | null })}
+                        onChange={(e) =>
+                          setParticipant(p.id, {
+                            maritalRegime: (e.target.value ||
+                              null) as BackendMaritalRegime | null,
+                          })
+                        }
                         className="rounded-lg border border-border bg-card px-3 py-2 text-sm"
                       >
                         <option value="">Régimen (si lo sabes)…</option>
@@ -765,7 +1095,13 @@ function ClientDataStep({
               </div>
               {ownersEditable ? (
                 newCoOwner === null ? (
-                  <Button variant="secondary" size="sm" className="mt-3" disabled={ownerBusy} onClick={() => setNewCoOwner("")}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="mt-3"
+                    disabled={ownerBusy}
+                    onClick={() => setNewCoOwner("")}
+                  >
                     <Plus className="h-4 w-4" aria-hidden />
                     Agregar copropietario
                   </Button>
@@ -779,26 +1115,54 @@ function ClientDataStep({
                       className="flex-1 rounded-lg border border-border bg-card px-3 py-2 text-sm outline-none focus:border-gold"
                     />
                     <div className="flex gap-2">
-                      <Button size="sm" disabled={!newCoOwner.trim() || ownerBusy} onClick={() => void addCoOwner(newCoOwner)}>
-                        {ownerBusy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+                      <Button
+                        size="sm"
+                        disabled={!newCoOwner.trim() || ownerBusy}
+                        onClick={() => void addCoOwner(newCoOwner)}
+                      >
+                        {ownerBusy ? (
+                          <Loader2
+                            className="h-4 w-4 animate-spin"
+                            aria-hidden
+                          />
+                        ) : null}
                         Agregar
                       </Button>
-                      <Button variant="secondary" size="sm" disabled={ownerBusy} onClick={() => setNewCoOwner(null)}>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={ownerBusy}
+                        onClick={() => setNewCoOwner(null)}
+                      >
                         Cancelar
                       </Button>
                     </div>
                   </div>
                 )
               ) : null}
-              {ownerError ? <p className="mt-2 text-sm text-danger-text">{ownerError}</p> : null}
+              {ownerError ? (
+                <p className="mt-2 text-sm text-danger-text">{ownerError}</p>
+              ) : null}
             </div>
           ) : null}
 
           {error ? <p className="text-sm text-danger-text">{error}</p> : null}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <SaveStatus status={draftStatus} lastSavedAt={draftSavedAt} />
-            <Button size="lg" disabled={!email.trim() || !phone.trim() || civilStatusMissing || Boolean(suggestedPriceError) || submitting} onClick={handleContinue}>
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+            <Button
+              size="lg"
+              disabled={
+                !email.trim() ||
+                !phone.trim() ||
+                civilStatusMissing ||
+                Boolean(suggestedPriceError) ||
+                submitting
+              }
+              onClick={handleContinue}
+            >
+              {submitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              ) : null}
               Continuar
             </Button>
           </div>
@@ -817,13 +1181,19 @@ function DocumentsStep({
   status: PublicExpedienteResponse["status"];
   onSubmitted: () => Promise<void>;
 }) {
-  const [documents, setDocuments] = useState<PublicDocumentResponse[] | null>(null);
-  const [participants, setParticipants] = useState<PublicParticipantResponse[]>([]);
+  const [documents, setDocuments] = useState<PublicDocumentResponse[] | null>(
+    null,
+  );
+  const [participants, setParticipants] = useState<PublicParticipantResponse[]>(
+    [],
+  );
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   // Control de Cambios #3: antes de la primera carga se explica cómo preparar los documentos.
   const preparedKey = `portal:${token}:prepared`;
-  const [prepared, setPrepared] = useState(() => readDraft<boolean>(preparedKey) === true);
+  const [prepared, setPrepared] = useState(
+    () => readDraft<boolean>(preparedKey) === true,
+  );
 
   const load = useCallback(() => {
     listPublicDocuments(token)
@@ -833,21 +1203,35 @@ function DocumentsStep({
 
   useEffect(() => {
     load();
-    listPublicParticipants(token).then(setParticipants).catch(() => undefined);
+    listPublicParticipants(token)
+      .then(setParticipants)
+      .catch(() => undefined);
     const timer = setInterval(load, 6000);
     return () => clearInterval(timer);
   }, [load, token]);
 
-  const names = Object.fromEntries(participants.map((p) => [p.id, p.displayName]));
+  const names = Object.fromEntries(
+    participants.map((p) => [p.id, p.displayName]),
+  );
   // Lo que el asesor dejó para después (y aún no se sube) no impide enviar lo demás.
-  const isLater = (d: PublicDocumentResponse) => d.required && (d.deferred || Boolean(d.exception) || Boolean(d.markedPending)) && d.status === "PENDING";
+  const isLater = (d: PublicDocumentResponse) =>
+    d.required &&
+    (d.deferred || Boolean(d.exception) || Boolean(d.markedPending)) &&
+    d.status === "PENDING";
   const later = (documents ?? []).filter(isLater);
   const now = (documents ?? []).filter((d) => !isLater(d));
   const required = now.filter((d) => d.required);
   // Solo se le pide corregir al cliente lo que el equipo devolvió o lo que de verdad no se pudo leer.
-  const toFix = (documents ?? []).filter((d) => d.status === "RETURNED" || d.status === "REJECTED" || d.qualityIssue || d.updateRequestNote);
+  const toFix = (documents ?? []).filter(
+    (d) =>
+      d.status === "RETURNED" ||
+      d.status === "REJECTED" ||
+      d.qualityIssue ||
+      d.updateRequestNote,
+  );
   const [savedNotice, setSavedNotice] = useState(false);
-  const allRequiredUploaded = documents !== null && required.every((d) => d.status !== "PENDING");
+  const allRequiredUploaded =
+    documents !== null && required.every((d) => d.status !== "PENDING");
   // CC#37: qué falta para poder enviar (los que el asesor dejó para después no cuentan).
   const missing = required.filter((d) => d.status === "PENDING");
   const canSubmit = status === "WAITING_DOCUMENTS";
@@ -860,7 +1244,11 @@ function DocumentsStep({
       await submitDocuments(token);
       await onSubmitted();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "No se pudo enviar tu documentación. Intenta de nuevo.");
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "No se pudo enviar tu documentación. Intenta de nuevo.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -874,7 +1262,9 @@ function DocumentsStep({
           setPrepared(true);
           // Control de Cambios #28, punto de contacto 2 (si está activo, aparece la encuesta en el portal).
           markDocumentPrepDone(token)
-            .then(() => window.dispatchEvent(new Event("portal-surveys-refresh")))
+            .then(() =>
+              window.dispatchEvent(new Event("portal-surveys-refresh")),
+            )
             .catch(() => undefined);
         }}
       />
@@ -887,7 +1277,9 @@ function DocumentsStep({
         <div className="flex items-start gap-2 rounded-2xl border border-warning-text/30 bg-warning-bg p-4 text-sm text-warning-text">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden />
           <p>
-            {toFix.length === 1 ? "Hay 1 documento que necesitamos que corrijas o actualices." : `Hay ${toFix.length} documentos que necesitamos que corrijas o actualices.`}{" "}
+            {toFix.length === 1
+              ? "Hay 1 documento que necesitamos que corrijas o actualices."
+              : `Hay ${toFix.length} documentos que necesitamos que corrijas o actualices.`}{" "}
             Abajo te decimos cuál y por qué.
           </p>
         </div>
@@ -907,7 +1299,9 @@ function DocumentsStep({
                 key={doc.id}
                 token={token}
                 document={doc}
-                participantName={doc.participantId ? names[doc.participantId] : undefined}
+                participantName={
+                  doc.participantId ? names[doc.participantId] : undefined
+                }
                 onUploaded={load}
               />
             ))}
@@ -927,7 +1321,9 @@ function DocumentsStep({
                 key={doc.id}
                 token={token}
                 document={doc}
-                participantName={doc.participantId ? names[doc.participantId] : undefined}
+                participantName={
+                  doc.participantId ? names[doc.participantId] : undefined
+                }
                 onUploaded={load}
               />
             ))}
@@ -940,13 +1336,22 @@ function DocumentsStep({
 
       <Card>
         <div className="flex items-start gap-3">
-          <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-dark-gold" aria-hidden />
+          <MapPin
+            className="mt-0.5 h-5 w-5 shrink-0 text-dark-gold"
+            aria-hidden
+          />
           <div>
-            <p className="text-sm font-medium text-obsessed">¿No tienes tus documentos a la mano o no puedes subirlos?</p>
-            <p className="mt-1 text-sm text-muted">
-              Puedes acudir a nuestra oficina con tus documentos originales y nosotros los escaneamos por ti. También puedes pedirle ayuda a tu asesor.
+            <p className="text-sm font-medium text-obsessed">
+              ¿No tienes tus documentos a la mano o no puedes subirlos?
             </p>
-            <p className="mt-2 text-sm font-medium text-obsessed">{ORG_OFFICE_ADDRESS}</p>
+            <p className="mt-1 text-sm text-muted">
+              Puedes acudir a nuestra oficina con tus documentos originales y
+              nosotros los escaneamos por ti. También puedes pedirle ayuda a tu
+              asesor.
+            </p>
+            <p className="mt-2 text-sm font-medium text-obsessed">
+              {ORG_OFFICE_ADDRESS}
+            </p>
             <a
               href={ORG_OFFICE_MAPS_URL}
               target="_blank"
@@ -963,16 +1368,26 @@ function DocumentsStep({
       {canSubmit ? (
         <Card>
           <div className="flex items-start gap-3">
-            <HelpCircle className="mt-0.5 h-5 w-5 shrink-0 text-dark-gold" aria-hidden />
+            <HelpCircle
+              className="mt-0.5 h-5 w-5 shrink-0 text-dark-gold"
+              aria-hidden
+            />
             <div className="text-sm">
-              <p className="font-medium text-obsessed">¿Te falta algún documento o no sabes cómo continuar?</p>
-              <p className="mt-1 text-muted">
-                Si por alguna razón no cuentas con uno de los documentos solicitados, contacta a tu asesor para que te indique cómo continuar.
+              <p className="font-medium text-obsessed">
+                ¿Te falta algún documento o no sabes cómo continuar?
               </p>
               <p className="mt-1 text-muted">
-                Subir los archivos no significa que ya los hayas enviado. Para completar la entrega, presiona &apos;Enviar documentos&apos; cuando el botón
-                esté habilitado y espera la confirmación del sistema. Si guardas tu avance para continuar después, tus archivos se conservan, pero eso no
-                equivale a confirmar el envío.
+                Si por alguna razón no cuentas con uno de los documentos
+                solicitados, contacta a tu asesor para que te indique cómo
+                continuar.
+              </p>
+              <p className="mt-1 text-muted">
+                Subir los archivos no significa que ya los hayas enviado. Para
+                completar la entrega, presiona &apos;Enviar documentos&apos;
+                cuando el botón esté habilitado y espera la confirmación del
+                sistema. Si guardas tu avance para continuar después, tus
+                archivos se conservan, pero eso no equivale a confirmar el
+                envío.
               </p>
             </div>
           </div>
@@ -980,7 +1395,10 @@ function DocumentsStep({
       ) : null}
 
       {error ? (
-        <p role="alert" className="rounded-xl bg-danger-bg px-4 py-3 text-sm text-danger-text">
+        <p
+          role="alert"
+          className="rounded-xl bg-danger-bg px-4 py-3 text-sm text-danger-text"
+        >
           {error} Los archivos que ya subiste se conservan.
         </p>
       ) : null}
@@ -989,8 +1407,11 @@ function DocumentsStep({
         <div className="flex items-start gap-2 rounded-2xl border border-success-text/30 bg-success-bg p-4 text-sm text-success-text">
           <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" aria-hidden />
           <p>
-            Tu avance quedó guardado: {(documents ?? []).filter((d) => d.currentVersionNumber > 0).length} documento(s) recibido(s). Puedes cerrar esta
-            página y continuar después desde esta misma liga; no se pierde nada de lo que ya subiste.
+            Tu avance quedó guardado:{" "}
+            {(documents ?? []).filter((d) => d.currentVersionNumber > 0).length}{" "}
+            documento(s) recibido(s). Puedes cerrar esta página y continuar
+            después desde esta misma liga; no se pierde nada de lo que ya
+            subiste.
           </p>
         </div>
       ) : null}
@@ -1001,43 +1422,63 @@ function DocumentsStep({
             <Button variant="secondary" onClick={() => setSavedNotice(true)}>
               Guardar avance y continuar después
             </Button>
-            <p className="text-xs text-muted">Conserva lo que subiste; todavía no se envía.</p>
+            <p className="text-xs text-muted">
+              Conserva lo que subiste; todavía no se envía.
+            </p>
           </div>
           <div className="flex flex-col gap-2 sm:items-end">
             {documents !== null && missing.length > 0 ? (
-              <div className="rounded-lg bg-app-bg px-3 py-2 text-sm text-obsessed sm:max-w-md" role="status">
+              <div
+                className="rounded-lg bg-app-bg px-3 py-2 text-sm text-obsessed sm:max-w-md"
+                role="status"
+              >
                 <p className="font-medium">
-                  {missing.length === 1 ? "Falta 1 documento para poder enviar:" : `Faltan ${missing.length} documentos para poder enviar:`}
+                  {missing.length === 1
+                    ? "Falta 1 documento para poder enviar:"
+                    : `Faltan ${missing.length} documentos para poder enviar:`}
                 </p>
                 <ul className="ml-5 mt-1 list-disc text-muted">
                   {missing.map((d) => (
                     <li key={d.id}>
                       {d.customName ?? documentTypeLabel(d.type)}
-                      {d.participantId && names[d.participantId] ? ` — ${names[d.participantId]}` : ""}
+                      {d.participantId && names[d.participantId]
+                        ? ` — ${names[d.participantId]}`
+                        : ""}
                     </li>
                   ))}
                 </ul>
                 <p className="mt-1 text-xs text-muted">
-                  Si no cuentas con alguno, contacta a tu asesor{later.length > 0 ? ". Los de \"Puedes subirlos después\" no impiden enviar" : ""}.
+                  Si no cuentas con alguno, contacta a tu asesor
+                  {later.length > 0
+                    ? '. Los de "Puedes subirlos después" no impiden enviar'
+                    : ""}
+                  .
                 </p>
               </div>
             ) : null}
             <Button
               size="lg"
               variant={allRequiredUploaded ? "primary" : "ghost"}
-              className={allRequiredUploaded ? "w-full sm:w-auto" : "w-full border border-border bg-app-bg text-obsessed/70 sm:w-auto"}
+              className={
+                allRequiredUploaded
+                  ? "w-full sm:w-auto"
+                  : "w-full border border-border bg-app-bg text-obsessed/70 sm:w-auto"
+              }
               disabled={!allRequiredUploaded || submitting}
               aria-disabled={!allRequiredUploaded || submitting}
               onClick={handleSubmit}
             >
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+              {submitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              ) : null}
               {submitting ? "Enviando documentos…" : "Enviar documentos"}
             </Button>
           </div>
         </div>
       ) : (
         <p className="text-right text-sm text-muted">
-          Tu documentación ya fue enviada. Si corriges un documento, nuestro equipo lo revisará automáticamente; no necesitas volver a enviar.
+          Tu documentación ya fue enviada. Si corriges un documento, nuestro
+          equipo lo revisará automáticamente; no necesitas volver a enviar.
         </p>
       )}
     </div>
@@ -1063,18 +1504,28 @@ function PropertyPhotosCard({ token }: { token: string }) {
       <PhotoPicker
         limits={data.limits}
         buttonLabel="Agregar fotos de mi propiedad"
-        onUpload={async (files, onProgress) => setData(await uploadPublicPhotos(token, files, onProgress))}
+        onUpload={async (files, onProgress) =>
+          setData(await uploadPublicPhotos(token, files, onProgress))
+        }
       />
       {data.photos.length > 0 ? (
         <div className="mt-4">
           <p className="mb-2 text-sm font-medium text-obsessed">
-            {data.photos.length === 1 ? "1 foto guardada" : `${data.photos.length} fotos guardadas`} · se conservan si sales y vuelves con esta liga
+            {data.photos.length === 1
+              ? "1 foto guardada"
+              : `${data.photos.length} fotos guardadas`}{" "}
+            · se conservan si sales y vuelves con esta liga
           </p>
           <ul className="grid grid-cols-3 gap-2 sm:grid-cols-6">
             {data.photos.map((photo) => (
               <li key={photo.id}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={photo.url ?? ""} alt={photo.originalFilename ?? "Foto"} loading="lazy" className="aspect-square w-full rounded-lg object-cover" />
+                <img
+                  src={photo.url ?? ""}
+                  alt={photo.originalFilename ?? "Foto"}
+                  loading="lazy"
+                  className="aspect-square w-full rounded-lg object-cover"
+                />
               </li>
             ))}
           </ul>
@@ -1087,25 +1538,81 @@ function PropertyPhotosCard({ token }: { token: string }) {
 function PrepareDocuments({ onContinue }: { onContinue: () => void }) {
   const [read, setRead] = useState(false);
   const tips = [
-    { icon: FileText, text: <>Puedes subir tus archivos en <strong>PDF o fotografía</strong> (JPG o PNG). Las fotos del iPhone también funcionan.</> },
-    { icon: ScanLine, text: <>Los documentos deben estar <strong>bien escaneados o fotografiados</strong>: completos, sin cortes, sombras ni partes borrosas.</> },
-    { icon: CheckCircle2, text: <>Asegúrate de que el texto se <strong>lea con claridad</strong>.</> },
-    { icon: Bot, text: <>Nuestra <strong>inteligencia artificial revisará automáticamente</strong> cada documento.</> },
-    { icon: AlertTriangle, text: <>Si un documento no cumple, <strong>te avisaremos aquí</strong> para que lo vuelvas a subir.</>, warn: true },
+    {
+      icon: FileText,
+      text: (
+        <>
+          Puedes subir tus archivos en <strong>PDF o fotografía</strong> (JPG o
+          PNG). Las fotos del iPhone también funcionan.
+        </>
+      ),
+    },
+    {
+      icon: ScanLine,
+      text: (
+        <>
+          Los documentos deben estar{" "}
+          <strong>bien escaneados o fotografiados</strong>: completos, sin
+          cortes, sombras ni partes borrosas.
+        </>
+      ),
+    },
+    {
+      icon: CheckCircle2,
+      text: (
+        <>
+          Asegúrate de que el texto se <strong>lea con claridad</strong>.
+        </>
+      ),
+    },
+    {
+      icon: Bot,
+      text: (
+        <>
+          Nuestra{" "}
+          <strong>inteligencia artificial revisará automáticamente</strong> cada
+          documento.
+        </>
+      ),
+    },
+    {
+      icon: AlertTriangle,
+      text: (
+        <>
+          Si un documento no cumple, <strong>te avisaremos aquí</strong> para
+          que lo vuelvas a subir.
+        </>
+      ),
+      warn: true,
+    },
   ];
   return (
     <Card>
-      <CardHeader title="Antes de continuar, prepara tus documentos" description="Tenerlos a la mano te ahorra tiempo. Puedes subirlos poco a poco: lo que subas se guarda." />
+      <CardHeader
+        title="Antes de continuar, prepara tus documentos"
+        description="Tenerlos a la mano te ahorra tiempo. Puedes subirlos poco a poco: lo que subas se guarda."
+      />
       <ul className="flex flex-col gap-3">
         {tips.map(({ icon: Icon, text, warn }, i) => (
-          <li key={i} className="flex items-start gap-3 rounded-xl bg-app-bg p-3 text-sm text-obsessed">
-            <Icon className={`mt-0.5 h-5 w-5 shrink-0 ${warn ? "text-warning-text" : "text-dark-gold"}`} aria-hidden />
+          <li
+            key={i}
+            className="flex items-start gap-3 rounded-xl bg-app-bg p-3 text-sm text-obsessed"
+          >
+            <Icon
+              className={`mt-0.5 h-5 w-5 shrink-0 ${warn ? "text-warning-text" : "text-dark-gold"}`}
+              aria-hidden
+            />
             <span>{text}</span>
           </li>
         ))}
       </ul>
       <label className="mt-5 flex items-start gap-2 text-sm text-obsessed">
-        <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-[var(--color-c21-dark-gold)]" checked={read} onChange={(e) => setRead(e.target.checked)} />
+        <input
+          type="checkbox"
+          className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-[var(--color-c21-dark-gold)]"
+          checked={read}
+          onChange={(e) => setRead(e.target.checked)}
+        />
         Leí las recomendaciones.
       </label>
       <div className="mt-4 flex justify-end">
@@ -1117,7 +1624,10 @@ function PrepareDocuments({ onContinue }: { onContinue: () => void }) {
   );
 }
 
-const clientDocStatus: Record<PublicDocumentResponse["status"], { text: string; tone: "neutral" | "info" | "warning" | "success" | "danger" }> = {
+const clientDocStatus: Record<
+  PublicDocumentResponse["status"],
+  { text: string; tone: "neutral" | "info" | "warning" | "success" | "danger" }
+> = {
   PENDING: { text: "Pendiente", tone: "neutral" },
   UPLOADED: { text: "Recibido, verificando", tone: "info" },
   READY_FOR_REVIEW: { text: "Recibido, en revisión", tone: "info" },
@@ -1146,7 +1656,9 @@ function PublicDocumentRow({
   const [progress, setProgress] = useState<number | null>(null);
   // Control de Cambios #13: el cliente elige qué comprobante de domicilio entrega antes de subirlo.
   const isProofOfAddress = doc.type === "PROOF_OF_ADDRESS";
-  const [proofKind, setProofKind] = useState<string>(doc.addressProofKind ?? "");
+  const [proofKind, setProofKind] = useState<string>(
+    doc.addressProofKind ?? "",
+  );
 
   const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -1155,7 +1667,13 @@ function PublicDocumentRow({
     setError(null);
     setProgress(null);
     try {
-      await uploadPublicDocumentVersion(token, doc.id, Array.from(files), (p) => setProgress(p.percent), isProofOfAddress ? proofKind : null);
+      await uploadPublicDocumentVersion(
+        token,
+        doc.id,
+        Array.from(files),
+        (p) => setProgress(p.percent),
+        isProofOfAddress ? proofKind : null,
+      );
       setJustUploaded(true);
       onUploaded();
     } catch (err) {
@@ -1172,52 +1690,96 @@ function PublicDocumentRow({
   };
 
   const status = clientDocStatus[doc.status];
-  const needsFix = doc.status === "RETURNED" || doc.status === "REJECTED" || Boolean(doc.qualityIssue) || Boolean(doc.updateRequestNote);
+  const needsFix =
+    doc.status === "RETURNED" ||
+    doc.status === "REJECTED" ||
+    Boolean(doc.qualityIssue) ||
+    Boolean(doc.updateRequestNote);
   // Ya aceptado solo se vuelve a subir si se pidió una versión actualizada (Control de Cambios #10).
-  const canUpload = (doc.status !== "ACCEPTED" || Boolean(doc.updateRequestNote)) && doc.status !== "NOT_APPLICABLE";
+  const canUpload =
+    (doc.status !== "ACCEPTED" || Boolean(doc.updateRequestNote)) &&
+    doc.status !== "NOT_APPLICABLE";
 
   return (
-    <div className={`rounded-lg border p-3 ${needsFix ? "border-warning-text/40" : "border-border"}`}>
+    <div
+      className={`rounded-lg border p-3 ${needsFix ? "border-warning-text/40" : "border-border"}`}
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <span className="text-sm font-medium text-obsessed">{doc.customName ?? documentTypeLabel(doc.type)}</span>
-          {participantName ? <span className="text-sm text-muted"> — {participantName}</span> : null}
-          {!doc.required ? <span className="ml-2 text-xs text-muted">(opcional)</span> : null}
-          {doc.required && (doc.deferred || doc.exception || doc.markedPending) && doc.status === "PENDING" ? <span className="ml-2 text-xs text-muted">(cuando lo tengas)</span> : null}
+          <span className="text-sm font-medium text-obsessed">
+            {doc.customName ?? documentTypeLabel(doc.type)}
+          </span>
+          {participantName ? (
+            <span className="text-sm text-muted"> — {participantName}</span>
+          ) : null}
+          {!doc.required ? (
+            <span className="ml-2 text-xs text-muted">(opcional)</span>
+          ) : null}
+          {doc.required &&
+          (doc.deferred || doc.exception || doc.markedPending) &&
+          doc.status === "PENDING" ? (
+            <span className="ml-2 text-xs text-muted">(cuando lo tengas)</span>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           {doc.processing ? (
             <Badge tone="info">
-              <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> Verificando el archivo
+              <Loader2 className="h-3 w-3 animate-spin" aria-hidden />{" "}
+              Verificando el archivo
             </Badge>
           ) : (
             <Badge tone={status.tone}>{status.text}</Badge>
           )}
-          <input ref={fileInputRef} type="file" accept={ACCEPTED_FILE_TYPES} multiple className="hidden" onChange={handleFileSelected} />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={ACCEPTED_FILE_TYPES}
+            multiple
+            className="hidden"
+            onChange={handleFileSelected}
+          />
           {canUpload ? (
             <Button
               variant="secondary"
               size="sm"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading || (isProofOfAddress && !proofKind)}
-              title={isProofOfAddress && !proofKind ? "Primero elige qué comprobante vas a subir" : undefined}
+              title={
+                isProofOfAddress && !proofKind
+                  ? "Primero elige qué comprobante vas a subir"
+                  : undefined
+              }
             >
-              {uploading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4" aria-hidden />}
-              {uploading ? (progress !== null && progress < 100 ? `Subiendo ${progress}%` : "Preparando…") : doc.currentVersionNumber > 0 ? "Subir de nuevo" : "Subir"}
+              {uploading ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              ) : (
+                <Upload className="h-4 w-4" aria-hidden />
+              )}
+              {uploading
+                ? progress !== null && progress < 100
+                  ? `Subiendo ${progress}%`
+                  : "Preparando…"
+                : doc.currentVersionNumber > 0
+                  ? "Subir de nuevo"
+                  : "Subir"}
             </Button>
           ) : null}
         </div>
       </div>
       {isProofOfAddress && canUpload ? (
         <div className="mt-2 rounded-md bg-app-bg px-3 py-2 text-sm">
-          <p className="font-medium text-obsessed">Documentos aceptados como comprobante de domicilio:</p>
+          <p className="font-medium text-obsessed">
+            Documentos aceptados como comprobante de domicilio:
+          </p>
           <ul className="ml-5 mt-1 list-disc text-muted">
             {ADDRESS_PROOF_KINDS.map((k) => (
               <li key={k}>{ADDRESS_PROOF_KIND_LABELS[k]}</li>
             ))}
           </ul>
           <label className="mt-2 flex flex-col gap-1">
-            <span className="text-xs font-medium text-obsessed">¿Cuál vas a subir?</span>
+            <span className="text-xs font-medium text-obsessed">
+              ¿Cuál vas a subir?
+            </span>
             <select
               value={proofKind}
               onChange={(e) => setProofKind(e.target.value)}
@@ -1234,11 +1796,14 @@ function PublicDocumentRow({
         </div>
       ) : null}
       {isProofOfAddress && !canUpload && doc.addressProofKind ? (
-        <p className="mt-1 text-xs text-muted">Entregaste: {ADDRESS_PROOF_KIND_LABELS[doc.addressProofKind]}</p>
+        <p className="mt-1 text-xs text-muted">
+          Entregaste: {ADDRESS_PROOF_KIND_LABELS[doc.addressProofKind]}
+        </p>
       ) : null}
       {doc.status === "RETURNED" || doc.status === "REJECTED" ? (
         <p className="mt-2 rounded-md bg-warning-bg px-3 py-2 text-sm text-warning-text">
-          <strong>Qué corregir:</strong> {label(returnReasonLabels, doc.correctionReasonCode)}
+          <strong>Qué corregir:</strong>{" "}
+          {label(returnReasonLabels, doc.correctionReasonCode)}
           {doc.correctionComment ? ` — ${doc.correctionComment}` : ""}
         </p>
       ) : null}
@@ -1249,22 +1814,36 @@ function PublicDocumentRow({
       ) : null}
       {doc.updateRequestNote ? (
         <p className="mt-2 rounded-md bg-warning-bg px-3 py-2 text-sm text-warning-text">
-          <strong>Necesitamos una versión actualizada:</strong> {doc.updateRequestNote}. La que ya nos diste se conserva.
+          <strong>Necesitamos una versión actualizada:</strong>{" "}
+          {doc.updateRequestNote}. La que ya nos diste se conserva.
         </p>
       ) : null}
       {uploading && progress !== null ? (
-        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-app-bg" aria-hidden>
-          <div className="h-full bg-gold transition-all" style={{ width: `${progress}%` }} />
+        <div
+          className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-app-bg"
+          aria-hidden
+        >
+          <div
+            className="h-full bg-gold transition-all"
+            style={{ width: `${progress}%` }}
+          />
         </div>
       ) : null}
-      {doc.looksLikeWrongDocument && !doc.qualityIssue && doc.status !== "RETURNED" && doc.status !== "REJECTED" ? (
+      {doc.looksLikeWrongDocument &&
+      !doc.qualityIssue &&
+      doc.status !== "RETURNED" &&
+      doc.status !== "REJECTED" ? (
         <p className="mt-2 rounded-md bg-app-bg px-3 py-2 text-xs text-muted">
-          Recibimos tu archivo. Nuestro equipo confirmará que sea tu {doc.customName ?? documentTypeLabel(doc.type)}; si hiciera falta otro, te avisaremos aquí.
+          Recibimos tu archivo. Nuestro equipo confirmará que sea tu{" "}
+          {doc.customName ?? documentTypeLabel(doc.type)}; si hiciera falta
+          otro, te avisaremos aquí.
         </p>
       ) : null}
       {justUploaded && !error && !doc.qualityIssue ? (
         <p className="mt-2 flex items-center gap-1.5 text-xs text-success-text">
-          <CheckCircle2 className="h-3.5 w-3.5" aria-hidden /> Archivo recibido. La verificación sigue en segundo plano: puedes continuar con los demás documentos.
+          <CheckCircle2 className="h-3.5 w-3.5" aria-hidden /> Archivo recibido.
+          La verificación sigue en segundo plano: puedes continuar con los demás
+          documentos.
         </p>
       ) : null}
       {error ? <p className="mt-2 text-sm text-danger-text">{error}</p> : null}
@@ -1289,7 +1868,14 @@ function ConfirmationStep({
   useEffect(() => {
     listPublicDocuments(token)
       .then((docs) => {
-        setLaterCount(docs.filter((d) => d.required && (d.deferred || d.exception || d.markedPending) && d.status === "PENDING").length);
+        setLaterCount(
+          docs.filter(
+            (d) =>
+              d.required &&
+              (d.deferred || d.exception || d.markedPending) &&
+              d.status === "PENDING",
+          ).length,
+        );
         setUpdateCount(docs.filter((d) => d.updateRequestNote).length);
       })
       .catch(() => undefined);
@@ -1298,7 +1884,9 @@ function ConfirmationStep({
   return (
     <Card>
       <CardHeader title="Estado de tu trámite" />
-      <p className="text-sm text-obsessed">{clientStatusText[expediente.status]}</p>
+      <p className="text-sm text-obsessed">
+        {clientStatusText[expediente.status]}
+      </p>
       {updateCount > 0 ? (
         <div className="mt-4 rounded-xl border border-warning-text/30 bg-warning-bg p-4">
           <p className="text-sm text-warning-text">
@@ -1307,8 +1895,14 @@ function ConfirmationStep({
               : `Necesitamos una versión actualizada de ${updateCount} documentos.`}{" "}
             La que ya nos diste se conserva.
           </p>
-          <Button variant="secondary" size="sm" className="mt-3" onClick={onUploadLater}>
-            <Upload className="h-4 w-4" aria-hidden /> Subir la versión actualizada
+          <Button
+            variant="secondary"
+            size="sm"
+            className="mt-3"
+            onClick={onUploadLater}
+          >
+            <Upload className="h-4 w-4" aria-hidden /> Subir la versión
+            actualizada
           </Button>
         </div>
       ) : null}
@@ -1320,18 +1914,32 @@ function ConfirmationStep({
               : `Quedan ${laterCount} documentos que puedes subir cuando los tengas.`}{" "}
             Se necesitan antes de preparar tu contrato.
           </p>
-          <Button variant="secondary" size="sm" className="mt-3" onClick={onUploadLater}>
-            <Upload className="h-4 w-4" aria-hidden /> Subir documentos pendientes
+          <Button
+            variant="secondary"
+            size="sm"
+            className="mt-3"
+            onClick={onUploadLater}
+          >
+            <Upload className="h-4 w-4" aria-hidden /> Subir documentos
+            pendientes
           </Button>
         </div>
       ) : null}
       <p className="mt-3 text-sm text-muted">
-        Te avisaremos por correo cuando haya algo que hacer. Si necesitas corregir un documento, vuelve a esta misma liga.
+        Te avisaremos por correo cuando haya algo que hacer. Si necesitas
+        corregir un documento, vuelve a esta misma liga.
       </p>
       {onEditOwners ? (
         <div className="mt-4 border-t border-border pt-4">
-          <p className="text-sm text-muted">¿Falta o sobra un propietario, o un nombre está mal?</p>
-          <Button variant="secondary" size="sm" className="mt-2" onClick={onEditOwners}>
+          <p className="text-sm text-muted">
+            ¿Falta o sobra un propietario, o un nombre está mal?
+          </p>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="mt-2"
+            onClick={onEditOwners}
+          >
             <Pencil className="h-4 w-4" aria-hidden />
             Corregir propietarios
           </Button>

@@ -196,7 +196,7 @@ export function SummaryTab({ expediente, participants, reload, freshPublicLink: 
         </div>
       </Card>
 
-      <PrivacyCard expediente={expediente} reload={reload} />
+      <PrivacyCard expediente={expediente} reload={reload} phone={clientData?.phone} />
 
       {can("PUBLIC_LINK_GENERATE") ? <DocumentTimingCard expediente={expediente} participants={participants} /> : null}
 

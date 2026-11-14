@@ -42,6 +42,8 @@ import com.c21genera.shared.events.ExpedienteEvents.PropertyRejected;
 import com.c21genera.shared.events.NotificationEvents.NotificationDelivered;
 import com.c21genera.shared.events.NotificationEvents.NotificationDeliveryFailed;
 import com.c21genera.shared.events.PrivacyEvents.PrivacyAccepted;
+import com.c21genera.shared.events.PrivacyEvents.PrivacySignLinkIssued;
+import com.c21genera.shared.events.PrivacyEvents.PrivacySignLinkRevoked;
 import com.c21genera.shared.events.PublicAccessEvents.PublicLinkGenerated;
 import com.c21genera.shared.events.PublicAccessEvents.PublicLinkRevoked;
 import java.time.Clock;
@@ -170,6 +172,20 @@ class AuditEventRecorder {
     record("PrivacyAccepted", "Expediente", event.expedienteId(), Actor.client(), "Aviso de privacidad aceptado por el cliente");
     activity(event.expedienteId(), ActivityCategory.PRIVACY, "PRIVACY_ACCEPTED", Actor.client(), null, null,
         event.mainPurposesAccepted() ? "Aceptó y firmó el aviso de privacidad" : "Registró su respuesta al aviso de privacidad sin aceptar la finalidad principal");
+  }
+
+  @ApplicationModuleListener
+  void on(PrivacySignLinkIssued event) {
+    record("PrivacySignLinkIssued", "Expediente", event.expedienteId(), event.actor(), "Liga exclusiva para firmar el aviso de privacidad generada");
+    activity(event.expedienteId(), ActivityCategory.PRIVACY, "PRIVACY_SIGN_LINK_ISSUED", event.actor(), null, null,
+        "Generó la liga para que el cliente firme el aviso de privacidad (sigue pendiente de firma hasta que lo firme)");
+  }
+
+  @ApplicationModuleListener
+  void on(PrivacySignLinkRevoked event) {
+    record("PrivacySignLinkRevoked", "Expediente", event.expedienteId(), event.actor(), "Liga para firmar el aviso de privacidad desactivada");
+    activity(event.expedienteId(), ActivityCategory.PRIVACY, "PRIVACY_SIGN_LINK_REVOKED", event.actor(), null, null,
+        "Desactivó la liga para firmar el aviso de privacidad");
   }
 
   @ApplicationModuleListener
