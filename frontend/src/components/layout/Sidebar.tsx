@@ -4,43 +4,119 @@ import { BrandFooter } from "@/components/brand/BrandFooter";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { useCanSeeCrm } from "@/components/crm/CrmUi";
 import { useAuth } from "@/context/AuthProvider";
+import { getResolvedAccess } from "@/lib/api/resolved";
 import { useCan } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-import { BarChart3, CalendarCheck, CalendarDays, FilePlus2, Files, Handshake, House, KeyRound, LayoutDashboard, LogOut, MessagesSquare, Smile, Users, UserRoundSearch, UsersRound } from "lucide-react";
+import {
+  BarChart3,
+  CalendarCheck,
+  CalendarDays,
+  FilePlus2,
+  Files,
+  FolderLock,
+  Handshake,
+  House,
+  KeyRound,
+  LayoutDashboard,
+  LogOut,
+  MessagesSquare,
+  Smile,
+  Users,
+  UserRoundSearch,
+  UsersRound,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 // Módulo 1 (expedientes): cada entrada se muestra solo a quien tiene el
 // permiso (el backend vuelve a validarlo).
-const navItems: { href: string; label: string; icon: typeof Files; permission?: string; anyOf?: string[] }[] = [
+const navItems: {
+  href: string;
+  label: string;
+  icon: typeof Files;
+  permission?: string;
+  anyOf?: string[];
+}[] = [
   { href: "/expedientes", label: "Expedientes", icon: Files },
-  { href: "/expedientes/nuevo", label: "Nuevo expediente", icon: FilePlus2, permission: "EXPEDIENT_CREATE" },
+  {
+    href: "/expedientes/nuevo",
+    label: "Nuevo expediente",
+    icon: FilePlus2,
+    permission: "EXPEDIENT_CREATE",
+  },
   // Control de Cambios #32: cierres de operaciones propias y externas (PLD/PROFECO).
-  { href: "/operaciones", label: "Operaciones y cierres", icon: Handshake, anyOf: ["OPERATION_VIEW_ALL", "OPERATION_MANAGE", "OPERATION_REVIEW"] },
+  {
+    href: "/operaciones",
+    label: "Operaciones y cierres",
+    icon: Handshake,
+    anyOf: ["OPERATION_VIEW_ALL", "OPERATION_MANAGE", "OPERATION_REVIEW"],
+  },
   // Control de Cambios #24: cartera por tipo de propiedad, operación y asesor.
   { href: "/reportes", label: "Reportes", icon: BarChart3 },
   // Control de Cambios #28: satisfacción del cliente (NPS) por punto de contacto.
   { href: "/nps", label: "Satisfacción (NPS)", icon: Smile },
   // Control de Cambios #27 (adenda): claves en uso y migración de las propiedades existentes.
-  { href: "/claves", label: "Claves de inmuebles", icon: KeyRound, permission: "EXPEDIENT_KEY_ASSIGN" },
-  { href: "/usuarios", label: "Usuarios y permisos", icon: Users, permission: "USER_MANAGE" },
+  {
+    href: "/claves",
+    label: "Claves de inmuebles",
+    icon: KeyRound,
+    permission: "EXPEDIENT_KEY_ASSIGN",
+  },
+  {
+    href: "/usuarios",
+    label: "Usuarios y permisos",
+    icon: Users,
+    permission: "USER_MANAGE",
+  },
 ];
 
 // CRM (Módulo 3). Propiedades: inventario de 21Online y alta de propiedades
 // que se publican allá.
-const crmItems: { href: string; label: string; icon: typeof Files; permission?: string; anyOf?: string[] }[] = [
+const crmItems: {
+  href: string;
+  label: string;
+  icon: typeof Files;
+  permission?: string;
+  anyOf?: string[];
+}[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/leads", label: "Leads", icon: UserRoundSearch },
   // Control de Cambios #30: citas y actividades de seguimiento de los leads.
   { href: "/agenda", label: "Agenda", icon: CalendarCheck },
-  { href: "/propiedades", label: "Propiedades", icon: House, permission: "PROPERTY_VIEW" },
-  { href: "/calendario", label: "Calendario", icon: CalendarDays, anyOf: ["CALENDAR_VIEW_ALL", "CALENDAR_VIEW_OWN"] },
-  { href: "/conversaciones", label: "Conversaciones", icon: MessagesSquare, permission: "CONVERSATION_VIEW" },
-  { href: "/asesores", label: "Asesores", icon: UsersRound, permission: "ADVISOR_ROUTING_MANAGE" },
+  {
+    href: "/propiedades",
+    label: "Propiedades",
+    icon: House,
+    permission: "PROPERTY_VIEW",
+  },
+  {
+    href: "/calendario",
+    label: "Calendario",
+    icon: CalendarDays,
+    anyOf: ["CALENDAR_VIEW_ALL", "CALENDAR_VIEW_OWN"],
+  },
+  {
+    href: "/conversaciones",
+    label: "Conversaciones",
+    icon: MessagesSquare,
+    permission: "CONVERSATION_VIEW",
+  },
+  {
+    href: "/asesores",
+    label: "Asesores",
+    icon: UsersRound,
+    permission: "ADVISOR_ROUTING_MANAGE",
+  },
 ];
 
 function isActive(href: string, pathname: string): boolean {
-  if (href === "/expedientes") return pathname === "/expedientes" || (pathname.startsWith("/expedientes/") && pathname !== "/expedientes/nuevo");
+  if (href === "/expedientes")
+    return (
+      pathname === "/expedientes" ||
+      (pathname.startsWith("/expedientes/") &&
+        pathname !== "/expedientes/nuevo")
+    );
   return pathname.startsWith(href);
 }
 
@@ -50,6 +126,13 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { logout } = useAuth();
   const can = useCan();
   const canSeeCrm = useCanSeeCrm();
+  // Control de Cambios #42: Propiedad Resuelta solo aparece al superusuario o a quien tenga un proyecto autorizado.
+  const [resolvedAccess, setResolvedAccess] = useState(false);
+  useEffect(() => {
+    getResolvedAccess()
+      .then((a) => setResolvedAccess(a.view))
+      .catch(() => setResolvedAccess(false));
+  }, []);
 
   const handleLogout = () => {
     void logout();
@@ -69,21 +152,64 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           <BrandLogo tone="nav" className="h-9" />
         </Link>
       </div>
-      <nav aria-label="Principal" className="flex-1 space-y-1 overflow-y-auto px-3">
-        {canSeeCrm ? <p className="px-3.5 pb-1 text-[0.68rem] font-semibold uppercase tracking-wider text-white/40">Expedientes</p> : null}
+      <nav
+        aria-label="Principal"
+        className="flex-1 space-y-1 overflow-y-auto px-3"
+      >
+        {canSeeCrm ? (
+          <p className="px-3.5 pb-1 text-[0.68rem] font-semibold uppercase tracking-wider text-white/40">
+            Expedientes
+          </p>
+        ) : null}
         {navItems
-          .filter((item) => (!item.permission || can(item.permission)) && (!item.anyOf || item.anyOf.some((p) => can(p))))
+          .filter(
+            (item) =>
+              (!item.permission || can(item.permission)) &&
+              (!item.anyOf || item.anyOf.some((p) => can(p))),
+          )
           .map((item) => (
-            <NavLink key={item.href} item={item} active={isActive(item.href, pathname)} onNavigate={onNavigate} />
+            <NavLink
+              key={item.href}
+              item={item}
+              active={isActive(item.href, pathname)}
+              onNavigate={onNavigate}
+            />
           ))}
         {canSeeCrm ? (
           <>
-            <p className="px-3.5 pb-1 pt-5 text-[0.68rem] font-semibold uppercase tracking-wider text-white/40">CRM</p>
+            <p className="px-3.5 pb-1 pt-5 text-[0.68rem] font-semibold uppercase tracking-wider text-white/40">
+              CRM
+            </p>
             {crmItems
-              .filter((item) => (!item.permission || can(item.permission)) && (!item.anyOf || item.anyOf.some((p) => can(p))))
+              .filter(
+                (item) =>
+                  (!item.permission || can(item.permission)) &&
+                  (!item.anyOf || item.anyOf.some((p) => can(p))),
+              )
               .map((item) => (
-              <NavLink key={item.href} item={item} active={isActive(item.href, pathname)} onNavigate={onNavigate} />
-            ))}
+                <NavLink
+                  key={item.href}
+                  item={item}
+                  active={isActive(item.href, pathname)}
+                  onNavigate={onNavigate}
+                />
+              ))}
+          </>
+        ) : null}
+        {resolvedAccess ? (
+          <>
+            <p className="px-3.5 pb-1 pt-5 text-[0.68rem] font-semibold uppercase tracking-wider text-white/40">
+              Propiedad Resuelta
+            </p>
+            <NavLink
+              item={{
+                href: "/propiedad-resuelta",
+                label: "Proyectos Propiedad Resuelta",
+                icon: FolderLock,
+              }}
+              active={isActive("/propiedad-resuelta", pathname)}
+              onNavigate={onNavigate}
+            />
           </>
         ) : null}
       </nav>
@@ -102,7 +228,15 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function NavLink({ item, active, onNavigate }: { item: { href: string; label: string; icon: typeof Files }; active: boolean; onNavigate?: () => void }) {
+function NavLink({
+  item,
+  active,
+  onNavigate,
+}: {
+  item: { href: string; label: string; icon: typeof Files };
+  active: boolean;
+  onNavigate?: () => void;
+}) {
   const Icon = item.icon;
   return (
     <Link
@@ -111,10 +245,17 @@ function NavLink({ item, active, onNavigate }: { item: { href: string; label: st
       aria-current={active ? "page" : undefined}
       className={cn(
         "relative flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold/40",
-        active ? "bg-gold/15 text-gold" : "text-white/75 hover:bg-white/5 hover:text-white",
+        active
+          ? "bg-gold/15 text-gold"
+          : "text-white/75 hover:bg-white/5 hover:text-white",
       )}
     >
-      {active ? <span className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-gold" aria-hidden /> : null}
+      {active ? (
+        <span
+          className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-gold"
+          aria-hidden
+        />
+      ) : null}
       <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden />
       {item.label}
     </Link>

@@ -55,5 +55,7 @@ public enum PermissionCode {
   OPERATION_VIEW_ALL,
   OPERATION_MANAGE,
   OPERATION_REVIEW,
-  OPERATION_MATRIX_MANAGE
+  OPERATION_MATRIX_MANAGE,
+  /** Control de Cambios #42: superusuario de Propiedad Resuelta (ve todo y otorga accesos). */
+  RESOLVED_PROPERTY_ADMIN
 }
