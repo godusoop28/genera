@@ -251,7 +251,7 @@ const documentTypeLabels = {
   'PASSPORT': 'Pasaporte',
   'CURP': 'CURP',
   'TAX_STATUS_CERTIFICATE': 'Constancia de Situación Fiscal',
-  'DEED': 'Escritura completa (testimonios)',
+  'DEED': 'Escritura completa',
   'PROOF_OF_ADDRESS': 'Comprobante de domicilio',
   'LIEN_CERTIFICATE': 'Certificado de libertad de gravamen',
   'PROPERTY_TAX': 'Predial',

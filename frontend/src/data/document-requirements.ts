@@ -37,7 +37,7 @@ export function buildDocumentRequirements(
     },
     {
       id: "escritura",
-      name: "Escritura completa (testimonios)",
+      name: "Escritura completa",
       description: "Todas las páginas de la escritura del inmueble.",
       category: "propiedad",
       required: true,

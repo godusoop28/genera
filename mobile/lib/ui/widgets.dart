@@ -555,6 +555,7 @@ class AppTextField extends StatefulWidget {
     this.textInputAction,
     this.inputFormatters,
     this.autofillHints,
+    this.suggestions = true,
     this.controller,
     this.suffixText,
   });
@@ -572,6 +573,9 @@ class AppTextField extends StatefulWidget {
   final List<TextInputFormatter>? inputFormatters;
   final Iterable<String>? autofillHints;
   final TextEditingController? controller;
+
+  /// Control de Cambios #41: false apaga las sugerencias/autocorrección del teclado (p. ej. al dar de alta a otra persona).
+  final bool suggestions;
 
   /// Texto fijo al final del campo (p. ej. la moneda "MXN").
   final String? suffixText;
@@ -623,6 +627,8 @@ class _AppTextFieldState extends State<AppTextField> {
           textInputAction: widget.textInputAction,
           inputFormatters: widget.inputFormatters,
           autofillHints: widget.autofillHints,
+          enableSuggestions: widget.suggestions,
+          autocorrect: widget.suggestions,
           style: TextStyle(fontSize: 15, color: widget.enabled ? c.fg : c.muted),
           decoration: InputDecoration(hintText: widget.hint, helperText: widget.helper, helperMaxLines: 3, errorText: widget.error, errorMaxLines: 3, counterText: '', suffixText: widget.suffixText),
         ),

@@ -412,13 +412,14 @@ export function UsersTable({ createOpen, onCreateOpenChange, onShowRoles }: User
       <Modal open={createOpen} onClose={() => onCreateOpenChange(false)} title="Crear usuario">
         <form
           className="flex flex-col gap-4"
+          autoComplete="off"
           onSubmit={(e) => {
             e.preventDefault();
             void handleCreate();
           }}
         >
-          <Input label="Nombre completo" value={name} onChange={(e) => setName(e.target.value)} required autoComplete="off" />
-          <Input label="Correo" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="off" hint="Con este correo entrará al sistema." />
+          <Input label="Nombre completo" value={name} onChange={(e) => setName(e.target.value)} required {...noContactSuggestions("genera-new-user-name")} />
+          <Input label="Correo" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required {...noContactSuggestions("genera-new-user-email")} inputMode="email" hint="Con este correo entrará al sistema." />
           <Select label="Rol" value={roleCode} onChange={(e) => setRoleCode(e.target.value as BackendRoleCode)} options={roleOptions} />
           <p className="rounded-lg bg-info-bg px-3 py-2 text-sm text-info-text">
             No necesitas inventarle una contraseña: al crear la cuenta obtendrás un enlace para enviárselo y que la persona defina la suya.
@@ -442,13 +443,14 @@ export function UsersTable({ createOpen, onCreateOpenChange, onShowRoles }: User
       <Modal open={Boolean(editUser)} onClose={() => setEditUser(null)} title="Editar usuario">
         <form
           className="flex flex-col gap-4"
+          autoComplete="off"
           onSubmit={(e) => {
             e.preventDefault();
             void handleEditSave();
           }}
         >
-          <Input label="Nombre completo" value={name} onChange={(e) => setName(e.target.value)} required />
-          <Input label="Correo" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <Input label="Nombre completo" value={name} onChange={(e) => setName(e.target.value)} required {...noContactSuggestions("genera-edit-user-name")} />
+          <Input label="Correo" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required {...noContactSuggestions("genera-edit-user-email")} inputMode="email" />
           <Select
             label="Rol"
             value={roleCode}
@@ -853,4 +855,25 @@ function SetupLinkModal({ user, link, onClose }: { user: Pick<UserResponse, "nam
       </p>
     </Modal>
   );
+}
+
+/**
+ * Control de Cambios #41: al dar de alta a OTRA persona, el autocompletado del navegador ofrecía los
+ * contactos/direcciones guardados (los datos del propio administrador) en «Nombre completo» y «Correo».
+ * Chrome ignora autocomplete="off" en esos campos, pero no autocompleta con un token que no reconoce ni
+ * con un name que no sea "name"/"email"; los atributos data-* apagan 1Password, LastPass y Bitwarden.
+ * Las sugerencias del teclado del celular (Gboard/iOS) no dependen de la página: ver docs/autocompletado.md.
+ */
+function noContactSuggestions(fieldName: string) {
+  return {
+    name: fieldName,
+    autoComplete: fieldName,
+    autoCorrect: "off",
+    autoCapitalize: fieldName.endsWith("email") ? "none" : "words",
+    spellCheck: false,
+    "data-1p-ignore": true,
+    "data-lpignore": "true",
+    "data-bwignore": true,
+    "data-form-type": "other",
+  } as const;
 }

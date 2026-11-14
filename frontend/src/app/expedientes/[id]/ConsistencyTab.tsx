@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
+import { useAuth } from "@/context/AuthProvider";
 import { getCondominiumAreas, getDataConflicts, resolveConflict, runConsistencyCheck } from "@/lib/api/extraction";
 import type { CondominiumAreaComparison, DataConflictResponse } from "@/lib/api/types";
 import { errorText } from "@/lib/errors";
@@ -236,6 +237,7 @@ function AuthorizeModal({
   onCancel: () => void;
   onConfirm: (note: string, password: string) => Promise<void>;
 }) {
+  const { user } = useAuth();
   const [note, setNote] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -271,6 +273,7 @@ function AuthorizeModal({
     >
       <form
         className="flex flex-col gap-4 text-sm"
+        autoComplete="off"
         onSubmit={(e) => {
           e.preventDefault();
           if (valid) void confirm();
@@ -283,7 +286,15 @@ function AuthorizeModal({
         </p>
         <label className="flex flex-col gap-1.5">
           <span className="font-medium text-obsessed">¿Por qué se autoriza?</span>
+          {/* Control de Cambios #47: la anotación nunca es el "usuario" de las credenciales. */}
           <textarea
+            name="authorization-note"
+            autoComplete="off"
+            autoCorrect="on"
+            data-1p-ignore
+            data-lpignore="true"
+            data-bwignore
+            data-form-type="other"
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={3}
@@ -291,10 +302,26 @@ function AuthorizeModal({
             className="rounded-lg border border-border bg-card px-3 py-2 text-obsessed outline-none focus:border-gold"
           />
         </label>
+        {/*
+          Control de Cambios #47: los gestores de contraseñas toman como "usuario" el campo de texto que
+          precede a la contraseña; sin uno, rellenaban la anotación con el correo y borraban lo escrito.
+          Este campo oculto (de solo lectura, con el correo de la sesión) es el que reciben ahora.
+        */}
+        <input
+          type="text"
+          name="username"
+          autoComplete="username"
+          value={user?.email ?? ""}
+          readOnly
+          tabIndex={-1}
+          aria-hidden
+          className="sr-only"
+        />
         <label className="flex flex-col gap-1.5">
           <span className="font-medium text-obsessed">Tu contraseña</span>
           <input
             type="password"
+            name="current-password"
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}

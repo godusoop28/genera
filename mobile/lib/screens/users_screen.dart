@@ -160,12 +160,13 @@ class _UsersScreenState extends State<UsersScreen> with SingleTickerProviderStat
       context,
       title: editing == null ? 'Crear usuario' : 'Editar usuario',
       builder: (ctx, setSheet) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        AppTextField(label: 'Nombre completo', value: name, onChanged: (v) => name = v),
+        AppTextField(label: 'Nombre completo', value: name, suggestions: false, onChanged: (v) => name = v),
         const SizedBox(height: 12),
         AppTextField(
           label: 'Correo',
           value: email,
           keyboardType: TextInputType.emailAddress,
+          suggestions: false,
           helper: editing == null ? 'Con este correo entrará al sistema.' : null,
           onChanged: (v) => email = v,
         ),
